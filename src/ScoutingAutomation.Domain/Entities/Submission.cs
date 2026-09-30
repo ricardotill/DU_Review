@@ -1,0 +1,54 @@
+using ScoutingAutomation.Domain.Enums;
+
+namespace ScoutingAutomation.Domain.Entities;
+
+public class Submission
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid GroupId { get; set; }
+    public Group? Group { get; set; }
+    public int? AssignmentNumber { get; set; }
+    public string SlackChannelId { get; set; } = string.Empty;
+    public string SlackMessageId { get; set; } = string.Empty;
+    public string Submitter { get; set; } = string.Empty;
+    public string FileName { get; set; } = string.Empty;
+    public string StoragePath { get; set; } = string.Empty;
+    public long FileSizeBytes { get; set; }
+    public string ContentType { get; set; } = string.Empty;
+    public SubmissionStatus Status { get; set; } = SubmissionStatus.Received;
+    public string? MessageText { get; set; }
+    public string? UnresolvedReason { get; set; }
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? UpdatedAt { get; set; }
+
+    public ICollection<Review> Reviews { get; set; } = new List<Review>();
+
+    public void MarkPending(string storagePath, int? assignmentNumber, string? unresolvedReason = null)
+    {
+        Status = SubmissionStatus.Pending;
+        StoragePath = storagePath;
+        AssignmentNumber = assignmentNumber;
+        UnresolvedReason = unresolvedReason;
+        UpdatedAt = DateTimeOffset.UtcNow;
+    }
+
+    public Review TransitionStatus(SubmissionStatus newStatus, string newStoragePath, string reviewer, string? reactionEmoji = null, string? notes = null)
+    {
+        Status = newStatus;
+        StoragePath = newStoragePath;
+        UpdatedAt = DateTimeOffset.UtcNow;
+
+        var review = new Review
+        {
+            SubmissionId = Id,
+            Reviewer = reviewer,
+            Status = newStatus,
+            ReactionEmoji = reactionEmoji,
+            Notes = notes,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+
+        Reviews.Add(review);
+        return review;
+    }
+}

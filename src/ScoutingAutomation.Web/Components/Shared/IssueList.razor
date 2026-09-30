@@ -1,0 +1,19 @@
+<ul class="list-unstyled mb-0 d-flex flex-column gap-1">
+    @foreach (var issue in Issues)
+    {
+        <li class="text-white-50">
+            <span class="text-white">@issue.Group</span>
+            <span class="text-muted">· @issue.PostedAt.ToLocalTime().ToString("HH:mm")</span>
+            · @issue.Reason
+            @if (!string.IsNullOrWhiteSpace(issue.Text))
+            {
+                <span class="text-muted">· "@issue.Text"</span>
+            }
+        </li>
+    }
+</ul>
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<RebuildIssue> Issues { get; set; } = Array.Empty<RebuildIssue>();
+}

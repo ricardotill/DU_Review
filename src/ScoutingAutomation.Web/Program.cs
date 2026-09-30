@@ -1,0 +1,181 @@
+using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using ScoutingAutomation.Contracts.Configuration;
+using ScoutingAutomation.Contracts.Slack;
+using ScoutingAutomation.Domain.Interfaces;
+using ScoutingAutomation.Infrastructure.Data;
+using ScoutingAutomation.Infrastructure.Extensions;
+using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Web.Components;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Aspire service defaults (OpenTelemetry, HealthChecks, ServiceDiscovery)
+builder.AddServiceDefaults();
+
+// Add services to the container
+builder.Services.AddRazorComponents()
+    .AddInteractiveServerComponents();
+
+// Configure Database per ADR-001 & AR-002: PostgreSQL via Aspire when running in Aspire, SQLite when standalone
+var aspireConnectionString = Environment.GetEnvironmentVariable("ConnectionStrings__scoutingdb");
+var configConnectionString = builder.Configuration.GetConnectionString("scoutingdb");
+var connectionString = !string.IsNullOrWhiteSpace(aspireConnectionString) ? aspireConnectionString : configConnectionString;
+var isAspire = !string.IsNullOrWhiteSpace(aspireConnectionString) || !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ASPIRE_RESOURCE_NAME"));
+
+if (isAspire && !string.IsNullOrWhiteSpace(connectionString) && !connectionString.Contains("Data Source=", StringComparison.OrdinalIgnoreCase))
+{
+    // PostgreSQL registered via Aspire component
+    builder.AddNpgsqlDbContext<ScoutingDbContext>("scoutingdb");
+}
+else
+{
+    // SQLite for standalone / direct local development without Aspire Postgres container
+    var sqliteConnection = !string.IsNullOrWhiteSpace(connectionString) && connectionString.Contains("Data Source=", StringComparison.OrdinalIgnoreCase)
+        ? connectionString
+        : "Data Source=scouting_dev.db";
+
+    builder.Services.AddDbContext<ScoutingDbContext>(options =>
+    {
+        options.UseSqlite(sqliteConnection);
+    });
+}
+
+// Add Domain & Infrastructure services
+builder.Services.AddScoutingInfrastructure(builder.Configuration);
+
+var app = builder.Build();
+
+// Configure the HTTP request pipeline
+app.MapDefaultEndpoints();
+
+if (!app.Environment.IsDevelopment())
+{
+    app.UseExceptionHandler("/Error", createScopeForErrors: true);
+    app.UseHsts();
+}
+
+app.UseHttpsRedirection();
+app.UseAntiforgery();
+app.MapStaticAssets();
+
+// Initialize database schema and synchronize groups on startup
+using (var scope = app.Services.CreateScope())
+{
+    try
+    {
+        var initializer = scope.ServiceProvider.GetRequiredService<DatabaseInitializer>();
+        await initializer.InitializeAsync();
+    }
+    catch (Exception ex)
+    {
+        var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+        logger.LogError(ex, "Failed to initialize database. If Postgres is unavailable, set 'UseSqlite': 'true' in appsettings.");
+    }
+}
+
+// REST Endpoints for Slack Event Subscriptions & File downloads
+var api = app.MapGroup("/api");
+
+// Slack event payloads are small; anything bigger is not from Slack
+const int MaxSlackBodyBytes = 1024 * 1024;
+
+var slackSettings = app.Services.GetRequiredService<IOptions<ScoutingSettings>>().Value.Slack;
+if (!slackSettings.SimulationMode && !slackSettings.SocketMode && string.IsNullOrWhiteSpace(slackSettings.SigningSecret))
+{
+    app.Logger.LogError("Scouting:Slack:SigningSecret is not set while SimulationMode is off: all Slack requests will be rejected");
+}
+
+// FR-001 / Slack Events Webhook Endpoint
+api.MapPost("/slack/events", async (
+    HttpRequest request,
+    ISlackRequestVerifier verifier,
+    ISlackEventDispatcher dispatcher,
+    ILogger<Program> logger) =>
+{
+    if (request.ContentLength > MaxSlackBodyBytes)
+    {
+        return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+    }
+
+    // The signature covers the exact bytes Slack sent, so read the raw body before parsing
+    using var buffer = new MemoryStream();
+    await request.Body.CopyToAsync(buffer);
+    if (buffer.Length > MaxSlackBodyBytes)
+    {
+        return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+    }
+    var body = buffer.ToArray();
+
+    var verification = verifier.Verify(
+        request.Headers["X-Slack-Request-Timestamp"],
+        request.Headers["X-Slack-Signature"],
+        body);
+    if (!verification.IsAllowed())
+    {
+        logger.LogWarning("Rejected Slack request from {RemoteIp}: {Reason}", request.HttpContext.Connection.RemoteIpAddress, verification);
+        return Results.Unauthorized();
+    }
+
+    SlackEventEnvelopeDto? envelope;
+    try
+    {
+        envelope = JsonSerializer.Deserialize<SlackEventEnvelopeDto>(body, JsonSerializerOptions.Web);
+    }
+    catch (JsonException)
+    {
+        return Results.BadRequest("Invalid JSON");
+    }
+
+    if (envelope == null)
+    {
+        return Results.BadRequest("Empty payload");
+    }
+
+    // 1. URL Verification Challenge from Slack
+    if (envelope.Type == "url_verification" && !string.IsNullOrWhiteSpace(envelope.Challenge))
+    {
+        logger.LogInformation("Responding to Slack url_verification challenge");
+        return Results.Text(envelope.Challenge, "text/plain");
+    }
+
+    // 2. Event Callback
+    // Not tied to the request: Slack may stop waiting after 3 seconds, but a half-processed upload is worse
+    var result = await dispatcher.DispatchAsync(envelope, CancellationToken.None);
+    if (result != null)
+    {
+        return Results.Ok(result);
+    }
+
+    return Results.Ok(new { status = "ignored", envelopeType = envelope.Type });
+});
+
+// File Preview & Download Endpoint
+api.MapGet("/files/{id:guid}", async (
+    Guid id,
+    ISubmissionRepository repository,
+    IFileStorageService fileStorage) =>
+{
+    var submission = await repository.GetByIdAsync(id);
+    if (submission == null)
+    {
+        return Results.NotFound();
+    }
+
+    var stream = await fileStorage.OpenReadStreamAsync(submission.StoragePath);
+    if (stream == null)
+    {
+        return Results.NotFound("File stream not available on disk");
+    }
+
+    return Results.File(stream, submission.ContentType, submission.FileName);
+});
+
+// Blazor UI
+app.MapRazorComponents<App>()
+    .AddInteractiveServerRenderMode();
+
+app.Run();
+
+public partial class Program { }

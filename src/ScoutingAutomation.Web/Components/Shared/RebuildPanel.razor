@@ -1,0 +1,126 @@
+@implements IDisposable
+@inject ISlackRebuildService RebuildService
+
+<div class="glass-panel p-4">
+    <h2 class="panel-title"><i class="bi bi-arrow-repeat text-warning"></i> Rebuild from Slack</h2>
+
+    @if (!RebuildService.IsAvailable && progress.State == RebuildState.Idle)
+    {
+        <p class="text-secondary small mb-0">
+            Available when the app is connected to Slack: <code>SimulationMode</code> off and a bot token set.
+        </p>
+    }
+    else
+    {
+        <details class="rebuild-panel" open="@(progress.State != RebuildState.Idle)">
+            <summary class="text-secondary small">Rebuild all submissions from the Slack messages…</summary>
+
+            <div class="mt-3">
+                <div class="alert alert-warning small" role="alert">
+                    <div class="fw-bold mb-1"><i class="bi bi-exclamation-triangle-fill me-1"></i> This replaces all submissions</div>
+                    <ul class="mb-0 ps-3">
+                        <li>All group folders are moved to a backup folder, and all submissions and reviews are deleted.</li>
+                        <li>Every message with a file since the start time is processed again, and reviews are taken from the reactions now in Slack. When reviewers disagree, the best status wins.</li>
+                        <li>Dashboard overrides are lost; they are kept in the backup's <code>submissions.json</code>.</li>
+                        <li>Nothing is posted to Slack. Live events wait until the rebuild is done.</li>
+                    </ul>
+                </div>
+
+                <div class="row g-2 align-items-end mb-2">
+                    <div class="col-md-5">
+                        <label class="form-label text-secondary small fw-semibold mb-1">Messages since</label>
+                        <input type="datetime-local" class="form-control form-control-dark" @bind="since" @bind:format="yyyy-MM-ddTHH:mm" disabled="@IsRunning" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label text-secondary small fw-semibold mb-1">Type REBUILD to confirm</label>
+                        <input type="text" class="form-control form-control-dark" @bind="confirmation" @bind:event="oninput" disabled="@IsRunning" />
+                    </div>
+                    <div class="col-md-3">
+                        <button class="btn btn-outline-warning w-100" disabled="@(!CanStart)" @onclick="Start">
+                            <i class="bi bi-arrow-repeat me-1"></i> Rebuild
+                        </button>
+                    </div>
+                </div>
+
+                @if (progress.State != RebuildState.Idle)
+                {
+                    <div class="inset-panel small mt-3">
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            @switch (progress.State)
+                            {
+                                case RebuildState.Running:
+                                    <span class="spinner-border spinner-border-sm text-warning" role="status"></span>
+                                    <span class="fw-semibold text-white">@progress.Step…</span>
+                                    break;
+                                case RebuildState.Completed:
+                                    <i class="bi bi-check-circle-fill text-success"></i>
+                                    <span class="fw-semibold text-white">Rebuild finished</span>
+                                    break;
+                                default:
+                                    <i class="bi bi-x-circle-fill text-danger"></i>
+                                    <span class="fw-semibold text-danger">Rebuild failed: @progress.Error</span>
+                                    break;
+                            }
+                        </div>
+
+                        <dl class="rebuild-stats mb-0">
+                            <dt>Channels read</dt><dd>@progress.ChannelsRead / @progress.ChannelsTotal</dd>
+                            <dt>Messages</dt><dd>@progress.MessagesProcessed / @progress.MessagesFound</dd>
+                            <dt>Submissions imported</dt><dd>@progress.SubmissionsImported</dd>
+                            <dt>Reviews applied</dt><dd>@progress.ReviewsApplied</dd>
+                            @if (progress.BackupFolder != null)
+                            {
+                                <dt>Backup</dt><dd class="font-monospace text-break">@progress.BackupFolder</dd>
+                            }
+                        </dl>
+
+                        @if (progress.Conflicts.Count > 0)
+                        {
+                            <div class="fw-semibold text-warning mt-3 mb-1">Reviewers disagreed (@progress.Conflicts.Count)</div>
+                            <IssueList Issues="progress.Conflicts" />
+                        }
+
+                        @if (progress.Skipped.Count > 0)
+                        {
+                            <div class="fw-semibold text-white mt-3 mb-1">Not imported (@progress.Skipped.Count)</div>
+                            <IssueList Issues="progress.Skipped" />
+                        }
+                    </div>
+                }
+            </div>
+        </details>
+    }
+</div>
+
+@code {
+    private RebuildProgress progress = new();
+    private DateTime since = DateTime.Today;
+    private string confirmation = "";
+
+    private bool IsRunning => progress.State == RebuildState.Running;
+
+    private bool CanStart => RebuildService.IsAvailable && !IsRunning && confirmation.Trim() == "REBUILD";
+
+    protected override void OnInitialized()
+    {
+        progress = RebuildService.Progress;
+        RebuildService.Changed += OnProgressChanged;
+    }
+
+    private void Start()
+    {
+        // The chosen time is in the server's time zone, where the event takes place
+        var start = new DateTimeOffset(since, TimeZoneInfo.Local.GetUtcOffset(since));
+        RebuildService.TryStart(start);
+        confirmation = "";
+        progress = RebuildService.Progress;
+    }
+
+    private void OnProgressChanged() => InvokeAsync(() =>
+    {
+        progress = RebuildService.Progress;
+        StateHasChanged();
+    });
+
+    public void Dispose() => RebuildService.Changed -= OnProgressChanged;
+}

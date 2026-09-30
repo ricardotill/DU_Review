@@ -1,0 +1,174 @@
+@page "/assignments/{Number:int}"
+@rendermode InteractiveServer
+@inherits LiveComponentBase
+
+<PageTitle>Assignment #@Number - Scouting Regional Game</PageTitle>
+
+<PageHeader Title="@($"Assignment #{Number}")" BackHref="assignments" BackText="Assignments">
+    <Details>
+        <div class="d-flex gap-2 flex-wrap mt-2">
+            @if (assignment != null)
+            {
+                <span class="badge badge-approved">@assignment.StandardPoints pts approved</span>
+                <span class="badge badge-awesome">@assignment.AwesomePoints pts awesome</span>
+                <span class="badge bg-secondary">@submittedGroups.Count / @groupResults.Count groups submitted</span>
+            }
+            else if (loaded)
+            {
+                <span class="badge bg-danger">Not in the assignment list</span>
+            }
+        </div>
+    </Details>
+    <Actions>
+        <a href="assignments/@previousNumber" class="btn btn-scout-secondary @(previousNumber == null ? "disabled" : "")" title="Previous assignment" aria-label="Previous assignment">
+            <i class="bi bi-chevron-left"></i>
+        </a>
+        <a href="assignments/@nextNumber" class="btn btn-scout-secondary @(nextNumber == null ? "disabled" : "")" title="Next assignment" aria-label="Next assignment">
+            <i class="bi bi-chevron-right"></i>
+        </a>
+    </Actions>
+</PageHeader>
+
+@if (!loaded)
+{
+    <div class="empty-state">
+        <div class="spinner-border text-success" role="status"></div>
+    </div>
+}
+else
+{
+    @if (submittedGroups.Count == 0)
+    {
+        <div class="glass-panel empty-state mb-4">
+            <i class="bi bi-inbox"></i>
+            No group has submitted this assignment yet.
+        </div>
+    }
+
+    <div class="row g-4">
+        @foreach (var result in submittedGroups)
+        {
+            <div class="col-xl-6">
+                <div class="glass-panel p-4 h-100">
+                    <div class="d-flex justify-content-between align-items-center mb-3 gap-2">
+                        <div class="d-flex align-items-center gap-2 min-w-0">
+                            <h2 class="h5 fw-bold mb-0 text-truncate">
+                                <a href="groups/@result.Group.Id" class="text-white text-decoration-none hover-underline">@result.Group.Name</a>
+                            </h2>
+                            @if (!string.IsNullOrWhiteSpace(result.Group.Abbreviation))
+                            {
+                                <span class="badge bg-secondary font-monospace">@result.Group.Abbreviation</span>
+                            }
+                        </div>
+                        <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                            <StatusBadge Status="@result.BestStatus!.Value" />
+                            <span class="fw-bold text-white">+@(assignment?.PointsFor(result.BestStatus!.Value) ?? 0)</span>
+                        </div>
+                    </div>
+
+                    <div class="d-flex flex-column gap-2">
+                        @foreach (var sub in result.Submissions)
+                        {
+                            var counts = sub.Id == result.CountingSubmissionId;
+                            <a href="submissions/@sub.Id" class="submission-row @(counts ? "counts" : "") text-decoration-none">
+                                <div class="thumb">
+                                    @if (sub.ContentType.StartsWith("image/"))
+                                    {
+                                        <img src="/api/files/@sub.Id" alt="" loading="lazy" onerror="this.remove()" />
+                                    }
+                                    else
+                                    {
+                                        <FileIcon ContentType="@sub.ContentType" />
+                                    }
+                                </div>
+                                <div class="flex-grow-1 min-w-0">
+                                    <div class="fw-semibold text-white text-truncate">@Path.GetFileName(sub.StoragePath)</div>
+                                    <div class="text-muted small text-truncate">@sub.Submitter · @sub.CreatedAt.ToLocalTime().ToString("g")</div>
+                                </div>
+                                <div class="d-flex flex-column align-items-end gap-1 flex-shrink-0">
+                                    <StatusBadge Status="@sub.Status" />
+                                    @if (counts && result.Submissions.Count > 1)
+                                    {
+                                        <span class="text-success small">counts</span>
+                                    }
+                                </div>
+                            </a>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+
+    @if (missingGroups.Count > 0)
+    {
+        <div class="glass-panel p-3 mt-4">
+            <span class="text-secondary small fw-semibold me-2">Not submitted:</span>
+            @foreach (var result in missingGroups)
+            {
+                <a href="groups/@result.Group.Id" class="badge bg-secondary text-decoration-none me-1">@result.Group.Name</a>
+            }
+        </div>
+    }
+}
+
+@code {
+    [Parameter]
+    public int Number { get; set; }
+
+    private sealed record GroupResult(Group Group, List<Submission> Submissions, SubmissionStatus? BestStatus, Guid? CountingSubmissionId);
+
+    private bool loaded;
+    private Assignment? assignment;
+    private List<GroupResult> groupResults = new();
+    private List<GroupResult> submittedGroups = new();
+    private List<GroupResult> missingGroups = new();
+    private int? previousNumber;
+    private int? nextNumber;
+
+    private int? loadedNumber;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Only show the spinner when navigating to another assignment, not on live reloads
+        if (loadedNumber != Number)
+        {
+            loaded = false;
+        }
+
+        await ReloadAsync();
+        loadedNumber = Number;
+    }
+
+    protected override async Task LoadAsync(IServiceProvider services)
+    {
+        var assignments = await services.GetRequiredService<IAssignmentRepository>().GetAllAsync();
+        assignment = assignments.FirstOrDefault(a => a.Number == Number);
+        previousNumber = assignments.Where(a => a.Number < Number).Select(a => (int?)a.Number).LastOrDefault();
+        nextNumber = assignments.Where(a => a.Number > Number).Select(a => (int?)a.Number).FirstOrDefault();
+
+        var groups = await services.GetRequiredService<IGroupRepository>().GetAllAsync();
+        var submissions = await services.GetRequiredService<ISubmissionRepository>().SearchSubmissionsAsync(new SubmissionFilter { AssignmentNumber = Number });
+
+        groupResults = groups
+            .Select(g =>
+            {
+                var groupSubs = submissions.Where(s => s.GroupId == g.Id).OrderByDescending(s => s.CreatedAt).ToList();
+                if (groupSubs.Count == 0)
+                {
+                    return new GroupResult(g, groupSubs, null, null);
+                }
+
+                // The newest submission with the best status is the one that counts
+                var best = groupSubs.Select(s => s.Status).Best();
+                var counting = groupSubs.First(s => s.Status == best);
+                return new GroupResult(g, groupSubs, best, counting.Id);
+            })
+            .OrderBy(r => r.Group.Name)
+            .ToList();
+
+        submittedGroups = groupResults.Where(r => r.Submissions.Count > 0).ToList();
+        missingGroups = groupResults.Where(r => r.Submissions.Count == 0).ToList();
+        loaded = true;
+    }
+}

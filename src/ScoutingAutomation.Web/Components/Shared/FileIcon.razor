@@ -1,0 +1,16 @@
+<i class="bi @IconClass"></i>
+
+@code {
+    [Parameter, EditorRequired]
+    public string ContentType { get; set; } = string.Empty;
+
+    private string IconClass => ContentType switch
+    {
+        _ when ContentType.StartsWith("image/") => "bi-image text-info",
+        _ when ContentType.StartsWith("video/") => "bi-camera-video text-warning",
+        _ when ContentType.StartsWith("audio/") => "bi-music-note-beamed text-success",
+        "application/pdf" => "bi-file-earmark-pdf text-danger",
+        _ when ContentType.Contains("word") => "bi-file-earmark-word text-primary",
+        _ => "bi-file-earmark text-white-50"
+    };
+}

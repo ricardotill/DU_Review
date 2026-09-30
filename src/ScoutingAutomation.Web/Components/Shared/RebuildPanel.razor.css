@@ -1,0 +1,20 @@
+.rebuild-panel summary {
+    cursor: pointer;
+    user-select: none;
+}
+
+.rebuild-stats {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.25rem 1rem;
+}
+
+.rebuild-stats dt {
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.rebuild-stats dd {
+    margin: 0;
+    color: var(--text-primary);
+}

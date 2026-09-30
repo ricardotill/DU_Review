@@ -1,0 +1,22 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\ScoutingAutomation.Domain\ScoutingAutomation.Domain.csproj" />
+    <ProjectReference Include="..\ScoutingAutomation.Contracts\ScoutingAutomation.Contracts.csproj" />
+    <ProjectReference Include="..\ScoutingAutomation.Infrastructure\ScoutingAutomation.Infrastructure.csproj" />
+    <ProjectReference Include="..\ScoutingAutomation.ServiceDefaults\ScoutingAutomation.ServiceDefaults.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Aspire.Npgsql.EntityFrameworkCore.PostgreSQL" Version="13.5.4" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+    <UserSecretsId>5428a4d7-5c7a-4f39-a9a0-1422bcf32bb6</UserSecretsId>
+  </PropertyGroup>
+
+</Project>

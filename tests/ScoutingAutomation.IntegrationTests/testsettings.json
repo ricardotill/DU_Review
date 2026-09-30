@@ -1,0 +1,52 @@
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Warning",
+      "ScoutingAutomation": "Information"
+    }
+  },
+  "AllowedHosts": "*",
+  "Scouting": {
+    "StorageRoot": "./scouting_storage",
+    "AssignmentPointsFile": "./opdrachtenpunten.csv",
+    "SupportedExtensions": [ ".jpg", ".jpeg", ".png", ".gif", ".mp4", ".mov", ".m4a", ".mp3", ".pdf", ".doc", ".docx" ],
+    "SupportedMimeTypePrefixes": [ "image/", "audio/", "video/" ],
+    "SlackFeedback": {
+      "UnsupportedFile": {
+        "Reaction": "warning",
+        "Message": "Dit bestandstype wordt niet ondersteund: {files}."
+      },
+      "MissingAssignmentNumber": {
+        "Reaction": "question",
+        "Message": "Er staat geen opdrachtnummer in je bericht."
+      },
+      "UnknownAssignmentNumber": {
+        "Reaction": "question",
+        "Message": "Opdracht {number} bestaat niet."
+      },
+      "DownloadFailed": {
+        "Reaction": "warning",
+        "Message": "Het bestand {files} kon niet worden opgehaald."
+      }
+    },
+    "Groups": [
+      { "Name": "De Zeearenden", "Abbreviation": "DZA", "SlackChannelId": "C01ZEEARENDEN", "Description": "Waterscouts patrouille 1" },
+      { "Name": "De Bosuilen", "Abbreviation": "DBU", "SlackChannelId": "C02BOSUILEN", "Description": "Landscouts verkenners" },
+      { "Name": "De Wolven", "Abbreviation": "DWO", "SlackChannelId": "C03WOLVEN", "Description": "Welpen horde" },
+      { "Name": "De Poolvossen", "Abbreviation": "DPV", "SlackChannelId": "C04POOLVOSSEN", "Description": "Explorers afdeling 42" }
+    ],
+    "Reviewers": [ "Jury_Eva", "Sara_Jury", "Mark_Jury", "Alex_Jury" ],
+    "ReviewStatusReactions": {
+      "Approved": [ "thumbsup", "+1", "white_check_mark" ],
+      "Rejected": [ "x", "-1" ],
+      "Awesome": [ "heart", "star", "fire" ]
+    },
+    "Slack": {
+      "BotToken": "",
+      "AppToken": "",
+      "SigningSecret": "",
+      "SimulationMode": true,
+      "SocketMode": false
+    }
+  }
+}

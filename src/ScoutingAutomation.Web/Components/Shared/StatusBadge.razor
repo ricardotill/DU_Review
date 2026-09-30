@@ -1,0 +1,24 @@
+<span class="badge-status @BadgeClass"><i class="bi @Icon"></i> @Status</span>
+
+@code {
+    [Parameter, EditorRequired]
+    public SubmissionStatus Status { get; set; }
+
+    private string BadgeClass => Status switch
+    {
+        SubmissionStatus.Pending => "badge-pending",
+        SubmissionStatus.Approved => "badge-approved",
+        SubmissionStatus.Awesome => "badge-awesome",
+        SubmissionStatus.Rejected => "badge-rejected",
+        _ => "badge-received"
+    };
+
+    private string Icon => Status switch
+    {
+        SubmissionStatus.Pending => "bi-hourglass-split",
+        SubmissionStatus.Approved => "bi-check2",
+        SubmissionStatus.Awesome => "bi-star-fill",
+        SubmissionStatus.Rejected => "bi-x-circle",
+        _ => "bi-inbox"
+    };
+}

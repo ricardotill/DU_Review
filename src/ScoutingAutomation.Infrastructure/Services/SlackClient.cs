@@ -1,0 +1,135 @@
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Text;
+using System.Text.Json;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using ScoutingAutomation.Contracts.Configuration;
+
+namespace ScoutingAutomation.Infrastructure.Services;
+
+public class SlackClient : ISlackClient
+{
+    private readonly HttpClient _httpClient;
+    private readonly IOptions<ScoutingSettings> _options;
+    private readonly ILogger<SlackClient> _logger;
+
+    public SlackClient(HttpClient httpClient, IOptions<ScoutingSettings> options, ILogger<SlackClient> logger)
+    {
+        _httpClient = httpClient;
+        _options = options;
+        _logger = logger;
+    }
+
+    public async Task<Stream> DownloadFileAsync(string fileUrl, string? fileName = null, CancellationToken ct = default)
+    {
+        var token = _options.Value.Slack.BotToken;
+
+        // If in simulation mode or mock url or missing token, produce simulated content
+        if (_options.Value.Slack.SimulationMode || string.IsNullOrWhiteSpace(token) || fileUrl.StartsWith("sim://", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogInformation("Generating simulated file stream for: {FileName} ({Url})", fileName ?? "file", fileUrl);
+            return CreateSimulatedFileStream(fileName ?? "submission.jpg");
+        }
+
+        // A failed download throws: storing a placeholder would hide a lost submission
+        using var request = new HttpRequestMessage(HttpMethod.Get, fileUrl);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+        response.EnsureSuccessStatusCode();
+
+        var memoryStream = new MemoryStream();
+        await response.Content.CopyToAsync(memoryStream, ct);
+        memoryStream.Position = 0;
+        return memoryStream;
+    }
+
+    public async Task<bool> AddReactionAsync(string channel, string messageTs, string reaction, CancellationToken ct = default)
+    {
+        var name = reaction.Trim(':');
+        if (IsSimulated)
+        {
+            _logger.LogInformation("Simulated adding reaction ':{Reaction}:' to message {Ts} in {Channel}", name, messageTs, channel);
+            return true;
+        }
+
+        var error = await CallSlackApiAsync("reactions.add", new { channel, timestamp = messageTs, name }, ct);
+        return error != "already_reacted";
+    }
+
+    public async Task PostThreadReplyAsync(string channel, string threadTs, string text, CancellationToken ct = default)
+    {
+        if (IsSimulated)
+        {
+            _logger.LogInformation("Simulated thread reply on message {Ts} in {Channel}: {Text}", threadTs, channel, text);
+            return;
+        }
+
+        await CallSlackApiAsync("chat.postMessage", new { channel, thread_ts = threadTs, text }, ct);
+    }
+
+    private bool IsSimulated =>
+        _options.Value.Slack.SimulationMode || string.IsNullOrWhiteSpace(_options.Value.Slack.BotToken);
+
+    /// <returns>The Slack error code, or null on success.</returns>
+    private async Task<string?> CallSlackApiAsync(string method, object payload, CancellationToken ct)
+    {
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, $"https://slack.com/api/{method}")
+            {
+                Content = JsonContent.Create(payload)
+            };
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.Value.Slack.BotToken);
+
+            var response = await _httpClient.SendAsync(request, ct);
+            response.EnsureSuccessStatusCode();
+
+            // Slack reports API errors with HTTP 200 and "ok": false
+            using var body = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
+            if (body.RootElement.GetProperty("ok").GetBoolean())
+            {
+                return null;
+            }
+
+            var error = body.RootElement.TryGetProperty("error", out var e) ? e.GetString() ?? "unknown" : "unknown";
+            if (error != "already_reacted")
+            {
+                _logger.LogWarning("Slack API {Method} failed: {Error}", method, error);
+            }
+            return error;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Slack API {Method} call failed", method);
+            return "request_failed";
+        }
+    }
+
+    internal static Stream CreateSimulatedFileStream(string fileName)
+    {
+        var ext = Path.GetExtension(fileName).ToLowerInvariant();
+        if (ext is ".jpg" or ".jpeg" or ".png" or ".gif")
+        {
+            // Minimal valid 1x1 PNG byte array
+            var pngBytes = new byte[]
+            {
+                0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // PNG header
+                0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, // IHDR chunk
+                0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+                0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
+                0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, // IDAT chunk
+                0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
+                0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00,
+                0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, // IEND chunk
+                0x42, 0x60, 0x82
+            };
+            return new MemoryStream(pngBytes);
+        }
+
+        // Generic mock content
+        var content = $"Scouting Submission File: {fileName}\nTimestamp: {DateTimeOffset.UtcNow:O}";
+        return new MemoryStream(Encoding.UTF8.GetBytes(content));
+    }
+}

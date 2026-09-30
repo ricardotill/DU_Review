@@ -1,0 +1,14 @@
+.group-card:hover {
+    border-color: rgba(52, 211, 153, 0.45);
+}
+
+.rank-badge {
+    flex-shrink: 0;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    font-weight: 700;
+    font-size: 0.85rem;
+    color: #fbbf24;
+    background: rgba(245, 158, 11, 0.15);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+}

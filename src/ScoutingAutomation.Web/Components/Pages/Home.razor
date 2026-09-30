@@ -1,0 +1,191 @@
+@page "/"
+@rendermode InteractiveServer
+@inherits LiveComponentBase
+@inject NavigationManager Navigation
+
+<PageTitle>Dashboard - Scouting Regional Game</PageTitle>
+
+<PageHeader Title="Dashboard" Subtitle="Scores and review progress for all groups.">
+    <Actions>
+        <span class="badge badge-approved align-self-center" title="This page updates automatically">
+            <span class="live-dot me-1"></span> Live
+        </span>
+    </Actions>
+</PageHeader>
+
+@if (stats == null)
+{
+    <div class="empty-state">
+        <div class="spinner-border text-success" role="status"></div>
+    </div>
+}
+else
+{
+    <!-- Totals: counted per group and assignment, resubmissions merged -->
+    <div class="row g-3 mb-4">
+        <div class="col-lg col-md-4 col-6">
+            <div class="stat-card stat-total h-100">
+                <div class="stat-label">Submitted</div>
+                <div class="stat-value text-white">@stats.TotalSubmissions</div>
+                <div class="stat-caption">Assignments, per group</div>
+            </div>
+        </div>
+        <div class="col-lg col-md-4 col-6">
+            <div class="stat-card stat-pending h-100">
+                <div class="stat-label">Pending</div>
+                <div class="stat-value text-warning">@stats.PendingCount</div>
+                <div class="stat-caption">Awaiting review in Slack</div>
+            </div>
+        </div>
+        <div class="col-lg col-md-4 col-6">
+            <div class="stat-card stat-approved h-100">
+                <div class="stat-label">Approved</div>
+                <div class="stat-value text-success">@stats.ApprovedCount</div>
+                <div class="stat-caption">@stats.OverallApprovalRate% incl. awesome</div>
+            </div>
+        </div>
+        <div class="col-lg col-md-4 col-6">
+            <div class="stat-card stat-awesome h-100">
+                <div class="stat-label">Awesome</div>
+                <div class="stat-value text-awesome">@stats.AwesomeCount</div>
+                <div class="stat-caption">Extra points</div>
+            </div>
+        </div>
+        <div class="col-lg col-md-4 col-6">
+            <div class="stat-card stat-rejected h-100">
+                <div class="stat-label">Rejected</div>
+                <div class="stat-value text-danger">@stats.RejectedCount</div>
+                <div class="stat-caption">Not resubmitted yet</div>
+            </div>
+        </div>
+        @if (stats.UnresolvedCount > 0)
+        {
+            <div class="col-lg col-md-4 col-6">
+                <a href="submissions" class="stat-card d-block h-100 text-decoration-none" style="border-left: 4px solid var(--status-rejected);">
+                    <div class="stat-label">Unresolved</div>
+                    <div class="stat-value text-danger">@stats.UnresolvedCount</div>
+                    <div class="stat-caption">Older uploads without valid number</div>
+                </a>
+            </div>
+        }
+    </div>
+
+    <!-- Leaderboard -->
+    <div class="glass-panel p-4 mb-4">
+        <h2 class="panel-title"><i class="bi bi-trophy-fill text-warning"></i> Leaderboard</h2>
+
+        @if (stats.GroupStatistics.Count == 0)
+        {
+            <div class="empty-state">No groups configured.</div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="custom-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 3rem;">#</th>
+                            <th>Group</th>
+                            <th class="text-center">Score</th>
+                            <th class="text-center">Assignments</th>
+                            <th class="text-center">Pending</th>
+                            <th class="text-center">Approved</th>
+                            <th class="text-center">Awesome</th>
+                            <th class="text-center">Rejected</th>
+                            <th style="width: 180px;">Approval rate</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var g in stats.GroupStatistics.OrderBy(x => x.Rank).ThenBy(x => x.GroupName))
+                        {
+                            <tr class="clickable-row" title="Open @g.GroupName" @onclick="@(() => Navigation.NavigateTo($"groups/{g.GroupId}"))">
+                                <td class="text-secondary fw-semibold">@g.Rank</td>
+                                <td>
+                                    <a href="groups/@g.GroupId" class="fw-bold text-white text-decoration-none hover-underline">@g.GroupName</a>
+                                    @if (GetAbbreviation(g.GroupId) is { } abbreviation)
+                                    {
+                                        <span class="badge bg-secondary font-monospace ms-1">@abbreviation</span>
+                                    }
+                                </td>
+                                <td class="text-center fw-bold text-white fs-5">@g.Score</td>
+                                <td class="text-center text-white">@g.TotalSubmissions</td>
+                                <td class="text-center"><span class="badge badge-pending">@g.PendingCount</span></td>
+                                <td class="text-center"><span class="badge badge-approved">@g.ApprovedCount</span></td>
+                                <td class="text-center"><span class="badge badge-awesome">@g.AwesomeCount</span></td>
+                                <td class="text-center"><span class="badge badge-rejected">@g.RejectedCount</span></td>
+                                <td>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <div class="progress-bar-custom flex-grow-1">
+                                            <div class="progress-fill-scout" style="width: @(g.ApprovalRate)%"></div>
+                                        </div>
+                                        <span class="text-white-50 small">@g.ApprovalRate%</span>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+
+    <!-- Assignments with submissions -->
+    <div class="glass-panel p-4">
+        <div class="d-flex justify-content-between align-items-center">
+            <h2 class="panel-title"><i class="bi bi-list-ol text-info"></i> Assignment progress</h2>
+            <a href="assignments" class="small text-secondary text-decoration-none hover-underline mb-3">All assignments <i class="bi bi-arrow-right"></i></a>
+        </div>
+
+        @if (!ActiveAssignments.Any())
+        {
+            <div class="empty-state">
+                <i class="bi bi-inbox"></i>
+                No submissions yet.
+            </div>
+        }
+        else
+        {
+            <div class="row g-3">
+                @foreach (var assign in ActiveAssignments)
+                {
+                    <div class="col-xl-3 col-md-4 col-sm-6">
+                        <a href="assignments/@assign.AssignmentNumber" class="inset-panel d-block h-100 text-decoration-none assignment-card">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="fw-bold text-white">#@assign.AssignmentNumber</span>
+                                <span class="text-secondary small">@assign.TotalSubmissions / @stats.GroupStatistics.Count groups</span>
+                            </div>
+                            <div class="d-flex gap-3 mb-2 small">
+                                <span class="text-success" title="Approved"><i class="bi bi-check2"></i> @assign.ApprovedCount</span>
+                                <span class="text-awesome" title="Awesome"><i class="bi bi-star-fill"></i> @assign.AwesomeCount</span>
+                                <span class="text-warning" title="Pending"><i class="bi bi-hourglass-split"></i> @assign.PendingCount</span>
+                                <span class="text-danger" title="Rejected"><i class="bi bi-x-circle"></i> @assign.RejectedCount</span>
+                            </div>
+                            <div class="progress-bar-custom" style="height: 6px;">
+                                <div class="progress-fill-scout" style="width: @((assign.ApprovedCount + assign.AwesomeCount) * 100 / assign.TotalSubmissions)%"></div>
+                            </div>
+                        </a>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private SubmissionStatistics? stats;
+    private Dictionary<Guid, Group> groupsById = new();
+
+    private IEnumerable<AssignmentStatistic> ActiveAssignments =>
+        stats?.AssignmentStatistics.Where(a => a.TotalSubmissions > 0) ?? Enumerable.Empty<AssignmentStatistic>();
+
+    protected override Task OnInitializedAsync() => ReloadAsync();
+
+    protected override async Task LoadAsync(IServiceProvider services)
+    {
+        stats = await services.GetRequiredService<ISubmissionRepository>().GetStatisticsAsync();
+        groupsById = (await services.GetRequiredService<IGroupRepository>().GetAllAsync()).ToDictionary(g => g.Id);
+    }
+
+    private string? GetAbbreviation(Guid groupId) =>
+        groupsById.TryGetValue(groupId, out var g) && !string.IsNullOrWhiteSpace(g.Abbreviation) ? g.Abbreviation : null;
+}

@@ -1,0 +1,42 @@
+@inherits LayoutComponentBase
+@inject IOptions<ScoutingSettings> ScoutingOptions
+@inject SlackConnectionStatus ConnectionStatus
+
+<div class="page" style="min-height: 100vh; background-color: var(--bg-main);">
+    <div class="sidebar">
+        <NavMenu />
+    </div>
+
+    <main class="flex-grow-1" style="background-color: var(--bg-main); min-height: 100vh; overflow-y: auto;">
+        <div class="top-row px-4 d-flex justify-content-between align-items-center" style="background: rgba(12, 17, 23, 0.7); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border-color); height: 3.5rem;">
+            @if (ScoutingOptions.Value.Slack.SimulationMode)
+            {
+                <span class="badge badge-pending" title="No messages are sent to Slack">
+                    <i class="bi bi-cone-striped me-1"></i> Simulation mode
+                </span>
+            }
+            else if (ScoutingOptions.Value.Slack.SocketMode && ConnectionStatus.State != SlackConnectionState.Connected)
+            {
+                <a href="configuration" class="badge badge-rejected text-decoration-none" title="@ConnectionStatus.Detail">
+                    <i class="bi bi-exclamation-triangle-fill me-1"></i> Slack: @ConnectionStatus.State.ToString().ToLowerInvariant()
+                </a>
+            }
+            else
+            {
+                <span class="badge badge-approved">
+                    <span class="live-dot me-1"></span> Connected to Slack
+                </span>
+            }
+        </div>
+
+        <article class="content px-4 py-4" style="max-width: 1400px; margin: 0 auto;">
+            @Body
+        </article>
+    </main>
+</div>
+
+<div id="blazor-error-ui" data-nosnippet>
+    An unhandled error has occurred.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">🗙</span>
+</div>

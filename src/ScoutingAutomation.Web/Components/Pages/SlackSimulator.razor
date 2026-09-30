@@ -1,0 +1,330 @@
+@page "/simulator"
+@rendermode InteractiveServer
+@inject IGroupRepository GroupRepository
+@inject ISubmissionRepository SubmissionRepository
+@inject ISubmissionWorkflowService WorkflowService
+@inject NavigationManager Navigation
+@inject IOptions<ScoutingSettings> ScoutingOptions
+
+<PageTitle>Slack Event Simulator - Scouting Regional Game</PageTitle>
+
+@if (!SimulationEnabled)
+{
+    <PageHeader Title="Slack simulator" />
+    <div class="glass-panel empty-state">
+        <i class="bi bi-slash-circle"></i>
+        The simulator is only available when <code>Scouting:Slack:SimulationMode</code> is on.
+    </div>
+}
+else
+{
+
+<PageHeader Title="Slack simulator" Subtitle="Send test uploads and reactions as if they came from Slack. Only available in simulation mode.">
+    <Actions>
+        <a href="submissions" class="btn btn-scout-secondary d-flex align-items-center gap-2">
+            <i class="bi bi-folder2-open"></i>
+            <span>Submissions</span>
+        </a>
+    </Actions>
+</PageHeader>
+
+<div class="row g-4">
+    <!-- Simulator 1: Post Message with Media -->
+    <div class="col-lg-6">
+        <div class="glass-panel p-4 h-100">
+            <h2 class="panel-title">
+                <i class="bi bi-chat-left-dots-fill text-info"></i> Upload a file
+            </h2>
+            <p class="text-secondary small mb-3">
+                A scout posts a file in their group channel.
+            </p>
+
+            <div class="mb-3">
+                <label class="form-label text-secondary small fw-semibold">Group channel</label>
+                <select class="form-select form-select-dark" @bind="selectedChannel">
+                    @foreach (var g in groups)
+                    {
+                        <option value="@g.SlackChannelId">@g.Name (#@g.SlackChannelId)</option>
+                    }
+                </select>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label text-secondary small fw-semibold">Scout</label>
+                <input type="text" class="form-control form-control-dark" placeholder="e.g. Robin_Leiding" @bind="submitterName" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label text-secondary small fw-semibold">Message</label>
+                <textarea class="form-control form-control-dark" rows="3" placeholder="e.g. Opdracht 4: Onze patrouille heeft de post bereikt!" @bind="messageText"></textarea>
+                <div class="form-text text-muted">
+                    Include assignment pattern like <code>Opdracht 4</code>, <code>#4</code>, or <code>A4</code>.
+                </div>
+            </div>
+
+            <div class="mb-4">
+                <label class="form-label text-secondary small fw-semibold">File name</label>
+                <div class="input-group">
+                    <input type="text" class="form-control form-control-dark" placeholder="foto_tent.jpg" @bind="fileName" />
+                    <button class="btn btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        Presets
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-dark">
+                        <li><a class="dropdown-item" href="javascript:void(0)" @onclick='() => SetPreset("kampvuur.jpg", "Opdracht 1: Ons vuurtje brandt!")'>🔥 Kampvuur Foto (.jpg)</a></li>
+                        <li><a class="dropdown-item" href="javascript:void(0)" @onclick='() => SetPreset("vlaggenmast.png", "#2 Vlaggenmast staat fier overeind.")'>🚩 Vlaggenmast (.png)</a></li>
+                        <li><a class="dropdown-item" href="javascript:void(0)" @onclick='() => SetPreset("knopen_demo.mp4", "Opdracht 3: Bekijk de video van de mastworp")'>🎥 Knopen Demo (.mp4)</a></li>
+                        <li><a class="dropdown-item" href="javascript:void(0)" @onclick='() => SetPreset("verslag_tocht.pdf", "A4 Verslag van de oriëntatietocht")'>📄 Verslag (.pdf)</a></li>
+                    </ul>
+                </div>
+            </div>
+
+            <button class="btn btn-scout-primary w-100 py-2 d-flex justify-content-center align-items-center gap-2" @onclick="PostMessageAsync" disabled="@isPosting">
+                @if (isPosting)
+                {
+                    <span class="spinner-border spinner-border-sm" role="status"></span>
+                    <span>Processing…</span>
+                }
+                else
+                {
+                    <i class="bi bi-send-fill"></i>
+                    <span>Post upload</span>
+                }
+            </button>
+        </div>
+    </div>
+
+    <!-- Simulator 2: Add Emoji Reaction -->
+    <div class="col-lg-6">
+        <div class="glass-panel p-4 h-100">
+            <h2 class="panel-title">
+                <i class="bi bi-emoji-smile-fill text-warning"></i> React as a reviewer
+            </h2>
+            <p class="text-secondary small mb-3">
+                A reviewer reacts to a submission. Only users listed under Reviewers count.
+            </p>
+
+            <div class="mb-3">
+                <label class="form-label text-secondary small fw-semibold">Submission</label>
+                <select class="form-select form-select-dark" @bind="selectedSubmissionId">
+                    <option value="">Choose a submission</option>
+                    @foreach (var s in pendingSubmissions)
+                    {
+                        <option value="@s.Id">
+                            @(s.Group?.Name ?? "Group"): #@(s.AssignmentNumber?.ToString() ?? "?") - @s.FileName (@s.Status)
+                        </option>
+                    }
+                </select>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label text-secondary small fw-semibold">Reviewer</label>
+                <input type="text" class="form-control form-control-dark" list="configured-reviewers" placeholder="Slack user" @bind="reviewerName" />
+                <datalist id="configured-reviewers">
+                    @foreach (var reviewer in ScoutingOptions.Value.Reviewers)
+                    {
+                        <option value="@reviewer"></option>
+                    }
+                </datalist>
+            </div>
+
+            <div class="mb-4">
+                <label class="form-label text-secondary small fw-semibold">Reaction</label>
+                <div class="d-grid gap-2">
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-outline-success flex-fill py-2 text-start @(selectedEmoji == "thumbsup" ? "active" : "")" @onclick='() => selectedEmoji = "thumbsup"'>
+                            👍 <strong>thumbsup</strong> <span class="small text-muted d-block">Approve (+1)</span>
+                        </button>
+                        <button class="btn btn-outline-primary flex-fill py-2 text-start @(selectedEmoji == "heart" ? "active" : "")" @onclick='() => selectedEmoji = "heart"'>
+                            💖 <strong>heart</strong> <span class="small text-muted d-block">Awesome</span>
+                        </button>
+                        <button class="btn btn-outline-danger flex-fill py-2 text-start @(selectedEmoji == "x" ? "active" : "")" @onclick='() => selectedEmoji = "x"'>
+                            ❌ <strong>x</strong> <span class="small text-muted d-block">Reject</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <button class="btn btn-scout-secondary w-100 py-2 d-flex justify-content-center align-items-center gap-2" @onclick="PostReactionAsync" disabled="@(isReacting || string.IsNullOrEmpty(selectedSubmissionId))">
+                @if (isReacting)
+                {
+                    <span class="spinner-border spinner-border-sm" role="status"></span>
+                    <span>Processing…</span>
+                }
+                else
+                {
+                    <i class="bi bi-hand-thumbs-up"></i>
+                    <span>Add reaction :@selectedEmoji:</span>
+                }
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Live Execution Feed -->
+<div class="glass-panel p-4 mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2 class="h5 fw-bold text-white mb-0 d-flex align-items-center gap-2">
+            <i class="bi bi-terminal-fill text-success"></i> Log
+        </h2>
+        <button class="btn btn-sm btn-outline-secondary" @onclick="() => logs.Clear()">Clear</button>
+    </div>
+
+    <div class="p-3 rounded-3 font-monospace small" style="background: rgba(0,0,0,0.5); min-height: 180px; max-height: 350px; overflow-y: auto; border: 1px solid var(--border-color);">
+        @if (logs.Count == 0)
+        {
+            <div class="text-muted">Nothing yet. Post an upload or add a reaction above.</div>
+        }
+        @foreach (var entry in logs)
+        {
+            <div class="mb-1 text-white-50">
+                <span class="text-muted">[@entry.Timestamp.ToString("HH:mm:ss")]</span>
+                <span class="@entry.CssClass fw-bold">@entry.Level</span>
+                <span>@entry.Message</span>
+            </div>
+        }
+    </div>
+</div>
+
+}
+
+@code {
+    // The simulator can post review reactions, so it must not be reachable against a live Slack workspace
+    private bool SimulationEnabled => ScoutingOptions.Value.Slack.SimulationMode;
+
+    private IReadOnlyList<Group> groups = new List<Group>();
+    private List<Submission> pendingSubmissions = new();
+
+    private string selectedChannel = "";
+    private string submitterName = "Tim_Scout";
+    private string messageText = "Opdracht 3: We hebben de knopen succesvol afgerond!";
+    private string fileName = "knopen_foto.jpg";
+
+    private string selectedSubmissionId = "";
+    private string reviewerName = "Jury_Eva";
+    private string selectedEmoji = "thumbsup";
+
+    private bool isPosting = false;
+    private bool isReacting = false;
+    private List<LogEntry> logs = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        groups = await GroupRepository.GetAllAsync();
+        if (groups.Count > 0)
+        {
+            selectedChannel = groups[0].SlackChannelId;
+        }
+
+        await RefreshPendingSubmissionsAsync();
+    }
+
+    private async Task RefreshPendingSubmissionsAsync()
+    {
+        var all = await SubmissionRepository.SearchSubmissionsAsync(new SubmissionFilter());
+        pendingSubmissions = all.Where(s => s.Status == SubmissionStatus.Pending).ToList();
+        if (pendingSubmissions.Count > 0 && string.IsNullOrEmpty(selectedSubmissionId))
+        {
+            selectedSubmissionId = pendingSubmissions[0].Id.ToString();
+        }
+    }
+
+    private void SetPreset(string file, string text)
+    {
+        fileName = file;
+        messageText = text;
+    }
+
+    // The action buttons only render in simulation mode
+    private async Task PostMessageAsync()
+    {
+        isPosting = true;
+        var ts = $"{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}.{DateTimeOffset.UtcNow.Millisecond:D3}";
+
+        var payload = new SlackEventItemDto
+        {
+            Type = "message",
+            Channel = selectedChannel,
+            User = submitterName,
+            Text = messageText,
+            Ts = ts,
+            Files = new List<SlackFileItemDto>
+            {
+                new()
+                {
+                    Id = $"F_{Guid.NewGuid():N}",
+                    Name = fileName,
+                    Title = fileName,
+                    Size = 1024 * 142,
+                    Filetype = Path.GetExtension(fileName).Trim('.'),
+                    Mimetype = fileName.EndsWith(".pdf") ? "application/pdf" : fileName.EndsWith(".mp4") ? "video/mp4" : "image/jpeg",
+                    UrlPrivateDownload = $"sim://{fileName}"
+                }
+            }
+        };
+
+        AddLog("INFO", $"Dispatched message event: channel={selectedChannel}, submitter={submitterName}, file={fileName}", "text-info");
+
+        var result = await WorkflowService.ProcessSlackMessageAsync(payload);
+        if (result.Success)
+        {
+            AddLog("SUCCESS", $"Workflow completed: Stored initial file in the group folder, created submission ID(s): {string.Join(", ", result.CreatedSubmissionIds)}", "text-success");
+        }
+        else
+        {
+            AddLog("WARNING", $"Workflow message: {result.Message}", "text-warning");
+        }
+
+        await RefreshPendingSubmissionsAsync();
+        isPosting = false;
+    }
+
+    private async Task PostReactionAsync()
+    {
+        // The button is disabled until a submission is selected
+        var subId = Guid.Parse(selectedSubmissionId);
+        isReacting = true;
+
+        var sub = await SubmissionRepository.GetByIdAsync(subId);
+        if (sub == null)
+        {
+            AddLog("ERROR", $"Submission {subId} not found", "text-danger");
+            isReacting = false;
+            return;
+        }
+
+        var payload = new SlackEventItemDto
+        {
+            Type = "reaction_added",
+            Reaction = selectedEmoji,
+            User = reviewerName,
+            Item = new SlackReactionTargetDto
+            {
+                Type = "message",
+                Channel = sub.SlackChannelId,
+                Ts = sub.SlackMessageId
+            }
+        };
+
+        AddLog("INFO", $"Dispatched reaction ':{selectedEmoji}:' by {reviewerName} on message {sub.SlackMessageId}", "text-info");
+
+        var result = await WorkflowService.ProcessSlackReactionAsync(payload);
+        if (result.Success)
+        {
+            AddLog("SUCCESS", $"Reaction processed! Status updated to {result.NewStatus}. File moved in storage system.", "text-success");
+        }
+        else
+        {
+            AddLog("WARNING", $"Reaction outcome: {result.Message}", "text-warning");
+        }
+
+        await RefreshPendingSubmissionsAsync();
+        isReacting = false;
+    }
+
+    private void AddLog(string level, string message, string cssClass)
+    {
+        logs.Insert(0, new LogEntry(DateTimeOffset.UtcNow, level, message, cssClass));
+    }
+
+    public record LogEntry(DateTimeOffset Timestamp, string Level, string Message, string CssClass);
+}

@@ -1,0 +1,106 @@
+@page "/assignments"
+@rendermode InteractiveServer
+@inherits LiveComponentBase
+@inject NavigationManager Navigation
+
+<PageTitle>Assignments - Scouting Regional Game</PageTitle>
+
+<PageHeader Title="Assignments" Subtitle="Open an assignment to compare the submissions of all groups." />
+
+<div class="glass-panel p-4">
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <div class="search-box number-search">
+            <i class="bi bi-search"></i>
+            <input type="number" min="1" class="form-control form-control-dark" placeholder="Assignment number"
+                   @bind="numberSearch" @bind:event="oninput" />
+        </div>
+        <div class="form-check form-switch mb-0">
+            <input class="form-check-input" type="checkbox" id="onlySubmitted" @bind="onlyWithSubmissions" />
+            <label class="form-check-label text-secondary small" for="onlySubmitted">Only assignments with submissions</label>
+        </div>
+    </div>
+
+    @if (rows == null)
+    {
+        <div class="empty-state">
+            <div class="spinner-border text-success" role="status"></div>
+        </div>
+    }
+    else if (!VisibleRows.Any())
+    {
+        <div class="empty-state">
+            <i class="bi bi-inbox"></i>
+            No assignments match.
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="custom-table">
+                <thead>
+                    <tr>
+                        <th>Assignment</th>
+                        <th class="text-center">Points</th>
+                        <th class="text-center">Groups</th>
+                        <th class="text-center">Pending</th>
+                        <th class="text-center">Approved</th>
+                        <th class="text-center">Awesome</th>
+                        <th class="text-center">Rejected</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in VisibleRows)
+                    {
+                        <tr class="clickable-row" @onclick="@(() => Navigation.NavigateTo($"assignments/{row.Number}"))">
+                            <td>
+                                <a href="assignments/@row.Number" class="fw-bold text-white text-decoration-none hover-underline">#@row.Number</a>
+                            </td>
+                            <td class="text-center text-white-50">
+                                @row.StandardPoints <span class="text-muted">/</span> <span class="text-awesome">@row.AwesomePoints</span>
+                            </td>
+                            <td class="text-center text-white">@row.Stats.TotalSubmissions <span class="text-muted">/ @groupCount</span></td>
+                            <td class="text-center"><span class="badge badge-pending">@row.Stats.PendingCount</span></td>
+                            <td class="text-center"><span class="badge badge-approved">@row.Stats.ApprovedCount</span></td>
+                            <td class="text-center"><span class="badge badge-awesome">@row.Stats.AwesomeCount</span></td>
+                            <td class="text-center"><span class="badge badge-rejected">@row.Stats.RejectedCount</span></td>
+                            <td class="text-end text-secondary"><i class="bi bi-chevron-right"></i></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <div class="text-muted small mt-2">Points: standard / awesome. Counts are per group; resubmissions are merged.</div>
+    }
+</div>
+
+@code {
+    private sealed record Row(int Number, int StandardPoints, int AwesomePoints, AssignmentStatistic Stats);
+
+    private List<Row>? rows;
+    private int groupCount;
+    private int? numberSearch;
+    private bool onlyWithSubmissions = true;
+
+    private IEnumerable<Row> VisibleRows => (rows ?? new List<Row>())
+        .Where(r => !onlyWithSubmissions || r.Stats.TotalSubmissions > 0)
+        .Where(r => numberSearch == null || r.Number.ToString().StartsWith(numberSearch.Value.ToString()));
+
+    protected override Task OnInitializedAsync() => ReloadAsync();
+
+    protected override async Task LoadAsync(IServiceProvider services)
+    {
+        var stats = await services.GetRequiredService<ISubmissionRepository>().GetStatisticsAsync();
+        var assignments = (await services.GetRequiredService<IAssignmentRepository>().GetAllAsync()).ToDictionary(a => a.Number);
+        groupCount = (await services.GetRequiredService<IGroupRepository>().GetAllAsync()).Count;
+
+        rows = stats.AssignmentStatistics
+            .Select(s => new Row(
+                s.AssignmentNumber,
+                assignments.GetValueOrDefault(s.AssignmentNumber)?.StandardPoints ?? 0,
+                assignments.GetValueOrDefault(s.AssignmentNumber)?.AwesomePoints ?? 0,
+                s))
+            .OrderBy(r => r.Number)
+            .ToList();
+    }
+}

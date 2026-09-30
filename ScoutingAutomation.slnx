@@ -1,0 +1,20 @@
+<Solution>
+  <Folder Name="/Documentation/">
+    <File Path="docs\slack-koppelen.md" />
+  </Folder>
+  <Folder Name="/SolutionFolder/">
+    <File Path="README.md" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/ScoutingAutomation.AppHost/ScoutingAutomation.AppHost.csproj" />
+    <Project Path="src/ScoutingAutomation.Contracts/ScoutingAutomation.Contracts.csproj" />
+    <Project Path="src/ScoutingAutomation.Domain/ScoutingAutomation.Domain.csproj" />
+    <Project Path="src/ScoutingAutomation.Infrastructure/ScoutingAutomation.Infrastructure.csproj" />
+    <Project Path="src/ScoutingAutomation.ServiceDefaults/ScoutingAutomation.ServiceDefaults.csproj" />
+    <Project Path="src/ScoutingAutomation.Web/ScoutingAutomation.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ScoutingAutomation.IntegrationTests/ScoutingAutomation.IntegrationTests.csproj" />
+    <Project Path="tests/ScoutingAutomation.UnitTests/ScoutingAutomation.UnitTests.csproj" />
+  </Folder>
+</Solution>

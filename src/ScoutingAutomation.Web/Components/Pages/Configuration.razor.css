@@ -1,0 +1,16 @@
+.config-list {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.5rem 1rem;
+    font-size: 0.9rem;
+}
+
+.config-list dt {
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.config-list dd {
+    margin: 0;
+    min-width: 0;
+}

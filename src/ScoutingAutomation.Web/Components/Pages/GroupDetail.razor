@@ -1,0 +1,209 @@
+@page "/groups/{Id:guid}"
+@rendermode InteractiveServer
+@inherits LiveComponentBase
+
+<PageTitle>@(group?.Name ?? "Group") - Scouting Regional Game</PageTitle>
+
+@if (!loaded)
+{
+    <div class="empty-state">
+        <div class="spinner-border text-success" role="status"></div>
+    </div>
+}
+else if (group == null)
+{
+    <PageHeader Title="Group not found" BackHref="groups" BackText="Groups" />
+}
+else
+{
+    <PageHeader Title="@group.Name" Subtitle="@group.Description" BackHref="groups" BackText="Groups">
+        <Details>
+            <div class="d-flex gap-2 flex-wrap mt-2">
+                @if (!string.IsNullOrWhiteSpace(group.Abbreviation))
+                {
+                    <span class="badge bg-secondary font-monospace">@group.Abbreviation</span>
+                }
+                <span class="badge assignment-badge">#@group.SlackChannelId</span>
+            </div>
+        </Details>
+        <Actions>
+            <a href="submissions?group=@group.Id" class="btn btn-scout-secondary d-flex align-items-center gap-2">
+                <i class="bi bi-folder2-open"></i>
+                <span>All uploads</span>
+            </a>
+        </Actions>
+    </PageHeader>
+
+    <!-- Totals for this group, resubmissions merged -->
+    <div class="row g-3 mb-4">
+        <div class="col-lg col-md-4 col-6">
+            <div class="stat-card stat-total h-100">
+                <div class="stat-label">Score</div>
+                <div class="stat-value text-white">@(groupStats?.Score ?? 0)</div>
+                <div class="stat-caption">Rank #@(groupStats?.Rank ?? 0) of @groupCount</div>
+            </div>
+        </div>
+        <div class="col-lg col-md-4 col-6">
+            <div class="stat-card h-100" style="border-left: 4px solid var(--border-color);">
+                <div class="stat-label">Submitted</div>
+                <div class="stat-value text-white">@results.Count</div>
+                <div class="stat-caption">of @assignmentCount assignments</div>
+            </div>
+        </div>
+        <div class="col-lg col-md-4 col-6">
+            <div class="stat-card stat-pending h-100">
+                <div class="stat-label">Pending</div>
+                <div class="stat-value text-warning">@(groupStats?.PendingCount ?? 0)</div>
+            </div>
+        </div>
+        <div class="col-lg col-md-4 col-6">
+            <div class="stat-card stat-approved h-100">
+                <div class="stat-label">Approved</div>
+                <div class="stat-value text-success">@(groupStats?.ApprovedCount ?? 0)</div>
+            </div>
+        </div>
+        <div class="col-lg col-md-4 col-6">
+            <div class="stat-card stat-awesome h-100">
+                <div class="stat-label">Awesome</div>
+                <div class="stat-value text-awesome">@(groupStats?.AwesomeCount ?? 0)</div>
+            </div>
+        </div>
+        <div class="col-lg col-md-4 col-6">
+            <div class="stat-card stat-rejected h-100">
+                <div class="stat-label">Rejected</div>
+                <div class="stat-value text-danger">@(groupStats?.RejectedCount ?? 0)</div>
+            </div>
+        </div>
+    </div>
+
+    @if (unresolved.Count > 0)
+    {
+        <div class="glass-panel p-4 mb-4 unresolved-panel">
+            <h2 class="panel-title"><i class="bi bi-exclamation-triangle-fill text-warning"></i> Uploads without assignment (@unresolved.Count)</h2>
+            <div class="d-flex flex-column gap-2">
+                @foreach (var sub in unresolved)
+                {
+                    <a href="submissions/@sub.Id" class="inset-panel py-2 d-flex align-items-center gap-3 text-decoration-none">
+                        <div class="file-icon"><FileIcon ContentType="@sub.ContentType" /></div>
+                        <div class="flex-grow-1 min-w-0">
+                            <div class="fw-semibold text-white text-truncate">@sub.FileName</div>
+                            <div class="text-muted small text-truncate">@sub.UnresolvedReason</div>
+                        </div>
+                        <div class="text-muted small flex-shrink-0">@sub.CreatedAt.ToLocalTime().ToString("g")</div>
+                    </a>
+                }
+            </div>
+        </div>
+    }
+
+    <!-- Per assignment -->
+    <div class="glass-panel p-4">
+        <h2 class="panel-title"><i class="bi bi-list-ol text-info"></i> Assignments</h2>
+
+        @if (results.Count == 0)
+        {
+            <div class="empty-state">
+                <i class="bi bi-inbox"></i>
+                This group has not submitted anything yet.
+            </div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="custom-table">
+                    <thead>
+                        <tr>
+                            <th>Assignment</th>
+                            <th>Status</th>
+                            <th class="text-center">Points</th>
+                            <th class="text-center">Uploads</th>
+                            <th>Last upload</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var result in results)
+                        {
+                            <tr>
+                                <td>
+                                    <a href="assignments/@result.Number" class="fw-bold text-white text-decoration-none hover-underline">#@result.Number</a>
+                                </td>
+                                <td><StatusBadge Status="@result.BestStatus" /></td>
+                                <td class="text-center fw-bold @(result.Points > 0 ? "text-white" : "text-muted")">
+                                    @(result.Points > 0 ? $"+{result.Points}" : "0")
+                                </td>
+                                <td class="text-center text-white-50">@result.Uploads.Count</td>
+                                <td class="text-white-50 small">@result.Uploads[0].CreatedAt.ToLocalTime().ToString("g")</td>
+                                <td class="text-end">
+                                    <a href="submissions/@result.CountingSubmissionId" class="btn btn-sm btn-scout-secondary" title="Open the submission that counts" aria-label="Open submission">
+                                        <i class="bi bi-chevron-right"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter]
+    public Guid Id { get; set; }
+
+    private sealed record AssignmentResult(int Number, SubmissionStatus BestStatus, int Points, List<Submission> Uploads, Guid CountingSubmissionId);
+
+    private bool loaded;
+    private Group? group;
+    private GroupStatistic? groupStats;
+    private int groupCount;
+    private int assignmentCount;
+    private List<AssignmentResult> results = new();
+    private List<Submission> unresolved = new();
+
+    protected override Task OnParametersSetAsync() => ReloadAsync();
+
+    protected override async Task LoadAsync(IServiceProvider services)
+    {
+        var groupRepository = services.GetRequiredService<IGroupRepository>();
+        var submissionRepository = services.GetRequiredService<ISubmissionRepository>();
+
+        group = await groupRepository.GetByIdAsync(Id);
+        if (group == null)
+        {
+            loaded = true;
+            return;
+        }
+
+        var stats = await submissionRepository.GetStatisticsAsync();
+        groupStats = stats.GroupStatistics.FirstOrDefault(g => g.GroupId == Id);
+        groupCount = stats.GroupStatistics.Count;
+
+        var assignments = (await services.GetRequiredService<IAssignmentRepository>().GetAllAsync()).ToDictionary(a => a.Number);
+        assignmentCount = assignments.Count;
+
+        var submissions = await submissionRepository.SearchSubmissionsAsync(new SubmissionFilter { GroupId = Id });
+
+        results = submissions
+            .Where(s => s.AssignmentNumber.HasValue)
+            .GroupBy(s => s.AssignmentNumber!.Value)
+            .Select(g =>
+            {
+                var uploads = g.OrderByDescending(s => s.CreatedAt).ToList();
+                var best = uploads.Select(s => s.Status).Best();
+                var points = assignments.TryGetValue(g.Key, out var assignment) ? assignment.PointsFor(best) : 0;
+                // The newest submission with the best status is the one that counts
+                return new AssignmentResult(g.Key, best, points, uploads, uploads.First(s => s.Status == best).Id);
+            })
+            .OrderBy(r => r.Number)
+            .ToList();
+
+        unresolved = submissions
+            .Where(s => !s.AssignmentNumber.HasValue)
+            .OrderByDescending(s => s.CreatedAt)
+            .ToList();
+
+        loaded = true;
+    }
+}

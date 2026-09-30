@@ -1,0 +1,12 @@
+.assignment-card {
+    transition: border-color 0.15s, background 0.15s;
+}
+
+.assignment-card:hover {
+    border-color: rgba(56, 189, 248, 0.4);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.clickable-row {
+    cursor: pointer;
+}

@@ -1,0 +1,278 @@
+@page "/configuration"
+@rendermode InteractiveServer
+@inject IOptions<ScoutingSettings> ScoutingOptions
+@inject IGroupRepository GroupRepository
+@inject IAssignmentRepository AssignmentRepository
+@inject SlackConnectionStatus ConnectionStatus
+
+<PageTitle>Configuration - Scouting Regional Game</PageTitle>
+
+<PageHeader Title="Configuration" Subtitle="Read-only overview. Change these settings in appsettings.json and restart the app." />
+
+<div class="row g-4">
+    <!-- Groups -->
+    <div class="col-12">
+        <div class="glass-panel p-4">
+            <h2 class="panel-title"><i class="bi bi-people-fill text-success"></i> Groups</h2>
+            <div class="table-responsive">
+                <table class="custom-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Abbreviation</th>
+                            <th>Slack channel</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var g in groups)
+                        {
+                            <tr>
+                                <td><a href="groups/@g.Id" class="fw-bold text-white text-decoration-none hover-underline">@g.Name</a></td>
+                                <td>
+                                    @if (string.IsNullOrWhiteSpace(g.Abbreviation))
+                                    {
+                                        <span class="text-warning small" title="Files are named after the group instead">not set</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-secondary font-monospace">@g.Abbreviation</span>
+                                    }
+                                </td>
+                                <td><span class="badge assignment-badge">#@g.SlackChannelId</span></td>
+                                <td class="text-secondary small">@(g.Description ?? "–")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Review in Slack -->
+    <div class="col-lg-6">
+        <div class="glass-panel p-4 h-100">
+            <h2 class="panel-title"><i class="bi bi-hand-thumbs-up-fill text-warning"></i> Reviewing in Slack</h2>
+
+            <div class="field-label">Reviewers</div>
+            <div class="d-flex flex-wrap gap-1 mb-1">
+                @foreach (var reviewer in options.Reviewers)
+                {
+                    <span class="badge bg-secondary font-monospace">@reviewer</span>
+                }
+            </div>
+            <div class="stat-caption mb-3">
+                @if (options.Reviewers.Count == 0)
+                {
+                    <span class="text-danger">No reviewers configured: all reactions are ignored.</span>
+                }
+                else
+                {
+                    <span>Only reactions from these Slack users count. Their own messages are never submissions.</span>
+                }
+            </div>
+
+            <div class="d-flex flex-column gap-2">
+                @foreach (var (label, badge, folder, emojis) in ReactionRows)
+                {
+                    <div class="inset-panel py-2">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="badge @badge">@label</span>
+                            <span class="text-muted small">moves to <code>/@folder/</code></span>
+                        </div>
+                        <div class="d-flex flex-wrap gap-1">
+                            @foreach (var emoji in emojis)
+                            {
+                                <code>:@emoji.Trim(':'):</code>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- Automatic feedback -->
+    <div class="col-lg-6">
+        <div class="glass-panel p-4 h-100">
+            <h2 class="panel-title"><i class="bi bi-chat-left-text-fill text-info"></i> Automatic feedback</h2>
+            <p class="text-secondary small">The bot reacts and replies in the thread when a submission has a problem.</p>
+
+            <div class="d-flex flex-column gap-2">
+                @foreach (var (label, feedback) in FeedbackRows)
+                {
+                    <div class="inset-panel py-2">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="fw-semibold text-white small">@label</span>
+                            @if (string.IsNullOrWhiteSpace(feedback.Reaction))
+                            {
+                                <span class="text-muted small">no reaction</span>
+                            }
+                            else
+                            {
+                                <code>:@feedback.Reaction.Trim(':'):</code>
+                            }
+                        </div>
+                        <div class="text-white-50 small">@(string.IsNullOrWhiteSpace(feedback.Message) ? "No reply" : feedback.Message)</div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- Files -->
+    <div class="col-lg-6">
+        <div class="glass-panel p-4 h-100">
+            <h2 class="panel-title"><i class="bi bi-hdd-fill text-secondary"></i> Files &amp; storage</h2>
+            <dl class="config-list mb-3">
+                <dt>Storage folder</dt>
+                <dd class="font-monospace small text-break">@options.StorageRoot</dd>
+                <dt>Layout</dt>
+                <dd class="small"><code>/group/</code> until reviewed, then <code>approved/</code>, <code>awesome/</code> or <code>rejected/</code></dd>
+                <dt>File names</dt>
+                <dd class="small"><code>{abbreviation} {assignment}</code>, e.g. <code>CDW 16.jpg</code></dd>
+            </dl>
+
+            <div class="field-label">Accepted files</div>
+            <div class="d-flex flex-wrap gap-1">
+                @foreach (var prefix in options.SupportedMimeTypePrefixes)
+                {
+                    <span class="badge assignment-badge">@(prefix)*</span>
+                }
+                @foreach (var ext in options.SupportedExtensions)
+                {
+                    <span class="badge bg-secondary">@ext</span>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- Assignments & Slack -->
+    <div class="col-lg-6">
+        <div class="glass-panel p-4 h-100">
+            <h2 class="panel-title"><i class="bi bi-gear-fill text-secondary"></i> Assignments &amp; Slack</h2>
+            <dl class="config-list mb-0">
+                <dt>Points file</dt>
+                <dd class="font-monospace small text-break">@options.AssignmentPointsFile</dd>
+                <dt>Assignments</dt>
+                <dd>@assignmentCount loaded</dd>
+                <dt>Slack mode</dt>
+                <dd>
+                    @if (options.Slack.SimulationMode)
+                    {
+                        <span class="badge badge-pending">Simulation</span>
+                        <span class="text-muted small ms-1">no calls to Slack</span>
+                    }
+                    else
+                    {
+                        <span class="badge badge-approved">Live</span>
+                    }
+                </dd>
+                @if (!options.Slack.SimulationMode)
+                {
+                    <dt>Connection</dt>
+                    <dd>
+                        @if (options.Slack.SocketMode)
+                        {
+                            <span>Socket Mode</span>
+                            <span class="badge @ConnectionBadge ms-1">@ConnectionStatus.State</span>
+                            @if (!string.IsNullOrEmpty(ConnectionStatus.Detail))
+                            {
+                                <div class="text-muted small">@ConnectionStatus.Detail</div>
+                            }
+                        }
+                        else
+                        {
+                            <span>Events API</span>
+                            <span class="text-muted small ms-1">Slack posts to <code>/api/slack/events</code></span>
+                        }
+                    </dd>
+                }
+                @if (options.Slack.SocketMode && !options.Slack.SimulationMode)
+                {
+                    <dt>App token</dt>
+                    <dd>
+                        @if (string.IsNullOrWhiteSpace(options.Slack.AppToken))
+                        {
+                            <span class="text-danger small">not set: no events are received</span>
+                        }
+                        else
+                        {
+                            <span class="text-success small">set</span>
+                        }
+                    </dd>
+                }
+                <dt>Signing secret</dt>
+                <dd>
+                    @if (options.Slack.SimulationMode)
+                    {
+                        <span class="text-muted small">not checked in simulation</span>
+                    }
+                    else if (options.Slack.SocketMode)
+                    {
+                        <span class="text-muted small">not needed in Socket Mode</span>
+                    }
+                    else if (string.IsNullOrWhiteSpace(options.Slack.SigningSecret))
+                    {
+                        <span class="text-danger small">not set: all Slack requests are rejected</span>
+                    }
+                    else
+                    {
+                        <span class="text-success small">set, requests are verified</span>
+                    }
+                </dd>
+                <dt>Bot token</dt>
+                <dd>
+                    @if (string.IsNullOrWhiteSpace(options.Slack.BotToken))
+                    {
+                        <span class="text-warning small">not set</span>
+                    }
+                    else
+                    {
+                        <span class="text-success small">set</span>
+                    }
+                </dd>
+            </dl>
+        </div>
+    </div>
+</div>
+
+<div class="mt-4">
+    <RebuildPanel />
+</div>
+
+@code {
+    private ScoutingSettings options = new();
+    private IReadOnlyList<Group> groups = new List<Group>();
+    private int assignmentCount;
+
+    private string ConnectionBadge => ConnectionStatus.State switch
+    {
+        SlackConnectionState.Connected => "badge-approved",
+        SlackConnectionState.Connecting => "badge-pending",
+        SlackConnectionState.Error => "badge-rejected",
+        _ => "badge-received"
+    };
+
+    private IEnumerable<(string Label, string Badge, string Folder, List<string> Emojis)> ReactionRows => new[]
+    {
+        ("Approved", "badge-approved", "approved", options.ReviewStatusReactions.Approved),
+        ("Awesome", "badge-awesome", "awesome", options.ReviewStatusReactions.Awesome),
+        ("Rejected", "badge-rejected", "rejected", options.ReviewStatusReactions.Rejected)
+    };
+
+    private IEnumerable<(string Label, FeedbackConfig Feedback)> FeedbackRows => new[]
+    {
+        ("Unsupported file", options.SlackFeedback.UnsupportedFile),
+        ("No assignment number", options.SlackFeedback.MissingAssignmentNumber),
+        ("Unknown assignment number", options.SlackFeedback.UnknownAssignmentNumber),
+        ("Download failed", options.SlackFeedback.DownloadFailed)
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        options = ScoutingOptions.Value;
+        groups = await GroupRepository.GetAllAsync();
+        assignmentCount = (await AssignmentRepository.GetAllAsync()).Count;
+    }
+}

@@ -1,0 +1,29 @@
+@page "/Error"
+@using System.Diagnostics
+
+<PageTitle>Error - Scouting Regional Game</PageTitle>
+
+<div class="glass-panel empty-state">
+    <i class="bi bi-exclamation-octagon text-danger"></i>
+    <h1 class="h4 text-white">Something went wrong</h1>
+    <p class="mb-3">An error occurred while processing your request.</p>
+    @if (ShowRequestId)
+    {
+        <p class="small">Request ID: <code>@RequestId</code></p>
+    }
+    <p class="small text-muted">
+        Run the app with <code>ASPNETCORE_ENVIRONMENT=Development</code> for error details. Never enable this for a deployed app.
+    </p>
+    <a href="" class="btn btn-scout-secondary">Go to dashboard</a>
+</div>
+
+@code{
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    private string? RequestId { get; set; }
+    private bool ShowRequestId => !string.IsNullOrEmpty(RequestId);
+
+    protected override void OnInitialized() =>
+        RequestId = Activity.Current?.Id ?? HttpContext?.TraceIdentifier;
+}
