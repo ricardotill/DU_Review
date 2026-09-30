@@ -73,7 +73,8 @@ public class SubmissionRepository : ISubmissionRepository
         if (!string.IsNullOrWhiteSpace(filter.Reviewer))
         {
             var reviewer = filter.Reviewer.Trim().ToLower();
-            query = query.Where(s => s.Reviews.Any(r => r.Reviewer.ToLower().Contains(reviewer)));
+            var ids = filter.ReviewerIds.ToList();
+            query = query.Where(s => s.Reviews.Any(r => r.Reviewer.ToLower().Contains(reviewer) || ids.Contains(r.Reviewer)));
         }
 
         if (filter.FromDate.HasValue)
@@ -92,6 +93,7 @@ public class SubmissionRepository : ISubmissionRepository
             query = query.Where(s =>
                 s.FileName.ToLower().Contains(term) ||
                 s.Submitter.ToLower().Contains(term) ||
+                (s.SubmitterName != null && s.SubmitterName.ToLower().Contains(term)) ||
                 (s.MessageText != null && s.MessageText.ToLower().Contains(term)) ||
                 (s.Group != null && s.Group.Name.ToLower().Contains(term)));
         }

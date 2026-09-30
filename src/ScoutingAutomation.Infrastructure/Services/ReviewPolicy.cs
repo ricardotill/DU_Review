@@ -4,17 +4,11 @@ using ScoutingAutomation.Domain.Enums;
 namespace ScoutingAutomation.Infrastructure.Services;
 
 /// <summary>
-/// Who may review, and what each reaction means. Shared by live processing and the rebuild.
+/// What each reaction means. Shared by live processing and the rebuild.
+/// Who may review is kept by <see cref="RuntimeSettingsService"/>.
 /// </summary>
 public static class ReviewPolicy
 {
-    public static bool IsReviewer(ScoutingSettings settings, string? user)
-    {
-        if (string.IsNullOrWhiteSpace(user)) return false;
-        var reviewers = settings.Reviewers ?? new List<string>();
-        return reviewers.Any(r => r.Trim().Equals(user.Trim(), StringComparison.OrdinalIgnoreCase));
-    }
-
     /// <summary>The review status an emoji stands for, or null when it has no meaning.</summary>
     public static SubmissionStatus? StatusFor(ScoutingSettings settings, string? reaction)
     {

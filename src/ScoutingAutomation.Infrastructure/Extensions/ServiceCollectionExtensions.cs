@@ -31,6 +31,10 @@ public static class ServiceCollectionExtensions
         services.AddHttpClient<ISlackClient, SlackClient>();
         services.AddHttpClient<ISlackHistoryClient, SlackHistoryClient>();
         services.AddSingleton<SlackProcessingGate>();
+        services.AddSingleton<RuntimeSettingsService>();
+        services.AddScoped<ReviewerNameFetcher>();
+        services.AddSingleton<AccessKeyService>();
+        services.AddSingleton<LoginAttemptLimiter>();
         services.AddSingleton<ISlackRebuildService, SlackRebuildService>();
         services.AddScoped<ISubmissionWorkflowService, SubmissionWorkflowService>();
         services.AddScoped<DatabaseInitializer>();

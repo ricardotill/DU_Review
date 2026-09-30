@@ -40,20 +40,23 @@ public class WorkflowImportTests
         _submissions.Setup(s => s.GetBySlackMessageIdAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(Array.Empty<Submission>());
     }
 
+    private static readonly IOptions<ScoutingSettings> Settings = Options.Create(new ScoutingSettings
+    {
+        SupportedExtensions = new List<string> { ".jpg" },
+        Reviewers = new List<string> { "U_JURY", "U_JURY2" },
+        ReviewStatusReactions = new ReviewStatusReactionsConfig
+        {
+            Approved = new List<string> { "thumbsup" },
+            Rejected = new List<string> { "x" },
+            Awesome = new List<string> { "heart" }
+        }
+    });
+
+    private readonly RuntimeSettingsService _runtime = TestRuntime.For(Settings);
+
     private SubmissionWorkflowService Create() => new(
         _submissions.Object, _groups.Object, _assignments.Object, new AssignmentParser(NullLogger<AssignmentParser>.Instance),
-        _storage.Object, _slack.Object, _notifier.Object,
-        Options.Create(new ScoutingSettings
-        {
-            SupportedExtensions = new List<string> { ".jpg" },
-            Reviewers = new List<string> { "U_JURY", "U_JURY2" },
-            ReviewStatusReactions = new ReviewStatusReactionsConfig
-            {
-                Approved = new List<string> { "thumbsup" },
-                Rejected = new List<string> { "x" },
-                Awesome = new List<string> { "heart" }
-            }
-        }),
+        _storage.Object, _slack.Object, _notifier.Object, _runtime, Settings,
         NullLogger<SubmissionWorkflowService>.Instance);
 
     private static SlackEventItemDto Message(string text, params string[] files) => new()
@@ -175,6 +178,235 @@ public class WorkflowImportTests
         {
             submission.Reviews.Should().BeEmpty();
         }
+    }
+
+    private static SlackEventItemDto Removed(string reaction, string user = "U_JURY", string? channel = "C1", string? ts = "1.0") => new()
+    {
+        Type = "reaction_removed", User = user, Reaction = reaction,
+        Item = channel == null ? null : new SlackReactionTargetDto { Channel = channel, Ts = ts }
+    };
+
+    private Submission ApprovedSubmission()
+    {
+        var submission = new Submission { GroupId = _group.Id, Group = _group, StoragePath = "/s/Approved/DWO 4.jpg" };
+        submission.TransitionStatus(SubmissionStatus.Approved, submission.StoragePath, "U_JURY", "thumbsup");
+        _submissions.Setup(s => s.GetBySlackMessageIdAsync("C1", "1.0", It.IsAny<CancellationToken>())).ReturnsAsync(new[] { submission });
+        return submission;
+    }
+
+    [Theory]
+    [InlineData("thumbsup", "U_SCOUT")] // not a reviewer
+    [InlineData("tada", "U_JURY")]      // not a review emoji
+    [InlineData("", "U_JURY")]
+    public async Task RemovedReaction_ThatIsNoReview_ShouldBeIgnored(string reaction, string user)
+    {
+        var result = await Create().ProcessSlackReactionRemovedAsync(Removed(reaction, user));
+
+        result.Success.Should().BeFalse();
+        _slack.Verify(s => s.GetReactionsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData("C1", null)]
+    public async Task RemovedReaction_WithoutTarget_ShouldFail(string? channel, string? ts)
+    {
+        var result = await Create().ProcessSlackReactionRemovedAsync(Removed("thumbsup", channel: channel, ts: ts));
+
+        result.Message.Should().Contain("missing target");
+    }
+
+    [Fact]
+    public async Task RemovedReaction_OnMessageWithoutSubmission_ShouldBeIgnored()
+    {
+        var result = await Create().ProcessSlackReactionRemovedAsync(Removed("thumbsup"));
+
+        result.Message.Should().StartWith("No submission");
+        _slack.Verify(s => s.GetReactionsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task RemovedReaction_WhenSlackCannotBeRead_ShouldLeaveStatus()
+    {
+        var submission = ApprovedSubmission();
+        _slack.Setup(s => s.GetReactionsAsync("C1", "1.0", It.IsAny<CancellationToken>())).ReturnsAsync((IReadOnlyList<SlackMessageReactionDto>?)null);
+
+        var result = await Create().ProcessSlackReactionRemovedAsync(Removed("thumbsup"));
+
+        result.Success.Should().BeFalse();
+        result.Message.Should().Contain("status unchanged");
+        submission.Status.Should().Be(SubmissionStatus.Approved);
+        _submissions.Verify(s => s.UpdateAsync(It.IsAny<Submission>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task RemovedReaction_LastReview_ShouldMakeSubmissionPendingAgain()
+    {
+        var submission = ApprovedSubmission();
+        _slack.Setup(s => s.GetReactionsAsync("C1", "1.0", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { Reaction("thumbsup", "U_SCOUT"), Reaction("tada", "U_JURY") });
+
+        var result = await Create().ProcessSlackReactionRemovedAsync(Removed(":thumbsup:"));
+
+        result.Success.Should().BeTrue();
+        result.NewStatus.Should().Be(SubmissionStatus.Pending);
+        submission.Status.Should().Be(SubmissionStatus.Pending);
+        submission.StoragePath.Should().Be("/s/Pending/DWO 4.jpg");
+        var review = submission.Reviews.OrderBy(r => r.CreatedAt).Last();
+        review.Reviewer.Should().Be("U_JURY");
+        review.ReactionEmoji.Should().Be("thumbsup");
+        review.Notes.Should().Be("Review emoji removed");
+        _notifier.Verify(n => n.NotifyChanged(), Times.Once);
+    }
+
+    [Fact]
+    public async Task RemovedReaction_OtherReviewsLeft_ShouldApplyTheBestRemaining()
+    {
+        var submission = ApprovedSubmission();
+        _slack.Setup(s => s.GetReactionsAsync("C1", "1.0", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { Reaction("x", "U_JURY"), Reaction("heart", "U_JURY2") });
+
+        var result = await Create().ProcessSlackReactionRemovedAsync(Removed("thumbsup"));
+
+        result.NewStatus.Should().Be(SubmissionStatus.Awesome);
+        submission.Status.Should().Be(SubmissionStatus.Awesome);
+        submission.Reviews.OrderBy(r => r.CreatedAt).Last().Reviewer.Should().Be("U_JURY2");
+    }
+
+    [Fact]
+    public async Task RemovedReaction_StatusUnchanged_ShouldNotUpdate()
+    {
+        var submission = ApprovedSubmission();
+        _slack.Setup(s => s.GetReactionsAsync("C1", "1.0", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { Reaction("thumbsup", "U_JURY2") });
+
+        var result = await Create().ProcessSlackReactionRemovedAsync(Removed("thumbsup"));
+
+        result.Message.Should().Be("Status stays Approved");
+        submission.Reviews.Should().ContainSingle();
+        _submissions.Verify(s => s.UpdateAsync(It.IsAny<Submission>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ManualMode_ShouldOnlySaveTheFileWithItsName()
+    {
+        _runtime.SetManualMode(true);
+
+        var result = await Create().ProcessSlackMessageAsync(Message("Opdracht 4", "IMG_1.jpg"));
+
+        result.Success.Should().BeTrue();
+        result.Message.Should().Be("Manual mode: saved 1 file(s)");
+        result.StoredFiles.Should().Equal("DWO 4.jpg");
+        result.CreatedSubmissionIds.Should().BeEmpty();
+        _storage.Verify(s => s.SaveInitialFileAsync(_group.Name, "DWO 4.jpg", It.IsAny<Stream>(), It.IsAny<CancellationToken>()), Times.Once);
+        _submissions.Verify(s => s.AddAsync(It.IsAny<Submission>(), It.IsAny<CancellationToken>()), Times.Never);
+        _submissions.Verify(s => s.ExistsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _notifier.Verify(n => n.NotifyChanged(), Times.Never);
+    }
+
+    [Fact]
+    public async Task ManualMode_RedeliveredMessage_ShouldNotDownloadAgain()
+    {
+        _runtime.SetManualMode(true);
+        var service = Create();
+
+        await service.ProcessSlackMessageAsync(Message("Opdracht 4", "a.jpg"));
+        var second = await service.ProcessSlackMessageAsync(Message("Opdracht 4", "a.jpg"));
+
+        second.StoredFiles.Should().BeEmpty();
+        _slack.Verify(s => s.DownloadFileAsync(It.IsAny<string>(), "a.jpg", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Theory]
+    [InlineData("hallo", "a.jpg")]      // no number
+    [InlineData("Opdracht 9", "a.jpg")] // unknown assignment
+    [InlineData("Opdracht 4", "a.zip")] // unsupported file
+    public async Task ManualMode_UnusableMessage_ShouldBeSkippedWithoutFeedback(string text, string file)
+    {
+        _runtime.SetManualMode(true);
+        _slack.Setup(s => s.DownloadFileAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>())).ThrowsAsync(new HttpRequestException());
+
+        var result = await Create().ProcessSlackMessageAsync(Message(text, file));
+
+        result.StoredFiles.Should().BeEmpty();
+        _slack.Verify(s => s.AddReactionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _slack.Verify(s => s.PostThreadReplyAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ManualMode_FailedDownload_ShouldOnlyBeReported()
+    {
+        _runtime.SetManualMode(true);
+        _slack.Setup(s => s.DownloadFileAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>())).ThrowsAsync(new HttpRequestException());
+
+        var result = await Create().ProcessSlackMessageAsync(Message("Opdracht 4", "a.jpg"));
+
+        result.FailedDownloads.Should().Equal("a.jpg");
+        _slack.Verify(s => s.PostThreadReplyAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ManualMode_ReviewerMessage_ShouldBeIgnored()
+    {
+        _runtime.SetManualMode(true);
+        var message = Message("Opdracht 4", "a.jpg");
+        message.User = "U_JURY";
+
+        var result = await Create().ProcessSlackMessageAsync(message);
+
+        result.Message.Should().Contain("is a reviewer");
+        _slack.Verify(s => s.DownloadFileAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ManualMode_Reactions_ShouldBeIgnored()
+    {
+        _runtime.SetManualMode(true);
+        var submission = ApprovedSubmission();
+        var service = Create();
+
+        var added = await service.ProcessSlackReactionAsync(new SlackEventItemDto
+        {
+            User = "U_JURY", Reaction = "x", Item = new SlackReactionTargetDto { Channel = "C1", Ts = "1.0" }
+        });
+        var removed = await service.ProcessSlackReactionRemovedAsync(Removed("thumbsup"));
+
+        added.Message.Should().Be("Manual mode: reactions are not processed");
+        removed.Message.Should().Be("Manual mode: reactions are not processed");
+        submission.Status.Should().Be(SubmissionStatus.Approved);
+        _slack.Verify(s => s.GetReactionsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ManualMode_ShouldNotAffectRebuildImports()
+    {
+        _runtime.SetManualMode(true);
+
+        var result = await Create().ImportSlackMessageAsync(Message("Opdracht 4", "a.jpg"));
+
+        result.CreatedSubmissionIds.Should().ContainSingle();
+        _added.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task ReviewerAddedInTheApp_ShouldCountRightAway()
+    {
+        var submission = ApprovedSubmission();
+        var temp = Path.Combine(Path.GetTempPath(), $"runtime_{Guid.NewGuid():N}.json");
+        var runtime = new RuntimeSettingsService(
+            Options.Create(new ScoutingSettings { Reviewers = Settings.Value.Reviewers, ReviewStatusReactions = Settings.Value.ReviewStatusReactions, RuntimeSettingsFile = temp }),
+            NullLogger<RuntimeSettingsService>.Instance);
+        var service = new SubmissionWorkflowService(
+            _submissions.Object, _groups.Object, _assignments.Object, new AssignmentParser(NullLogger<AssignmentParser>.Instance),
+            _storage.Object, _slack.Object, _notifier.Object, runtime, Settings, NullLogger<SubmissionWorkflowService>.Instance);
+        var reaction = new SlackEventItemDto { User = "U_NEW", Reaction = "heart", Item = new SlackReactionTargetDto { Channel = "C1", Ts = "1.0" } };
+
+        (await service.ProcessSlackReactionAsync(reaction)).Success.Should().BeFalse();
+        runtime.AddReviewer("U_NEW");
+        (await service.ProcessSlackReactionAsync(reaction)).Success.Should().BeTrue();
+
+        submission.Status.Should().Be(SubmissionStatus.Awesome);
+        File.Delete(temp);
     }
 
     [Fact]

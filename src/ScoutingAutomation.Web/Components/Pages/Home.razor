@@ -2,16 +2,42 @@
 @rendermode InteractiveServer
 @inherits LiveComponentBase
 @inject NavigationManager Navigation
+@inject RuntimeSettingsService Runtime
 
 <PageTitle>Dashboard - Scouting Regional Game</PageTitle>
 
 <PageHeader Title="Dashboard" Subtitle="Scores and review progress for all groups.">
     <Actions>
+        <AuthorizeView Roles="@KeyAuth.AdminRole">
+            <Authorized>
+                <div class="form-check form-switch mb-0 align-self-center me-2" title="Only download and name files; nothing else is processed">
+                    <input class="form-check-input" type="checkbox" role="switch" id="manualMode" checked="@Runtime.ManualMode" @onchange="ToggleManualMode" />
+                    <label class="form-check-label text-white small fw-semibold" for="manualMode">Manual mode</label>
+                </div>
+            </Authorized>
+            <NotAuthorized>
+                @if (Runtime.ManualMode)
+                {
+                    <span class="badge badge-pending align-self-center" title="Only admins can switch manual mode">Manual mode</span>
+                }
+            </NotAuthorized>
+        </AuthorizeView>
         <span class="badge badge-approved align-self-center" title="This page updates automatically">
             <span class="live-dot me-1"></span> Live
         </span>
     </Actions>
 </PageHeader>
+
+@if (Runtime.ManualMode)
+{
+    <div class="alert alert-warning d-flex gap-2 mb-4" role="status">
+        <i class="bi bi-cone-striped"></i>
+        <div class="small">
+            <strong>Manual mode is on.</strong> Uploads with a valid assignment number are only saved as files with the right name in each group folder.
+            Nothing is registered or reviewed, the bot posts nothing in Slack, and reactions are ignored, so this dashboard does not change.
+        </div>
+    </div>
+}
 
 @if (stats == null)
 {
@@ -178,7 +204,23 @@ else
     private IEnumerable<AssignmentStatistic> ActiveAssignments =>
         stats?.AssignmentStatistics.Where(a => a.TotalSubmissions > 0) ?? Enumerable.Empty<AssignmentStatistic>();
 
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        Runtime.Changed += OnRuntimeChanged;
+    }
+
     protected override Task OnInitializedAsync() => ReloadAsync();
+
+    private void ToggleManualMode(ChangeEventArgs e) => Runtime.SetManualMode(e.Value is true);
+
+    private void OnRuntimeChanged() => InvokeAsync(StateHasChanged);
+
+    protected override void Dispose(bool disposing)
+    {
+        Runtime.Changed -= OnRuntimeChanged;
+        base.Dispose(disposing);
+    }
 
     protected override async Task LoadAsync(IServiceProvider services)
     {

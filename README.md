@@ -10,6 +10,8 @@ DU Review verwerkt de inzendingen van het **Destination Unknown regiospel**. Gro
    - 👍 → **Approved**: het bestand verhuist naar `approved/`;
    - ❤️ ⭐ 🔥 → **Awesome**: het bestand verhuist naar `awesome/`;
    - ❌ → **Rejected**: het bestand verhuist naar `rejected/`.
+
+   Haalt een jurylid de emoji weer weg, dan telt de beste beoordeling die nog op het bericht staat. Is er geen meer, dan wordt de inzending weer **Pending** en gaat het bestand terug naar de groepsmap.
 4. **Het dashboard werkt zichzelf bij.** Scores en overzichten worden direct bijgewerkt, zonder de pagina te verversen.
 
 Klopt er iets niet aan een inzending, dan reageert de bot zelf in Slack met een emoji en een uitleg in de thread:
@@ -19,6 +21,48 @@ Klopt er iets niet aan een inzending, dan reageert de bot zelf in Slack met een 
 - **Bestand kon niet worden gedownload**: dat bestand wordt overgeslagen, en de groep wordt gevraagd het opnieuw te plaatsen. De app slaat nooit een leeg of vervangend bestand op.
 
 Een inzending krijgt de tijd waarop het bericht in Slack is geplaatst, niet de tijd waarop de app het verwerkte.
+
+## Toegang
+
+De app is afgeschermd met een gedeelde **toegangssleutel**. Wie de app opent, moet eerst die sleutel invullen. Daarna blijft de browser 30 dagen ingelogd. Hoofdletters en spaties in de sleutel maken niet uit.
+
+Er is daarnaast een aparte **admin-sleutel**. Alleen in admin-modus kun je:
+
+- de sleutels opnieuw aanmaken;
+- **Rebuild from Slack** starten;
+- juryleden toevoegen, weghalen en hun namen aanpassen;
+- **Manual mode** aan- of uitzetten;
+- een status aanpassen met **Manual status override**.
+
+Bekijken, zoeken, filteren en favorieten markeren kan iedereen met de toegangssleutel.
+
+**Waar vind je de sleutels?** Bij de eerste start maakt de app beide sleutels zelf aan. Ze staan dan eenmalig in het logboek, en worden bewaard in `access-keys.json` (zie `Scouting:KeysFile`). Wil je zelf een sleutel kiezen, vul dan `Scouting:AccessKey` of `Scouting:AdminKey` in, bijvoorbeeld via user secrets. Dat geldt alleen zolang `access-keys.json` nog niet bestaat.
+
+**Admin-modus:** ga naar de pagina **Admin** en vul de admin-sleutel in. Inloggen met de admin-sleutel op het loginscherm kan ook. Met **Leave admin mode** ga je terug naar gewone toegang. Bovenaan de pagina staat **Admin** zolang je in admin-modus bent.
+
+**Sleutel opnieuw aanmaken:** op de pagina **Admin** maak je een nieuwe toegangssleutel of admin-sleutel aan. Iedereen die met de oude sleutel is ingelogd, wordt direct uitgelogd, ook in pagina's die al open staan. Jij blijft zelf ingelogd. Een nieuwe admin-sleutel wordt maar één keer getoond: noteer hem meteen.
+
+Na 5 verkeerde sleutels binnen een minuut moet een apparaat even wachten voordat het opnieuw mag proberen.
+
+> **Let op:** de sleutel en het login-cookie gaan onversleuteld over het netwerk als de app via gewone `http://` wordt geopend. Iedereen op hetzelfde netwerk kan ze dan meelezen. Gebruik HTTPS (bijvoorbeeld via een reverse proxy) als de app buiten een vertrouwd netwerk bereikbaar is.
+
+## Favorieten
+
+Klik op de ster ☆ bij een inzending om hem als favoriet te markeren. Dat kan in de lijst **Submissions**, op de pagina van een opdracht en op de detailpagina van een inzending. Met de schakelaar **Favorites only** op **Submissions** zie je alleen je favorieten.
+
+Favorieten worden bewaard in een cookie in je eigen browser (`du_favorites`, een jaar geldig). Ze zijn dus per browser en niet zichtbaar voor anderen. Er passen maximaal 300 favorieten in.
+
+## Manual mode
+
+Wil de organisatie alles zelf beoordelen, zet dan **Manual mode** aan met de schakelaar op het **Dashboard** (alleen in admin-modus). De app doet dan alleen nog dit: van elk bericht met een geldig opdrachtnummer worden de bestanden gedownload en opgeslagen met de juiste naam (bijvoorbeeld `CDW 12.jpg`) in de map van de groep.
+
+Verder gebeurt er niets:
+
+- er worden geen inzendingen geregistreerd, dus het dashboard verandert niet;
+- emoji's van de jury worden genegeerd;
+- de bot plaatst niets in Slack, ook niet bij een ontbrekend opdrachtnummer of een verkeerd bestandstype.
+
+Bovenaan elke pagina staat dan **Manual mode**. Met `Scouting:ManualMode` in `appsettings.json` stel je in of de app met manual mode aan of uit start; de schakelaar geldt tot de volgende herstart. **Rebuild from Slack** verwerkt berichten altijd volledig, ook als manual mode aan staat.
 
 ## Punten
 
@@ -54,14 +98,15 @@ Een los getal ergens in de tekst telt **niet**. Zo wordt "we deden het met 3 man
 
 | Pagina | Wat je ziet |
 |---|---|
-| **Dashboard** | Totalen, het klassement en de voortgang per opdracht. |
-| **Submissions** | Alle inzendingen, met zoeken en filteren op groep, opdracht, status en jurylid. |
+| **Dashboard** | Totalen, het klassement en de voortgang per opdracht, en de schakelaar voor **Manual mode**. |
+| **Submissions** | Alle inzendingen, met zoeken en filteren op groep, opdracht, status en jurylid (op naam of Slack-ID), en alleen je favorieten. |
 | **Assignments** | Alle opdrachten. Per opdracht een pagina met de inzendingen van alle groepen naast elkaar. |
 | **Groups** | Alle groepen. Per groep een pagina met score, plaats en alle opdrachten. |
-| **Configuration** | Alle instellingen, alleen-lezen, en **Rebuild from Slack** (zie hieronder). |
+| **Configuration** | Alle instellingen, de juryleden met hun namen, en **Rebuild from Slack** (zie hieronder). |
+| **Admin** | Naar admin-modus gaan, de toegangssleutel bekijken en sleutels opnieuw aanmaken. |
 | **Slack Simulator** | Nep-inzendingen en -reacties versturen om te testen. Alleen zichtbaar in simulatiemodus. |
 
-Beoordelen gebeurt in Slack. Voor noodgevallen kan een status op de detailpagina van een inzending handmatig worden aangepast, onder **Manual status override**. Dit vraagt om een reden en wordt vastgelegd in de beoordelingsgeschiedenis. Een latere emoji in Slack overschrijft zo'n aanpassing weer.
+Beoordelen gebeurt in Slack. Voor noodgevallen kan een status op de detailpagina van een inzending handmatig worden aangepast, onder **Manual status override** (alleen in admin-modus). Dit vraagt om een reden en wordt vastgelegd in de beoordelingsgeschiedenis. Een latere emoji in Slack overschrijft zo'n aanpassing weer.
 
 ## Opslag
 
@@ -102,12 +147,17 @@ Wil je opnieuw beginnen? Stop de app en verwijder `scouting_dev.db*` en de groep
 
 ## Configuratie
 
-Alles staat onder `Scouting` in `src/ScoutingAutomation.Web/appsettings.json`. Wijzigingen gelden na een herstart.
+Alles staat onder `Scouting` in `src/ScoutingAutomation.Web/appsettings.json`. Wijzigingen gelden na een herstart. Juryleden en manual mode kun je daarnaast ook in de app aanpassen, zonder herstart.
 
 | Instelling | Betekenis |
 |---|---|
 | `Groups` | Per groep: naam, afkorting (voor bestandsnamen), Slack-kanaal-ID en omschrijving. |
-| `Reviewers` | Slack member-ID's van de jury. Alleen hun emoji's tellen. |
+| `Reviewers` | Slack member-ID's van de jury. Alleen hun emoji's tellen. Op de pagina **Configuration** kun je er meer toevoegen. |
+| `ReviewerNames` | Optioneel: een naam per member-ID, bijvoorbeeld `{ "U04ABC123": "Sanne" }`. Namen die in de app zijn ingevuld of uit Slack zijn opgehaald, gaan voor. |
+| `RuntimeSettingsFile` | Waar de in de app toegevoegde juryleden en hun namen worden bewaard (standaard `runtime-settings.json`). |
+| `AccessKey`, `AdminKey` | Optioneel: de sleutels bij de eerste start. Leeg laten om ze te laten aanmaken. Zie **Toegang**. |
+| `KeysFile` | Waar de sleutels worden bewaard (standaard `access-keys.json`). |
+| `ManualMode` | Of de app met manual mode aan start (standaard `false`). |
 | `ReviewStatusReactions` | Welke emoji Approved, Awesome of Rejected betekent. |
 | `SlackFeedback` | Emoji en tekst waarmee de bot reageert op een probleem. |
 | `SupportedExtensions`, `SupportedMimeTypePrefixes` | Welke bestanden worden geaccepteerd. |
@@ -119,11 +169,11 @@ Lijsten in `appsettings.json` hebben geen standaardwaarden in de code. Wat in he
 
 ## Herbouwen vanuit Slack
 
-Is er iets misgegaan, bijvoorbeeld omdat de app een tijd niet draaide, dan kan de app alle inzendingen opnieuw opbouwen uit de Slack-berichten. Dit staat onderaan de pagina **Configuration**, onder **Rebuild from Slack**. Het werkt alleen als de app met Slack verbonden is.
+Is er iets misgegaan, bijvoorbeeld omdat de app een tijd niet draaide, dan kan de app alle inzendingen opnieuw opbouwen uit de Slack-berichten. Dit staat onderaan de pagina **Configuration**, onder **Rebuild from Slack**. Het werkt alleen in admin-modus en als de app met Slack verbonden is.
 
 Kies het tijdstip vanaf wanneer berichten meetellen (standaard vandaag 00:00) en typ `REBUILD` om te bevestigen. De app:
 
-1. leest alle berichten van alle groepskanalen sinds dat tijdstip, ook antwoorden in threads. Lukt dat niet, dan stopt de app en blijft alles zoals het was;
+1. leest alle berichten van alle groepskanalen sinds dat tijdstip, ook antwoorden in threads. Lukt dat voor een of meer kanalen niet, dan stopt de app en blijft alles zoals het was. Per kanaal zie je dan de groep, het kanaal, de foutcode van Slack en wat je eraan kunt doen, bijvoorbeeld de bot uitnodigen bij `not_in_channel`;
 2. verplaatst alle groepsmappen naar `scouting_storage/_backup/{tijdstip}/`, samen met een `submissions.json` met alle huidige inzendingen en beoordelingen;
 3. verwijdert alle inzendingen en beoordelingen, en verwerkt alle berichten opnieuw, in de volgorde waarin ze geplaatst zijn. Er wordt niets in Slack geplaatst;
 4. past de beoordelingen toe zoals ze nu in Slack staan. Slack zegt niet in welke volgorde emoji's zijn geplaatst: zijn juryleden het oneens, dan telt de beste beoordeling (Awesome, dan Approved, dan Rejected);
@@ -165,7 +215,7 @@ Het oorspronkelijke ontwerp staat in `ScoutingAutomation.Complete.SDD.md`.
 
 ## Beperkingen
 
-- De app heeft geen login. Iedereen die het dashboard kan openen, kan ook een status handmatig aanpassen.
+- Iedereen deelt dezelfde toegangssleutel. De app weet dus niet wie iets heeft gedaan; alleen dat het in admin-modus was.
+- Zonder HTTPS gaan de sleutel en het login-cookie onversleuteld over het netwerk.
 - Live bijwerken werkt binnen één server. Draai je meerdere exemplaren van de app, dan is extra werk nodig.
 - Een bewerkt Slack-bericht wordt niet direct opnieuw verwerkt. Een groep moet een correctie als nieuw bericht plaatsen, of de inzendingen worden herbouwd vanuit Slack.
-- Een weggehaalde emoji verandert de status niet direct; bij herbouwen vanuit Slack wel.

@@ -76,6 +76,23 @@ public class SubmissionDetailPageTests : PageTestBase
         cut.Find(".slack-message").TextContent.Should().Contain("(no text)");
     }
 
+    [Theory]
+    [InlineData("Tim de Vries", "Tim de Vries")]
+    [InlineData(null, "U_SCOUT")]
+    public void SlackMessage_ShouldShowTheSubmitterNameOrElseTheMemberId(string? name, string expected)
+    {
+        Seed();
+        var submission = NewSubmission(Foxes, 3, SubmissionStatus.Pending, "x.jpg", DateTimeOffset.UtcNow, "image/jpeg", 1);
+        submission.SubmitterName = name;
+        WithDb(db => { db.Submissions.Add(submission); db.SaveChanges(); });
+
+        var cut = RenderSubmission(submission.Id);
+
+        var author = cut.Find(".slack-message .fw-bold");
+        author.TextContent.Should().Be(expected);
+        author.GetAttribute("title").Should().Be("U_SCOUT");
+    }
+
     [Fact]
     public void ReviewHistory_ShouldColourEachStatusAndShowLargeSizes()
     {

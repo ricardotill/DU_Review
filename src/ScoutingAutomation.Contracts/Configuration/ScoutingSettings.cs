@@ -6,6 +6,27 @@ public class ScoutingSettings
 
     public string StorageRoot { get; set; } = "./scouting_storage";
     public string AssignmentPointsFile { get; set; } = "./opdrachtenpunten.csv";
+
+    /// <summary>
+    /// Manual mode at startup: files are only downloaded and named, nothing else is processed.
+    /// Can be switched on the dashboard while the app runs.
+    /// </summary>
+    public bool ManualMode { get; set; }
+
+    /// <summary>Where settings changed in the app (such as reviewers added on the fly) are saved.</summary>
+    public string RuntimeSettingsFile { get; set; } = "./runtime-settings.json";
+
+    /// <summary>
+    /// Optional first access key, shared with everyone who may use the app. Without it, one is generated.
+    /// A key regenerated in the app (saved in <see cref="KeysFile"/>) always takes priority.
+    /// </summary>
+    public string? AccessKey { get; set; }
+
+    /// <summary>Optional first admin key. Without it, one is generated.</summary>
+    public string? AdminKey { get; set; }
+
+    /// <summary>Where the current access and admin keys are saved. Keep this file private.</summary>
+    public string KeysFile { get; set; } = "./access-keys.json";
     // Lists are left empty here: the configuration binder appends to default items,
     // which would make it impossible to remove a value through appsettings.
     public List<string> SupportedExtensions { get; set; } = new();
@@ -27,6 +48,9 @@ public class ScoutingSettings
     /// Reactions from anyone else are ignored.
     /// </summary>
     public List<string> Reviewers { get; set; } = new();
+
+    /// <summary>Optional names per reviewer ID, e.g. "U04ABC123": "Eva". Names set in the app take priority.</summary>
+    public Dictionary<string, string> ReviewerNames { get; set; } = new();
     public ReviewStatusReactionsConfig ReviewStatusReactions { get; set; } = new();
     public SlackSettings Slack { get; set; } = new();
 }

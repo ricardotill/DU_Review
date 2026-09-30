@@ -48,6 +48,8 @@ public class SlackSocketModeIntegrationTests : IClassFixture<WebApplicationFacto
         _factory = _baseFactory.WithWebHostBuilder(builder =>
         {
             builder.ConfigureAppConfiguration((_, config) => TestApp.UseTestSettingsOnly(config));
+            builder.UseSetting("Scouting:KeysFile", Path.Combine(Path.GetTempPath(), $"scouting_keys_{Guid.NewGuid():N}.json"));
+            builder.UseSetting("Scouting:RuntimeSettingsFile", Path.Combine(Path.GetTempPath(), $"scouting_rt_{Guid.NewGuid():N}.json"));
             builder.UseSetting("ConnectionStrings:scoutingdb", $"Data Source={_testDbPath}");
             builder.UseSetting("Scouting:StorageRoot", _testStorageDir);
             builder.UseSetting("Scouting:AssignmentPointsFile", pointsFile);

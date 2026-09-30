@@ -633,3 +633,5 @@ scouting_storage/
 scouting_dev.db
 scouting_dev.db-wal
 scouting_dev.db-shm
+runtime-settings.json
+access-keys.json

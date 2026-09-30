@@ -1,6 +1,7 @@
 @page "/submissions/{Id:guid}"
 @rendermode InteractiveServer
 @inherits LiveComponentBase
+@inject RuntimeSettingsService Runtime
 
 <PageTitle>Submission - Scouting Regional Game</PageTitle>
 
@@ -34,6 +35,7 @@ else
             </div>
         </Details>
         <Actions>
+            <span class="align-self-center fs-5"><FavoriteStar Submission="submission" /></span>
             <a href="@fileUrl" download="@submission.FileName" class="btn btn-scout-secondary d-flex align-items-center gap-2">
                 <i class="bi bi-download"></i>
                 <span>Download</span>
@@ -84,7 +86,7 @@ else
                 <h2 class="panel-title"><i class="bi bi-slack" style="color: #e01e5a;"></i> Slack message</h2>
                 <div class="slack-message">
                     <div class="d-flex justify-content-between flex-wrap gap-2 mb-2 small">
-                        <span class="fw-bold text-white">@submission.Submitter</span>
+                        <span class="fw-bold text-white" title="@submission.Submitter">@submission.SubmitterDisplayName</span>
                         <span class="text-muted">@submission.CreatedAt.ToLocalTime().ToString("f")</span>
                     </div>
                     <div class="text-white-50 text-break">
@@ -127,7 +129,7 @@ else
                         {
                             <div class="timeline-item" style="border-left-color: @GetReviewColor(rev.Status);">
                                 <div class="d-flex justify-content-between align-items-center gap-2">
-                                    <span class="fw-semibold text-white text-truncate">@rev.Reviewer</span>
+                                    <span class="fw-semibold text-white text-truncate" title="@rev.Reviewer">@Runtime.DisplayName(rev.Reviewer)</span>
                                     <StatusBadge Status="@rev.Status" />
                                 </div>
                                 <div class="text-muted small mt-1">
@@ -147,54 +149,56 @@ else
                 }
             </div>
 
-            <!-- Emergency status override, hidden by default: reviews belong in Slack -->
-            <details class="override-panel">
-                <summary class="text-secondary small">Manual status override…</summary>
+            <AuthorizeView Roles="@KeyAuth.AdminRole">
+                <!-- Emergency status override, hidden by default: reviews belong in Slack -->
+                <details class="override-panel">
+                    <summary class="text-secondary small">Manual status override…</summary>
 
-                <div class="glass-panel p-4 mt-2 override-body">
-                    <div class="alert alert-warning small mb-3" role="alert">
-                        <div class="fw-bold mb-1"><i class="bi bi-exclamation-triangle-fill me-1"></i> Only use this to fix problems</div>
-                        <ul class="mb-0 ps-3">
-                            <li>Reviews belong in Slack. Jury members should react there.</li>
-                            <li>Slack is not updated: no reaction appears on the message.</li>
-                            <li>A later reviewer reaction in Slack overwrites this status.</li>
-                            <li>The override is saved in the review timeline with your reason.</li>
-                        </ul>
+                    <div class="glass-panel p-4 mt-2 override-body">
+                        <div class="alert alert-warning small mb-3" role="alert">
+                            <div class="fw-bold mb-1"><i class="bi bi-exclamation-triangle-fill me-1"></i> Only use this to fix problems</div>
+                            <ul class="mb-0 ps-3">
+                                <li>Reviews belong in Slack. Jury members should react there.</li>
+                                <li>Slack is not updated: no reaction appears on the message.</li>
+                                <li>A later reviewer reaction in Slack overwrites this status.</li>
+                                <li>The override is saved in the review timeline with your reason.</li>
+                            </ul>
+                        </div>
+
+                        <div class="mb-2">
+                            <label class="form-label text-secondary small fw-semibold mb-1">New status</label>
+                            <select class="form-select form-select-dark" @bind="overrideStatus">
+                                @foreach (var status in OverrideStatuses)
+                                {
+                                    <option value="@status" disabled="@(status == submission.Status)">@status@(status == submission.Status ? " (current)" : "")</option>
+                                }
+                            </select>
+                        </div>
+
+                        <div class="mb-2">
+                            <label class="form-label text-secondary small fw-semibold mb-1">Reason (required)</label>
+                            <textarea class="form-control form-control-dark" rows="2" placeholder="Why is this changed outside Slack?"
+                                      @bind="overrideReason" @bind:event="oninput"></textarea>
+                        </div>
+
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="overrideConfirm" @bind="overrideConfirmed" />
+                            <label class="form-check-label text-white-50 small" for="overrideConfirm">
+                                I understand this bypasses the Slack review
+                            </label>
+                        </div>
+
+                        <button class="btn btn-outline-warning btn-sm" disabled="@(!CanOverride)" @onclick="OverrideStatusAsync">
+                            <i class="bi bi-exclamation-triangle me-1"></i> Override status
+                        </button>
+
+                        @if (overrideError != null)
+                        {
+                            <div class="text-danger small mt-2">@overrideError</div>
+                        }
                     </div>
-
-                    <div class="mb-2">
-                        <label class="form-label text-secondary small fw-semibold mb-1">New status</label>
-                        <select class="form-select form-select-dark" @bind="overrideStatus">
-                            @foreach (var status in OverrideStatuses)
-                            {
-                                <option value="@status" disabled="@(status == submission.Status)">@status@(status == submission.Status ? " (current)" : "")</option>
-                            }
-                        </select>
-                    </div>
-
-                    <div class="mb-2">
-                        <label class="form-label text-secondary small fw-semibold mb-1">Reason (required)</label>
-                        <textarea class="form-control form-control-dark" rows="2" placeholder="Why is this changed outside Slack?"
-                                  @bind="overrideReason" @bind:event="oninput"></textarea>
-                    </div>
-
-                    <div class="form-check mb-3">
-                        <input class="form-check-input" type="checkbox" id="overrideConfirm" @bind="overrideConfirmed" />
-                        <label class="form-check-label text-white-50 small" for="overrideConfirm">
-                            I understand this bypasses the Slack review
-                        </label>
-                    </div>
-
-                    <button class="btn btn-outline-warning btn-sm" disabled="@(!CanOverride)" @onclick="OverrideStatusAsync">
-                        <i class="bi bi-exclamation-triangle me-1"></i> Override status
-                    </button>
-
-                    @if (overrideError != null)
-                    {
-                        <div class="text-danger small mt-2">@overrideError</div>
-                    }
-                </div>
-            </details>
+                </details>
+            </AuthorizeView>
         </div>
     </div>
 }

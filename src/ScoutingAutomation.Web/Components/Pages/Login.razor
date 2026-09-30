@@ -1,0 +1,71 @@
+@page "/login"
+@layout LoginLayout
+@attribute [AllowAnonymous]
+@attribute [ExcludeFromInteractiveRouting]
+@inject AccessKeyService Keys
+@inject LoginAttemptLimiter Limiter
+@inject NavigationManager Navigation
+
+<PageTitle>Log in - Scouting Regional Game</PageTitle>
+
+<h1 class="h5 text-white text-center mb-3">Enter the access key</h1>
+
+<EditForm Model="Input" method="post" OnSubmit="LogInAsync" FormName="login">
+    <InputText type="password" class="form-control form-control-dark mb-2" @bind-Value="Input.Key"
+               placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="current-password" aria-label="Access key" autofocus />
+    @if (error != null)
+    {
+        <div class="text-danger small mb-2" role="alert">@error</div>
+    }
+    <button type="submit" class="btn btn-scout-primary w-100">Log in</button>
+</EditForm>
+
+<p class="text-muted small text-center mt-3 mb-0">Ask the organisation for the key.</p>
+
+@code {
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromQuery]
+    private string? ReturnUrl { get; set; }
+
+    [SupplyParameterFromForm]
+    private LoginInput Input { get; set; } = new();
+
+    private string? error;
+
+    // Already logged in, for example after a key change in another tab of this browser
+    private bool AlreadyLoggedIn => HttpMethods.IsGet(HttpContext.Request.Method) && HttpContext.User.Identity?.IsAuthenticated == true;
+
+    protected override void OnInitialized()
+    {
+        if (AlreadyLoggedIn) Navigation.NavigateTo(KeyAuth.SafeReturnUrl(ReturnUrl));
+    }
+
+    private async Task LogInAsync()
+    {
+        var client = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        if (Limiter.IsBlocked(client))
+        {
+            error = "Too many wrong keys. Wait a minute and try again.";
+            return;
+        }
+
+        var admin = Keys.IsAdminKey(Input.Key);
+        if (!admin && !Keys.IsAccessKey(Input.Key))
+        {
+            Limiter.RecordFailure(client);
+            error = "That key is not correct.";
+            return;
+        }
+
+        Limiter.Reset(client);
+        await KeyAuth.SignInAsync(HttpContext, Keys, admin);
+        Navigation.NavigateTo(KeyAuth.SafeReturnUrl(ReturnUrl));
+    }
+
+    private sealed class LoginInput
+    {
+        public string? Key { get; set; }
+    }
+}

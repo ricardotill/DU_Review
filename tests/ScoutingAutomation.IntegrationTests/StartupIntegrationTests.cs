@@ -23,7 +23,7 @@ public class StartupIntegrationTests : IClassFixture<WebApplicationFactory<Progr
     public async Task Production_ShouldServePagesAndHideHealthEndpoints()
     {
         await using var app = new TestApp(_factory, environment: "Production");
-        using var client = app.CreateClient();
+        using var client = await app.CreateLoggedInClientAsync();
 
         (await client.GetAsync("/")).StatusCode.Should().Be(HttpStatusCode.OK);
         (await client.GetAsync("/health")).StatusCode.Should().NotBe(HttpStatusCode.OK);
@@ -133,7 +133,7 @@ public class DefaultDatabaseIntegrationTests
                 ["ConnectionStrings:scoutingdb"] = "Host=localhost;Database=scoutingdb"
             }))
             {
-                using var client = app.CreateClient();
+                using var client = await app.CreateLoggedInClientAsync();
                 (await client.GetAsync("/")).StatusCode.Should().Be(HttpStatusCode.OK);
             }
 

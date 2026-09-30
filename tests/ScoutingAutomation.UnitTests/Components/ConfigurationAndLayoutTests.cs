@@ -44,7 +44,7 @@ public class ConfigurationPageTests : PageTestBase
 
         var cut = Render<Configuration>();
 
-        cut.Markup.Should().Contain("No reviewers configured");
+        cut.Markup.Should().Contain("No reviewers: all reactions are ignored.");
     }
 
     [Theory]

@@ -33,15 +33,17 @@ public class WorkflowEdgeCaseTests
             .ReturnsAsync(Array.Empty<Submission>());
     }
 
-    private SubmissionWorkflowService Create(ScoutingSettings? settings = null) => new(
-        _submissions.Object, _groups.Object, _assignments.Object, _parser.Object, _storage.Object, _slack.Object, _notifier.Object,
-        Options.Create(settings ?? new ScoutingSettings
+    private SubmissionWorkflowService Create(ScoutingSettings? settings = null)
+    {
+        var options = Options.Create(settings ?? new ScoutingSettings
         {
             SupportedExtensions = new List<string> { ".jpg" },
             Reviewers = new List<string> { "U_JURY" },
             ReviewStatusReactions = new ReviewStatusReactionsConfig { Approved = new List<string> { "thumbsup" } }
-        }),
-        NullLogger<SubmissionWorkflowService>.Instance);
+        });
+        return new(_submissions.Object, _groups.Object, _assignments.Object, _parser.Object, _storage.Object, _slack.Object, _notifier.Object,
+            TestRuntime.For(options), options, NullLogger<SubmissionWorkflowService>.Instance);
+    }
 
     [Theory]
     [InlineData(null)]
@@ -111,6 +113,40 @@ public class WorkflowEdgeCaseTests
         added.SlackMessageId.Should().NotBeNullOrWhiteSpace();
         added.FileSizeBytes.Should().Be(4);
         added.ContentType.Should().Be("application/octet-stream");
+    }
+
+    [Theory]
+    [InlineData("Tim de Vries", "Tim de Vries")]
+    [InlineData(null, null)]
+    public async Task Message_ShouldStoreTheSubmitterNameFetchedOncePerMessage(string? slackName, string? expected)
+    {
+        _groups.Setup(g => g.GetBySlackChannelIdAsync("C1", It.IsAny<CancellationToken>())).ReturnsAsync(_group);
+        _parser.Setup(p => p.Parse(It.IsAny<string>())).Returns(AssignmentParseResult.Succeeded(1));
+        _assignments.Setup(a => a.GetByNumberAsync(1, It.IsAny<CancellationToken>())).ReturnsAsync(new Assignment { Number = 1 });
+        _slack.Setup(s => s.IsConnected).Returns(true);
+        _slack.Setup(s => s.GetUserNameAsync("U_SCOUT", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(slackName == null ? SlackUserLookup.Failed("user_not_found") : SlackUserLookup.Found(slackName));
+        _slack.Setup(s => s.DownloadFileAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => new MemoryStream(new byte[] { 1 }));
+        _storage.Setup(s => s.SaveInitialFileAsync(_group.Name, It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("DWO 1.jpg");
+        var added = new List<Submission>();
+        _submissions.Setup(s => s.AddAsync(It.IsAny<Submission>(), It.IsAny<CancellationToken>())).Callback<Submission, CancellationToken>((s, _) => added.Add(s));
+
+        await Create().ProcessSlackMessageAsync(new SlackEventItemDto
+        {
+            Channel = "C1", User = "U_SCOUT", Text = "Opdracht 1", Ts = "1.0",
+            Files = new List<SlackFileItemDto> { new() { Name = "a.jpg", Size = 1 }, new() { Name = "b.jpg", Size = 1 } }
+        });
+
+        added.Should().HaveCount(2);
+        added.Should().AllSatisfy(s =>
+        {
+            s.Submitter.Should().Be("U_SCOUT");
+            s.SubmitterName.Should().Be(expected);
+            s.SubmitterDisplayName.Should().Be(expected ?? "U_SCOUT");
+        });
+        _slack.Verify(s => s.GetUserNameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

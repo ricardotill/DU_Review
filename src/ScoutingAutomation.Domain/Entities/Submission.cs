@@ -11,6 +11,12 @@ public class Submission
     public string SlackChannelId { get; set; } = string.Empty;
     public string SlackMessageId { get; set; } = string.Empty;
     public string Submitter { get; set; } = string.Empty;
+
+    /// <summary>The submitter's Slack name at the time of upload; null when it could not be fetched.</summary>
+    public string? SubmitterName { get; set; }
+
+    /// <summary>The name to show: the Slack name, or the member ID when there is none.</summary>
+    public string SubmitterDisplayName => string.IsNullOrWhiteSpace(SubmitterName) ? Submitter : SubmitterName;
     public string FileName { get; set; } = string.Empty;
     public string StoragePath { get; set; } = string.Empty;
     public long FileSizeBytes { get; set; }

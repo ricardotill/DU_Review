@@ -9,6 +9,9 @@ public record ProcessSlackMessageResult(bool Success, string Message, IReadOnlyL
     public IReadOnlyList<string> UnsupportedFiles { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string> FailedDownloads { get; init; } = Array.Empty<string>();
 
+    /// <summary>Names of the files saved in storage.</summary>
+    public IReadOnlyList<string> StoredFiles { get; init; } = Array.Empty<string>();
+
     public static ProcessSlackMessageResult Succeeded(IReadOnlyList<Guid> ids, string msg = "Processed successfully") =>
         new(true, msg, ids);
     public static ProcessSlackMessageResult Ignored(string reason) =>
@@ -33,6 +36,12 @@ public interface ISubmissionWorkflowService
 {
     Task<ProcessSlackMessageResult> ProcessSlackMessageAsync(SlackEventItemDto messageEvent, CancellationToken ct = default);
     Task<ProcessSlackReactionResult> ProcessSlackReactionAsync(SlackEventItemDto reactionEvent, CancellationToken ct = default);
+
+    /// <summary>
+    /// Handles a reviewer taking back a review emoji: re-reads the reactions still on the message and
+    /// applies the best remaining review, or makes the submission Pending again when none is left.
+    /// </summary>
+    Task<ProcessSlackReactionResult> ProcessSlackReactionRemovedAsync(SlackEventItemDto reactionEvent, CancellationToken ct = default);
 
     /// <summary>
     /// Processes a message read back from Slack's history: same rules as a live message,

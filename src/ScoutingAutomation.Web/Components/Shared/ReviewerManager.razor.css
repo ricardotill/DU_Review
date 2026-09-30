@@ -1,0 +1,18 @@
+.reviewer-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.reviewer {
+    padding: 0.35rem 0.6rem;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-color);
+    font-size: 0.9rem;
+    min-width: 0;
+}
+
+.reviewer-name {
+    min-width: 0;
+}

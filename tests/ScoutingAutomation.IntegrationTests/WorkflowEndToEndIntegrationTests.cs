@@ -65,6 +65,7 @@ public class WorkflowEndToEndIntegrationTests : IDisposable
             _fileStorage,
             slackClient,
             new SubmissionChangeNotifier(NullLogger<SubmissionChangeNotifier>.Instance),
+            new RuntimeSettingsService(scoutingOptions, NullLogger<RuntimeSettingsService>.Instance),
             scoutingOptions,
             NullLogger<SubmissionWorkflowService>.Instance
         );

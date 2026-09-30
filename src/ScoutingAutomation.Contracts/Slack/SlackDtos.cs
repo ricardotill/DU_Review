@@ -97,6 +97,55 @@ public class SlackHistoryResponseDto
     public SlackResponseMetadataDto? ResponseMetadata { get; set; }
 }
 
+/// <summary>
+/// Response of reactions.get: the message with its current reactions.
+/// </summary>
+public class SlackReactionsResponseDto
+{
+    [JsonPropertyName("ok")]
+    public bool Ok { get; set; }
+
+    [JsonPropertyName("error")]
+    public string? Error { get; set; }
+
+    [JsonPropertyName("message")]
+    public SlackEventItemDto? Message { get; set; }
+}
+
+/// <summary>Response of users.info.</summary>
+public class SlackUserInfoResponseDto
+{
+    [JsonPropertyName("ok")]
+    public bool Ok { get; set; }
+
+    [JsonPropertyName("error")]
+    public string? Error { get; set; }
+
+    [JsonPropertyName("user")]
+    public SlackUserDto? User { get; set; }
+}
+
+public class SlackUserDto
+{
+    [JsonPropertyName("name")]
+    public string? Name { get; set; }
+
+    [JsonPropertyName("real_name")]
+    public string? RealName { get; set; }
+
+    [JsonPropertyName("profile")]
+    public SlackUserProfileDto? Profile { get; set; }
+}
+
+public class SlackUserProfileDto
+{
+    [JsonPropertyName("display_name")]
+    public string? DisplayName { get; set; }
+
+    [JsonPropertyName("real_name")]
+    public string? RealName { get; set; }
+}
+
 public class SlackResponseMetadataDto
 {
     [JsonPropertyName("next_cursor")]

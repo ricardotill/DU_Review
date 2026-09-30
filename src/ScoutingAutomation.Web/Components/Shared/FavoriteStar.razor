@@ -1,0 +1,45 @@
+@implements IDisposable
+@inject FavoritesService Favorites
+
+<button type="button" class="favorite-star @(isFavorite ? "is-favorite" : "") @(full ? "is-full" : "")"
+        aria-pressed="@(isFavorite ? "true" : "false")" aria-label="@Label" title="@Label"
+        disabled="@(!Favorites.IsLoaded)" @onclick="Toggle" @onclick:stopPropagation="true" @onclick:preventDefault="true">
+    <i class="bi @(isFavorite ? "bi-star-fill" : "bi-star")"></i>
+</button>
+
+@code {
+    [Parameter, EditorRequired]
+    public Submission Submission { get; set; } = default!;
+
+    private bool isFavorite;
+    private bool full;
+
+    private string Label => full
+        ? $"Favorites are full ({FavoritesService.MaxFavorites}); remove one first"
+        : isFavorite ? "Remove from favorites" : "Add to favorites";
+
+    protected override void OnInitialized() => Favorites.Changed += OnChanged;
+
+    protected override void OnParametersSet() => isFavorite = Favorites.IsFavorite(Submission);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await Favorites.EnsureLoadedAsync();
+        }
+    }
+
+    private async Task Toggle()
+    {
+        full = !await Favorites.ToggleAsync(Submission);
+    }
+
+    private void OnChanged() => InvokeAsync(() =>
+    {
+        isFavorite = Favorites.IsFavorite(Submission);
+        StateHasChanged();
+    });
+
+    public void Dispose() => Favorites.Changed -= OnChanged;
+}

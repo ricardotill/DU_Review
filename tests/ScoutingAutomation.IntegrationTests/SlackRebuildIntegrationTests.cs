@@ -71,7 +71,7 @@ public class SlackRebuildIntegrationTests : IClassFixture<WebApplicationFactory<
 
         // A live upload arrives meanwhile: it must wait for the rebuild, not be lost or wiped
         var liveTs = Ts(900);
-        var liveEvent = SignedEvent(JsonSerializer.Serialize(new
+        var liveEvent = TestApp.SignedSlackRequest(Secret, JsonSerializer.Serialize(new
         {
             type = "event_callback",
             @event = new
@@ -106,16 +106,8 @@ public class SlackRebuildIntegrationTests : IClassFixture<WebApplicationFactory<
         File.Exists(Path.Combine(progress.BackupFolder!, "de-bosuilen", "DBU 1.jpg")).Should().BeTrue("the earlier file was backed up");
         File.Exists(earlierPath).Should().BeFalse();
 
-        (await client.GetStringAsync("/configuration")).Should().Contain("Rebuild from Slack");
-    }
-
-    private static HttpRequestMessage SignedEvent(string body)
-    {
-        var ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
-        var request = new HttpRequestMessage(HttpMethod.Post, "/api/slack/events") { Content = new StringContent(body, Encoding.UTF8, "application/json") };
-        request.Headers.Add("X-Slack-Request-Timestamp", ts);
-        request.Headers.Add("X-Slack-Signature", SlackRequestVerifier.ComputeSignature(Secret, ts, Encoding.UTF8.GetBytes(body)));
-        return request;
+        using var admin = await _app.CreateLoggedInClientAsync(admin: true);
+        (await admin.GetStringAsync("/configuration")).Should().Contain("Rebuild from Slack");
     }
 
     public async Task DisposeAsync() => await _app.DisposeAsync();

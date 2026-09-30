@@ -48,6 +48,8 @@ public class ScoutingDbContext : DbContext
             entity.Property(s => s.FileName).IsRequired().HasMaxLength(260);
             entity.Property(s => s.StoragePath).IsRequired().HasMaxLength(500);
             entity.Property(s => s.Submitter).IsRequired().HasMaxLength(100);
+            entity.Property(s => s.SubmitterName).HasMaxLength(100);
+            entity.Ignore(s => s.SubmitterDisplayName);
             entity.Property(s => s.ContentType).HasMaxLength(100);
             entity.Property(s => s.Status).HasConversion<string>();
 

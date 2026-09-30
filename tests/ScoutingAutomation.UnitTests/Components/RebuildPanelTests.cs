@@ -89,6 +89,23 @@ public class RebuildPanelTests : BunitContext
     }
 
     [Fact]
+    public void FailedChannels_ShouldBeListedWithAdvice()
+    {
+        _service.Publish(new RebuildProgress
+        {
+            State = RebuildState.Failed,
+            Error = "1 channel(s) could not be read; nothing was changed",
+            ChannelProblems = new[] { new RebuildChannelProblem("Wilo", "C07PF3EK20Z", "not_in_channel", "Invite the bot to this channel.") }
+        });
+
+        var cut = Render<RebuildPanel>();
+
+        var problem = cut.Find("ul.channel-problems li");
+        problem.TextContent.Should().Contain("Wilo").And.Contain("#C07PF3EK20Z").And.Contain("not_in_channel").And.Contain("Invite the bot");
+        cut.Markup.Should().Contain("Channels that could not be read (1)");
+    }
+
+    [Fact]
     public void Failed_ShouldShowErrorEvenWhenNoLongerAvailable()
     {
         _service.IsAvailable = false;

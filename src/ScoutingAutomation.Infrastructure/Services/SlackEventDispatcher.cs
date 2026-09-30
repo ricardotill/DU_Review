@@ -50,6 +50,12 @@ public class SlackEventDispatcher : ISlackEventDispatcher
             return await _workflowService.ProcessSlackReactionAsync(ev, ct);
         }
 
+        if (ev.Type == "reaction_removed")
+        {
+            _logger.LogInformation("Processing Slack reaction_removed '{Reaction}' in channel {Channel}", ev.Reaction, ev.Item?.Channel);
+            return await _workflowService.ProcessSlackReactionRemovedAsync(ev, ct);
+        }
+
         return null;
     }
 }

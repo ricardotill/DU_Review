@@ -53,18 +53,6 @@ public class ReviewPolicyTests
     };
 
     [Theory]
-    [InlineData("U_JURY", true)]
-    [InlineData("u_jury", true)]
-    [InlineData("U_SCOUT", false)]
-    [InlineData(null, false)]
-    [InlineData(" ", false)]
-    public void IsReviewer(string? user, bool expected) => ReviewPolicy.IsReviewer(Settings, user).Should().Be(expected);
-
-    [Fact]
-    public void IsReviewer_WithoutReviewerList_ShouldBeFalse() =>
-        ReviewPolicy.IsReviewer(new ScoutingSettings { Reviewers = null! }, "U_JURY").Should().BeFalse();
-
-    [Theory]
     [InlineData(":THUMBSUP:", SubmissionStatus.Approved)]
     [InlineData("x", SubmissionStatus.Rejected)]
     [InlineData("heart", SubmissionStatus.Awesome)]
@@ -169,7 +157,10 @@ public class SlackHistoryClientTests
     {
         var act = () => Create(new FakeHttpHandler(_ => Json(response))).GetChannelMessagesAsync("C1", DateTimeOffset.UnixEpoch);
 
-        (await act.Should().ThrowAsync<InvalidOperationException>()).WithMessage($"*conversations.history*{reason}*");
+        var error = (await act.Should().ThrowAsync<SlackApiException>()).Which;
+        error.Method.Should().Be("conversations.history");
+        error.Error.Should().Be(reason);
+        error.Message.Should().Be($"Slack conversations.history failed: {reason}");
     }
 }
 

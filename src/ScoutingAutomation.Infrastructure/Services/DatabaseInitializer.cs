@@ -28,6 +28,31 @@ public class DatabaseInitializer
         _logger = logger;
     }
 
+    /// <summary>
+    /// EnsureCreated does not change an existing database, so columns added later are added here.
+    /// </summary>
+    private async Task AddMissingColumnsAsync(CancellationToken ct)
+    {
+        if (!_context.Database.IsRelational()) return;
+
+        if (_context.Database.IsSqlite())
+        {
+            var exists = await _context.Database
+                .SqlQueryRaw<long>("SELECT COUNT(*) AS \"Value\" FROM pragma_table_info('Submissions') WHERE name = 'SubmitterName'")
+                .SingleAsync(ct);
+            if (exists == 0)
+            {
+                await _context.Database.ExecuteSqlRawAsync("ALTER TABLE \"Submissions\" ADD COLUMN \"SubmitterName\" TEXT NULL", ct);
+                _logger.LogInformation("Added column SubmitterName to Submissions");
+            }
+        }
+        else if (_context.Database.IsNpgsql())
+        {
+            await _context.Database.ExecuteSqlRawAsync(
+                "ALTER TABLE \"Submissions\" ADD COLUMN IF NOT EXISTS \"SubmitterName\" character varying(100) NULL", ct);
+        }
+    }
+
     public async Task InitializeAsync(CancellationToken ct = default)
     {
         _logger.LogInformation("Starting database initialization and synchronization...");
@@ -35,6 +60,7 @@ public class DatabaseInitializer
         try
         {
             await _context.Database.EnsureCreatedAsync(ct);
+            await AddMissingColumnsAsync(ct);
         }
         catch (Exception ex)
         {

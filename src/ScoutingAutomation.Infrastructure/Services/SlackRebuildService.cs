@@ -18,6 +18,9 @@ public enum RebuildState
     Failed
 }
 
+/// <summary>A group channel that could not be read from Slack, and what to do about it.</summary>
+public sealed record RebuildChannelProblem(string Group, string ChannelId, string Error, string Advice);
+
 /// <summary>A message that was not imported, or whose review needs attention.</summary>
 public sealed record RebuildIssue(string Group, DateTimeOffset PostedAt, string Reason, string? Text);
 
@@ -39,6 +42,7 @@ public sealed record RebuildProgress
     public int ReviewsApplied { get; init; }
     public IReadOnlyList<RebuildIssue> Skipped { get; init; } = Array.Empty<RebuildIssue>();
     public IReadOnlyList<RebuildIssue> Conflicts { get; init; } = Array.Empty<RebuildIssue>();
+    public IReadOnlyList<RebuildChannelProblem> ChannelProblems { get; init; } = Array.Empty<RebuildChannelProblem>();
     public string? BackupFolder { get; init; }
     public string? Error { get; init; }
 }
@@ -71,6 +75,7 @@ public class SlackRebuildService : ISlackRebuildService
     private readonly SlackProcessingGate _gate;
     private readonly IFileStorageService _storage;
     private readonly ISubmissionChangeNotifier _changeNotifier;
+    private readonly RuntimeSettingsService _runtime;
     private readonly ILogger<SlackRebuildService> _logger;
     private readonly object _lock = new();
 
@@ -80,6 +85,7 @@ public class SlackRebuildService : ISlackRebuildService
         SlackProcessingGate gate,
         IFileStorageService storage,
         ISubmissionChangeNotifier changeNotifier,
+        RuntimeSettingsService runtime,
         ILogger<SlackRebuildService> logger)
     {
         _scopeFactory = scopeFactory;
@@ -87,6 +93,7 @@ public class SlackRebuildService : ISlackRebuildService
         _gate = gate;
         _storage = storage;
         _changeNotifier = changeNotifier;
+        _runtime = runtime;
         _logger = logger;
     }
 
@@ -150,14 +157,30 @@ public class SlackRebuildService : ISlackRebuildService
         var workflow = services.GetRequiredService<ISubmissionWorkflowService>();
         var history = services.GetRequiredService<ISlackHistoryClient>();
 
-        // 1. Read everything first: if Slack fails, nothing has been touched yet
+        // 1. Read every channel first: if any fails, nothing has been touched yet
         Update(p => p with { Step = "Reading Slack", ChannelsTotal = groups.Count });
         var messages = new List<(Group Group, SlackEventItemDto Message)>();
+        var problems = new List<RebuildChannelProblem>();
         foreach (var group in groups)
         {
-            var channelMessages = await history.GetChannelMessagesAsync(group.SlackChannelId, since);
-            messages.AddRange(channelMessages.Select(m => (group, m)));
-            Update(p => p with { ChannelsRead = p.ChannelsRead + 1, MessagesFound = messages.Count });
+            try
+            {
+                var channelMessages = await history.GetChannelMessagesAsync(group.SlackChannelId, since);
+                messages.AddRange(channelMessages.Select(m => (group, m)));
+                Update(p => p with { ChannelsRead = p.ChannelsRead + 1, MessagesFound = messages.Count });
+            }
+            catch (Exception ex) when (ex is SlackApiException or HttpRequestException)
+            {
+                var error = ex is SlackApiException slack ? slack.Error : ex.Message;
+                _logger.LogError(ex, "Could not read Slack channel {Channel} of group {Group}: {Error}", group.SlackChannelId, group.Name, error);
+                problems.Add(new RebuildChannelProblem(group.Name, group.SlackChannelId, error, AdviceFor(error)));
+            }
+        }
+
+        if (problems.Count > 0)
+        {
+            Update(p => p with { ChannelProblems = problems });
+            throw new InvalidOperationException($"{problems.Count} channel(s) could not be read; nothing was changed");
         }
 
         // 2. Back up and clear the current data
@@ -212,12 +235,21 @@ public class SlackRebuildService : ISlackRebuildService
         }
     }
 
+    private static string AdviceFor(string error) => error switch
+    {
+        "not_in_channel" => "Invite the bot to this channel: type /invite @DU Review in it.",
+        "channel_not_found" => "Check this channel ID under Groups in appsettings.json. For a private channel, the bot must be a member.",
+        "missing_scope" => "The Slack app lacks channels:history or groups:history. Add the permission and reinstall the app.",
+        "invalid_auth" or "not_authed" or "token_revoked" or "account_inactive" => "The bot token is not valid. Copy the Bot User OAuth Token again.",
+        _ => "See the app log for details, and check the channel in Slack."
+    };
+
     /// <summary>Messages that could be submissions: from people, with files, not from reviewers.</summary>
     private bool IsCandidate(SlackEventItemDto message) =>
         message.BotId == null
         && message.Subtype is null or "file_share" or "thread_broadcast"
         && message.Files is { Count: > 0 }
-        && !ReviewPolicy.IsReviewer(_options.Value, message.User);
+        && !_runtime.IsReviewer(message.User);
 
     private static IEnumerable<RebuildIssue> Issues(Group group, SlackEventItemDto message, ProcessSlackMessageResult result)
     {
@@ -246,7 +278,7 @@ public class SlackRebuildService : ISlackRebuildService
         var export = submissions.Select(s => new
         {
             s.Id, Group = s.Group?.Name, s.GroupId, s.AssignmentNumber, Status = s.Status.ToString(), s.FileName, s.StoragePath,
-            s.ContentType, s.FileSizeBytes, s.Submitter, s.SlackChannelId, s.SlackMessageId, s.MessageText, s.UnresolvedReason,
+            s.ContentType, s.FileSizeBytes, s.Submitter, s.SubmitterName, s.SlackChannelId, s.SlackMessageId, s.MessageText, s.UnresolvedReason,
             s.CreatedAt, s.UpdatedAt,
             Reviews = s.Reviews.Select(r => new { r.Reviewer, Status = r.Status.ToString(), r.ReactionEmoji, r.Notes, r.CreatedAt })
         });

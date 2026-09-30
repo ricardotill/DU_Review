@@ -32,6 +32,8 @@ public sealed class TestApp : IAsyncDisposable
             builder.UseSetting("ConnectionStrings:scoutingdb", $"Data Source={_dbPath}");
             builder.UseSetting("Scouting:StorageRoot", StorageRoot);
             builder.UseSetting("Scouting:AssignmentPointsFile", PointsFile);
+            builder.UseSetting("Scouting:RuntimeSettingsFile", Path.Combine(StorageRoot, "runtime-settings.json"));
+            builder.UseSetting("Scouting:KeysFile", Path.Combine(StorageRoot, "access-keys.json"));
             builder.UseSetting("Scouting:Slack:SimulationMode", "true");
             foreach (var (key, value) in settings ?? new Dictionary<string, string?>())
             {
@@ -81,7 +83,33 @@ public sealed class TestApp : IAsyncDisposable
 
     public string StorageRoot { get; }
 
+    public const string AccessKey = "TEST-ACCESS-KEY";
+    public const string AdminKey = "TEST-ADMIN-KEY";
+
     public HttpClient CreateClient() => Factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+
+    /// <summary>A client logged in the way a browser does: through the login form.</summary>
+    public async Task<HttpClient> CreateLoggedInClientAsync(bool admin = false)
+    {
+        var client = CreateClient();
+        var response = await PostFormAsync(client, "/login", "login", new() { ["Input.Key"] = admin ? AdminKey : AccessKey });
+        if (response.StatusCode != System.Net.HttpStatusCode.Redirect)
+        {
+            throw new InvalidOperationException($"Login failed: {response.StatusCode}");
+        }
+
+        return client;
+    }
+
+    /// <summary>Opens a page and posts one of its forms, with the page's antiforgery token.</summary>
+    public static async Task<HttpResponseMessage> PostFormAsync(HttpClient client, string page, string formName, Dictionary<string, string> fields)
+    {
+        var html = await client.GetStringAsync(page);
+        var token = System.Text.RegularExpressions.Regex.Match(html, "name=\"__RequestVerificationToken\"[^>]*value=\"([^\"]+)\"").Groups[1].Value;
+        fields["__RequestVerificationToken"] = token;
+        fields["_handler"] = formName;
+        return await client.PostAsync(page, new FormUrlEncodedContent(fields));
+    }
 
     public T Get<T>(Func<IServiceProvider, T> query)
     {
@@ -97,6 +125,20 @@ public sealed class TestApp : IAsyncDisposable
 
     public static Task<HttpResponseMessage> PostEventAsync(HttpClient client, object envelope) =>
         client.PostAsJsonAsync("/api/slack/events", envelope);
+
+    /// <summary>A webhook request signed the way Slack signs it, for apps running in live mode.</summary>
+    public static HttpRequestMessage SignedSlackRequest(string signingSecret, string body)
+    {
+        var ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/slack/events")
+        {
+            Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json")
+        };
+        request.Headers.Add("X-Slack-Request-Timestamp", ts);
+        request.Headers.Add("X-Slack-Signature",
+            Infrastructure.Services.SlackRequestVerifier.ComputeSignature(signingSecret, ts, System.Text.Encoding.UTF8.GetBytes(body)));
+        return request;
+    }
 
     public async ValueTask DisposeAsync()
     {

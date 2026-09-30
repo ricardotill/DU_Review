@@ -127,6 +127,9 @@ public class InProgressStateTests : PageTestBase
         public Task<ProcessSlackMessageResult> ImportSlackMessageAsync(SlackEventItemDto message, CancellationToken ct = default) =>
             inner.ImportSlackMessageAsync(message, ct);
 
+        public Task<ProcessSlackReactionResult> ProcessSlackReactionRemovedAsync(SlackEventItemDto e, CancellationToken ct = default) =>
+            inner.ProcessSlackReactionRemovedAsync(e, ct);
+
         public Task<ImportedReviewResult> ApplyImportedReactionsAsync(string channelId, string messageTs, IReadOnlyList<SlackMessageReactionDto>? reactions, CancellationToken ct = default) =>
             inner.ApplyImportedReactionsAsync(channelId, messageTs, reactions, ct);
     }

@@ -94,7 +94,7 @@ public class SlackHistoryClient : ISlackHistoryClient
             var page = await response.Content.ReadFromJsonAsync<SlackHistoryResponseDto>(ct);
             if (page is not { Ok: true })
             {
-                throw new InvalidOperationException($"Slack {method} failed: {page?.Error ?? "unknown"}");
+                throw new SlackApiException(method, page?.Error ?? "unknown");
             }
 
             return page;

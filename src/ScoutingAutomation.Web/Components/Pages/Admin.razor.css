@@ -1,0 +1,13 @@
+.admin-card {
+    max-width: 480px;
+}
+
+.access-key {
+    padding: 0.6rem 0.8rem;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.35);
+    color: #fbbf24;
+    font-size: 1.15rem;
+    letter-spacing: 0.08em;
+    user-select: all;
+}

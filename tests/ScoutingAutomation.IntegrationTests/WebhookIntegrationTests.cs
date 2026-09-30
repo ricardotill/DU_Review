@@ -82,7 +82,8 @@ public class WebhookIntegrationTests : IClassFixture<WebApplicationFactory<Progr
         var stats = await _app.GetAsync(sp => sp.GetRequiredService<ISubmissionRepository>().GetStatisticsAsync());
         stats.AssignmentStatistics.Single(a => a.AssignmentNumber == 12).AwesomeCount.Should().Be(1);
 
-        var page = await _client.GetStringAsync("/assignments/12");
+        using var browser = await _app.CreateLoggedInClientAsync();
+        var page = await browser.GetStringAsync("/assignments/12");
         page.Should().Contain("DPV 12.jpg");
     }
 

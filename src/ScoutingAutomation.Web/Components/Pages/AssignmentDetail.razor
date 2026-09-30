@@ -70,7 +70,8 @@ else
                         @foreach (var sub in result.Submissions)
                         {
                             var counts = sub.Id == result.CountingSubmissionId;
-                            <a href="submissions/@sub.Id" class="submission-row @(counts ? "counts" : "") text-decoration-none">
+                            <div class="d-flex align-items-center gap-1">
+                            <a href="submissions/@sub.Id" class="submission-row flex-grow-1 min-w-0 @(counts ? "counts" : "") text-decoration-none">
                                 <div class="thumb">
                                     @if (sub.ContentType.StartsWith("image/"))
                                     {
@@ -83,7 +84,7 @@ else
                                 </div>
                                 <div class="flex-grow-1 min-w-0">
                                     <div class="fw-semibold text-white text-truncate">@Path.GetFileName(sub.StoragePath)</div>
-                                    <div class="text-muted small text-truncate">@sub.Submitter · @sub.CreatedAt.ToLocalTime().ToString("g")</div>
+                                    <div class="text-muted small text-truncate">@sub.SubmitterDisplayName · @sub.CreatedAt.ToLocalTime().ToString("g")</div>
                                 </div>
                                 <div class="d-flex flex-column align-items-end gap-1 flex-shrink-0">
                                     <StatusBadge Status="@sub.Status" />
@@ -93,6 +94,8 @@ else
                                     }
                                 </div>
                             </a>
+                            <FavoriteStar Submission="sub" />
+                            </div>
                         }
                     </div>
                 </div>

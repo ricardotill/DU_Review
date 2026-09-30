@@ -1,6 +1,7 @@
 @inherits LayoutComponentBase
 @inject IOptions<ScoutingSettings> ScoutingOptions
 @inject SlackConnectionStatus ConnectionStatus
+@inject RuntimeSettingsService Runtime
 
 <div class="page" style="min-height: 100vh; background-color: var(--bg-main);">
     <div class="sidebar">
@@ -9,6 +10,18 @@
 
     <main class="flex-grow-1" style="background-color: var(--bg-main); min-height: 100vh; overflow-y: auto;">
         <div class="top-row px-4 d-flex justify-content-between align-items-center" style="background: rgba(12, 17, 23, 0.7); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border-color); height: 3.5rem;">
+            <div class="d-flex align-items-center gap-2">
+            <AuthorizeView Roles="@KeyAuth.AdminRole">
+                <a href="admin" class="badge badge-rejected text-decoration-none" title="Admin mode: admin-only actions are available">
+                    <i class="bi bi-shield-lock-fill me-1"></i> Admin
+                </a>
+            </AuthorizeView>
+            @if (Runtime.ManualMode)
+            {
+                <a href="" class="badge badge-pending text-decoration-none" title="Files are only downloaded and named">
+                    <i class="bi bi-cone-striped me-1"></i> Manual mode
+                </a>
+            }
             @if (ScoutingOptions.Value.Slack.SimulationMode)
             {
                 <span class="badge badge-pending" title="No messages are sent to Slack">
@@ -27,6 +40,7 @@
                     <span class="live-dot me-1"></span> Connected to Slack
                 </span>
             }
+            </div>
         </div>
 
         <article class="content px-4 py-4" style="max-width: 1400px; margin: 0 auto;">

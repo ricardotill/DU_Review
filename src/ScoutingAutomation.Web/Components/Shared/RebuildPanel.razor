@@ -74,6 +74,22 @@
                             }
                         </dl>
 
+                        @if (progress.ChannelProblems.Count > 0)
+                        {
+                            <div class="fw-semibold text-danger mt-3 mb-1">Channels that could not be read (@progress.ChannelProblems.Count)</div>
+                            <ul class="list-unstyled mb-0 d-flex flex-column gap-2 channel-problems">
+                                @foreach (var problem in progress.ChannelProblems)
+                                {
+                                    <li>
+                                        <span class="text-white fw-semibold">@problem.Group</span>
+                                        <span class="font-monospace text-muted">#@problem.ChannelId</span>
+                                        · <code>@problem.Error</code>
+                                        <div class="text-white-50">@problem.Advice</div>
+                                    </li>
+                                }
+                            </ul>
+                        }
+
                         @if (progress.Conflicts.Count > 0)
                         {
                             <div class="fw-semibold text-warning mt-3 mb-1">Reviewers disagreed (@progress.Conflicts.Count)</div>

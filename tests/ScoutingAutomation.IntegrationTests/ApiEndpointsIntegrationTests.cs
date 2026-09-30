@@ -23,6 +23,8 @@ public class ApiEndpointsIntegrationTests : IClassFixture<WebApplicationFactory<
         _client = factory.WithWebHostBuilder(builder =>
         {
             builder.ConfigureAppConfiguration((_, config) => TestApp.UseTestSettingsOnly(config));
+            builder.UseSetting("Scouting:KeysFile", Path.Combine(Path.GetTempPath(), $"scouting_keys_{Guid.NewGuid():N}.json"));
+            builder.UseSetting("Scouting:RuntimeSettingsFile", Path.Combine(Path.GetTempPath(), $"scouting_rt_{Guid.NewGuid():N}.json"));
             builder.UseSetting("UseSqlite", "true");
             builder.UseSetting("ConnectionStrings:scoutingdb", $"Data Source={_testDbPath}");
             builder.UseSetting("Scouting:StorageRoot", _testStorageDir);
@@ -80,15 +82,15 @@ public class ApiEndpointsIntegrationTests : IClassFixture<WebApplicationFactory<
     }
 
     [Fact]
-    public async Task HomePage_ShouldReturnSuccessStatusCode()
+    public async Task HomePage_WithoutLogin_ShouldRedirectToLogin()
     {
         // Act
         var response = await _client.GetAsync("/");
-        var body = await response.Content.ReadAsStringAsync();
 
-        // Assert
-        response.StatusCode.Should().Be(HttpStatusCode.OK, because: body);
-        response.Content.Headers.ContentType?.MediaType.Should().Be("text/html");
+        // Assert: the default client follows the redirect to the login page
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.RequestMessage!.RequestUri!.AbsolutePath.Should().Be("/login");
+        (await response.Content.ReadAsStringAsync()).Should().Contain("Enter the access key");
     }
 
     public void Dispose()

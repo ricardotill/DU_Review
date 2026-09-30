@@ -24,9 +24,12 @@ public class SlackInputVariationTests
     private readonly Mock<ISlackClient> _slack = new();
     private readonly Group _group = new() { Name = "G", Abbreviation = "G", SlackChannelId = "C1" };
 
-    private SubmissionWorkflowService Create(ScoutingSettings settings) => new(
-        _submissions.Object, _groups.Object, _assignments.Object, _parser.Object, Mock.Of<IFileStorageService>(), _slack.Object,
-        Mock.Of<ISubmissionChangeNotifier>(), Options.Create(settings), NullLogger<SubmissionWorkflowService>.Instance);
+    private SubmissionWorkflowService Create(ScoutingSettings settings)
+    {
+        var options = Options.Create(settings);
+        return new(_submissions.Object, _groups.Object, _assignments.Object, _parser.Object, Mock.Of<IFileStorageService>(), _slack.Object,
+            Mock.Of<ISubmissionChangeNotifier>(), TestRuntime.For(options), options, NullLogger<SubmissionWorkflowService>.Instance);
+    }
 
     private void GroupAndAssignmentExist()
     {

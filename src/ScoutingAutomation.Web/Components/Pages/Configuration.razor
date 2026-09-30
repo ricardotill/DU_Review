@@ -4,6 +4,7 @@
 @inject IGroupRepository GroupRepository
 @inject IAssignmentRepository AssignmentRepository
 @inject SlackConnectionStatus ConnectionStatus
+@inject RuntimeSettingsService Runtime
 
 <PageTitle>Configuration - Scouting Regional Game</PageTitle>
 
@@ -54,23 +55,7 @@
         <div class="glass-panel p-4 h-100">
             <h2 class="panel-title"><i class="bi bi-hand-thumbs-up-fill text-warning"></i> Reviewing in Slack</h2>
 
-            <div class="field-label">Reviewers</div>
-            <div class="d-flex flex-wrap gap-1 mb-1">
-                @foreach (var reviewer in options.Reviewers)
-                {
-                    <span class="badge bg-secondary font-monospace">@reviewer</span>
-                }
-            </div>
-            <div class="stat-caption mb-3">
-                @if (options.Reviewers.Count == 0)
-                {
-                    <span class="text-danger">No reviewers configured: all reactions are ignored.</span>
-                }
-                else
-                {
-                    <span>Only reactions from these Slack users count. Their own messages are never submissions.</span>
-                }
-            </div>
+            <ReviewerManager />
 
             <div class="d-flex flex-column gap-2">
                 @foreach (var (label, badge, folder, emojis) in ReactionRows)
@@ -156,6 +141,11 @@
                 <dd class="font-monospace small text-break">@options.AssignmentPointsFile</dd>
                 <dt>Assignments</dt>
                 <dd>@assignmentCount loaded</dd>
+                <dt>Manual mode</dt>
+                <dd>
+                    @(Runtime.ManualMode ? "On" : "Off")
+                    <span class="text-muted small ms-1">default @(options.ManualMode ? "on" : "off"); switch it on the dashboard</span>
+                </dd>
                 <dt>Slack mode</dt>
                 <dd>
                     @if (options.Slack.SimulationMode)
@@ -238,7 +228,17 @@
 </div>
 
 <div class="mt-4">
-    <RebuildPanel />
+    <AuthorizeView Roles="@KeyAuth.AdminRole">
+        <Authorized>
+            <RebuildPanel />
+        </Authorized>
+        <NotAuthorized>
+            <div class="glass-panel p-4">
+                <h2 class="panel-title"><i class="bi bi-arrow-repeat text-warning"></i> Rebuild from Slack</h2>
+                <p class="text-secondary small mb-0">Only admins can rebuild. <a href="admin">Switch to admin mode</a>.</p>
+            </div>
+        </NotAuthorized>
+    </AuthorizeView>
 </div>
 
 @code {

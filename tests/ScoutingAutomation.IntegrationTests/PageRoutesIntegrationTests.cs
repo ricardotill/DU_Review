@@ -21,10 +21,9 @@ public class PageRoutesIntegrationTests : IClassFixture<WebApplicationFactory<Pr
         _app = new TestApp(factory);
     }
 
-    public Task InitializeAsync()
+    public async Task InitializeAsync()
     {
-        _client = _app.CreateClient();
-        return Task.CompletedTask;
+        _client = await _app.CreateLoggedInClientAsync();
     }
 
     private async Task<string> GetPageAsync(string url)

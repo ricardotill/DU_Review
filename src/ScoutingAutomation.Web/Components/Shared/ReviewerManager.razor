@@ -1,0 +1,153 @@
+@implements IDisposable
+@inject RuntimeSettingsService Runtime
+@inject ReviewerNameFetcher NameFetcher
+
+<div class="d-flex justify-content-between align-items-center mb-1">
+    <div class="field-label mb-0">Reviewers</div>
+    @if (NameFetcher.CanFetch)
+    {
+        <AuthorizeView Roles="@KeyAuth.AdminRole">
+            <button type="button" class="btn btn-sm btn-link text-secondary p-0 fetch-names" disabled="@fetching" @onclick="FetchAll">
+                <i class="bi bi-arrow-repeat me-1"></i>@(fetching ? "Fetching…" : "Fetch names from Slack")
+            </button>
+        </AuthorizeView>
+    }
+</div>
+
+<ul class="list-unstyled reviewer-list mb-1">
+    @foreach (var reviewer in Runtime.AllReviewers)
+    {
+        var configured = Runtime.ConfiguredReviewers.Contains(reviewer);
+        <li class="reviewer d-flex align-items-center gap-2">
+            @if (editing == reviewer)
+            {
+                <form class="d-flex gap-1 flex-grow-1" @onsubmit="SaveName">
+                    <input type="text" class="form-control form-control-dark form-control-sm" maxlength="@RuntimeSettingsService.MaxNameLength"
+                           aria-label="Name of @reviewer" placeholder="Name" @bind="editName" @bind:event="oninput" />
+                    <button type="submit" class="btn btn-sm btn-scout-secondary" aria-label="Save name"><i class="bi bi-check-lg"></i></button>
+                    <button type="button" class="btn btn-sm btn-scout-secondary" aria-label="Cancel" @onclick="() => editing = null"><i class="bi bi-x-lg"></i></button>
+                </form>
+            }
+            else
+            {
+                <i class="bi @(configured ? "bi-lock-fill text-muted" : "bi-person-plus text-info")" title="@(configured ? "From appsettings.json" : "Added in the app")"></i>
+                <span class="reviewer-name text-white text-truncate">@(Runtime.NameOf(reviewer) ?? "no name")</span>
+                <span class="font-monospace text-muted small">@reviewer</span>
+                <AuthorizeView Roles="@KeyAuth.AdminRole">
+                    <span class="ms-auto d-flex gap-1">
+                        <button type="button" class="btn btn-sm btn-link text-secondary p-0 edit-name" aria-label="Edit name of @reviewer" @onclick="() => StartEdit(reviewer)">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        @if (!configured)
+                        {
+                            <button type="button" class="btn btn-sm btn-link text-danger p-0 remove-reviewer" aria-label="Remove @reviewer" @onclick="() => Runtime.RemoveReviewer(reviewer)">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        }
+                    </span>
+                </AuthorizeView>
+            }
+        </li>
+    }
+</ul>
+
+<div class="stat-caption mb-2">
+    @if (Runtime.AllReviewers.Count == 0)
+    {
+        <span class="text-danger">No reviewers: all reactions are ignored.</span>
+    }
+    else
+    {
+        <span>Only reactions from these Slack users count. Their own messages are never submissions.</span>
+    }
+</div>
+
+<AuthorizeView Roles="@KeyAuth.AdminRole">
+    <Authorized>
+        <form class="d-flex gap-2 mb-1" @onsubmit="Add">
+            <input type="text" class="form-control form-control-dark form-control-sm font-monospace" placeholder="Slack member ID, e.g. U04ABC123"
+                   aria-label="Slack member ID" @bind="newReviewer" @bind:event="oninput" />
+            <button type="submit" class="btn btn-sm btn-scout-secondary text-nowrap add-reviewer" disabled="@string.IsNullOrWhiteSpace(newReviewer)">
+                <i class="bi bi-person-plus me-1"></i> Add
+            </button>
+        </form>
+        <div class="stat-caption mb-3 reviewer-status">
+            @if (message != null)
+            {
+                <span class="@(messageIsProblem ? "text-danger" : "text-success")">@message</span>
+            }
+            else
+            {
+                <span>Added reviewers count right away and are kept after a restart. Reviewers with a lock are set in appsettings.json. A name you enter is never replaced by one from Slack.</span>
+            }
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        <div class="stat-caption mb-3">Only admins can add reviewers or change their names.</div>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private string newReviewer = "";
+    private string? editing;
+    private string editName = "";
+    private string? message;
+    private bool messageIsProblem;
+    private bool fetching;
+
+    protected override void OnInitialized() => Runtime.Changed += OnChanged;
+
+    private async Task Add()
+    {
+        var id = newReviewer.Trim();
+        var error = Runtime.AddReviewer(id);
+        if (error != null)
+        {
+            Show(error, problem: true);
+            return;
+        }
+
+        newReviewer = "";
+        var problem = NameFetcher.CanFetch ? await NameFetcher.FetchAsync(id) : null;
+        Show(problem ?? $"{Runtime.DisplayName(id)} is now a reviewer.", problem != null);
+    }
+
+    private void StartEdit(string reviewer)
+    {
+        editing = reviewer;
+        editName = Runtime.NameOf(reviewer) ?? "";
+    }
+
+    private void SaveName()
+    {
+        var error = Runtime.SetReviewerName(editing!, editName);
+        if (error != null)
+        {
+            Show(error, problem: true);
+            return;
+        }
+
+        editing = null;
+        message = null;
+    }
+
+    private async Task FetchAll()
+    {
+        fetching = true;
+        var result = await NameFetcher.FetchAllAsync();
+        fetching = false;
+
+        var summary = $"{result.Updated} name(s) fetched from Slack" + (result.KeptManual > 0 ? $", {result.KeptManual} kept as entered" : "") + ".";
+        Show(result.Problems.Count == 0 ? summary : $"{summary} {string.Join(" ", result.Problems)}", result.Problems.Count > 0);
+    }
+
+    private void Show(string text, bool problem)
+    {
+        message = text;
+        messageIsProblem = problem;
+    }
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Runtime.Changed -= OnChanged;
+}

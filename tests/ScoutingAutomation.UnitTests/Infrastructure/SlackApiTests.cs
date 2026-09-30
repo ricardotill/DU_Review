@@ -123,8 +123,51 @@ public class SlackClientTests
 
         (await client.AddReactionAsync("C1", "1.0", "warning")).Should().BeTrue();
         await client.PostThreadReplyAsync("C1", "1.0", "hallo");
+        (await client.GetReactionsAsync("C1", "1.0")).Should().BeNull("reactions cannot be read without Slack");
 
         handler.Requests.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task GetReactionsAsync_ShouldReturnCurrentReactions()
+    {
+        var handler = FakeHttpHandler.Json("""{"ok":true,"type":"message","message":{"ts":"1.0","reactions":[{"name":"thumbsup","users":["U_JURY"],"count":1}]}}""");
+
+        var reactions = await Create(handler).GetReactionsAsync("C1", "1.0");
+
+        reactions.Should().ContainSingle().Which.Users.Should().Equal("U_JURY");
+        var request = handler.Requests.Single().Request;
+        request.Method.Should().Be(HttpMethod.Get);
+        request.RequestUri!.AbsoluteUri.Should().Be("https://slack.com/api/reactions.get?channel=C1&timestamp=1.0&full=true");
+        request.Headers.Authorization!.ToString().Should().Be("Bearer xoxb-test");
+    }
+
+    [Theory]
+    [InlineData("""{"ok":true,"message":{"ts":"1.0"}}""")]
+    [InlineData("""{"ok":true}""")]
+    public async Task GetReactionsAsync_MessageWithoutReactions_ShouldBeEmpty(string response)
+    {
+        (await Create(FakeHttpHandler.Json(response)).GetReactionsAsync("C1", "1.0")).Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("""{"ok":false,"error":"message_not_found"}""", HttpStatusCode.OK)]
+    [InlineData("null", HttpStatusCode.OK)]
+    [InlineData("", HttpStatusCode.InternalServerError)]
+    public async Task GetReactionsAsync_Failure_ShouldReturnNull(string response, HttpStatusCode status)
+    {
+        (await Create(FakeHttpHandler.Json(response, status)).GetReactionsAsync("C1", "1.0")).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetReactionsAsync_Cancelled_ShouldThrow()
+    {
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+
+        var act = () => Create(FakeHttpHandler.Json("{}")).GetReactionsAsync("C1", "1.0", cancelled.Token);
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
     }
 
     [Fact]
@@ -215,12 +258,27 @@ public class SlackEventDispatcherTests
         result.Should().Be(expected);
     }
 
+    [Fact]
+    public async Task DispatchAsync_RemovedReaction_ShouldProcessRemoval()
+    {
+        var expected = ProcessSlackReactionResult.Ignored("y");
+        _workflow.Setup(w => w.ProcessSlackReactionRemovedAsync(It.IsAny<SlackEventItemDto>(), It.IsAny<CancellationToken>())).ReturnsAsync(expected);
+
+        var result = await Create().DispatchAsync(new SlackEventEnvelopeDto
+        {
+            Type = "event_callback",
+            Event = new SlackEventItemDto { Type = "reaction_removed", Reaction = "thumbsup" }
+        });
+
+        result.Should().Be(expected);
+    }
+
     public static IEnumerable<object[]> IrrelevantEnvelopes() => new[]
     {
         new object[] { new SlackEventEnvelopeDto { Type = "app_rate_limited" } },
         new object[] { new SlackEventEnvelopeDto { Type = "event_callback" } },
         new object[] { new SlackEventEnvelopeDto { Type = "event_callback", Event = new SlackEventItemDto { Type = "message", Subtype = "message_changed" } } },
-        new object[] { new SlackEventEnvelopeDto { Type = "event_callback", Event = new SlackEventItemDto { Type = "reaction_removed" } } }
+        new object[] { new SlackEventEnvelopeDto { Type = "event_callback", Event = new SlackEventItemDto { Type = "pin_added" } } }
     };
 
     [Theory]

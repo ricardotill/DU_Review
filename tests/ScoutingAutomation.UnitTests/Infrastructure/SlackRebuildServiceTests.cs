@@ -191,22 +191,61 @@ public class SlackRebuildServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task SlackFailure_ShouldLeaveCurrentDataUntouched()
+    public async Task SlackFailure_ShouldReportEveryFailingChannelAndLeaveDataUntouched()
     {
         var oldPath = await SeedExistingSubmissionAsync();
-        SlackHas("C1");
+        _history.Setup(h => h.GetChannelMessagesAsync("C1", It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("Connection refused"));
         _history.Setup(h => h.GetChannelMessagesAsync("C2", It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new InvalidOperationException("Slack conversations.history failed: not_in_channel"));
+            .ThrowsAsync(new SlackApiException("conversations.history", "not_in_channel"));
 
         Service.TryStart(_since);
         await Service.Completion;
 
         Service.Progress.State.Should().Be(RebuildState.Failed);
-        Service.Progress.Error.Should().Contain("not_in_channel");
+        Service.Progress.Error.Should().Be("2 channel(s) could not be read; nothing was changed");
+        Service.Progress.ChannelProblems.Should().BeEquivalentTo(new[]
+        {
+            new RebuildChannelProblem("De Wolven", "C1", "Connection refused", "See the app log for details, and check the channel in Slack."),
+            new RebuildChannelProblem("De Bosuilen", "C2", "not_in_channel", "Invite the bot to this channel: type /invite @DU Review in it.")
+        });
         Service.Progress.BackupFolder.Should().BeNull();
         File.Exists(oldPath).Should().BeTrue();
         WithDb(db => db.Submissions.Count()).Should().Be(1);
         _services.GetRequiredService<SlackProcessingGate>().IsClosed.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("channel_not_found", "Check this channel ID")]
+    [InlineData("missing_scope", "channels:history or groups:history")]
+    [InlineData("invalid_auth", "bot token is not valid")]
+    [InlineData("not_authed", "bot token is not valid")]
+    [InlineData("token_revoked", "bot token is not valid")]
+    [InlineData("account_inactive", "bot token is not valid")]
+    public async Task SlackFailure_ShouldAdviseWhatToDo(string error, string advice)
+    {
+        SlackHas("C1");
+        _history.Setup(h => h.GetChannelMessagesAsync("C2", It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new SlackApiException("conversations.history", error));
+
+        Service.TryStart(_since);
+        await Service.Completion;
+
+        Service.Progress.ChannelProblems.Should().ContainSingle().Which.Advice.Should().Contain(advice);
+    }
+
+    [Fact]
+    public async Task UnexpectedFailure_ShouldStillFailCleanly()
+    {
+        _history.Setup(h => h.GetChannelMessagesAsync(It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("boom"));
+
+        Service.TryStart(_since);
+        await Service.Completion;
+
+        Service.Progress.State.Should().Be(RebuildState.Failed);
+        Service.Progress.Error.Should().Be("boom");
+        Service.Progress.ChannelProblems.Should().BeEmpty();
     }
 
     [Fact]

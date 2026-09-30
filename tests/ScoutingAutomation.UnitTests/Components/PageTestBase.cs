@@ -28,12 +28,19 @@ public abstract class PageTestBase : BunitContext
         Services.AddDbContext<ScoutingDbContext>(o => o.UseInMemoryDatabase(databaseName, databaseRoot));
         Services.AddScoutingInfrastructure(new ConfigurationBuilder().Build());
         Services.AddLogging();
+        Services.AddScoped<ScoutingAutomation.Web.Favorites.FavoritesService>();
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        Auth = AddAuthorization();
+        Auth.SetAuthorized("Admin");
+        Auth.SetRoles(ScoutingAutomation.Web.Auth.KeyAuth.AdminRole);
         // Resolved lazily so tests can adjust Settings before rendering
         Services.AddSingleton<IOptions<ScoutingSettings>>(_ => Options.Create(Settings));
 
         Settings = new ScoutingSettings
         {
             StorageRoot = _temp.Path,
+            RuntimeSettingsFile = Path.Combine(_temp.Path, "runtime-settings.json"),
+            KeysFile = Path.Combine(_temp.Path, "access-keys.json"),
             SupportedExtensions = new List<string> { ".jpg", ".png", ".pdf" },
             SupportedMimeTypePrefixes = new List<string> { "image/", "video/", "audio/" },
             Reviewers = new List<string> { "U_JURY" },
@@ -48,6 +55,15 @@ public abstract class PageTestBase : BunitContext
     }
 
     protected ScoutingSettings Settings { get; }
+
+    /// <summary>Tests run as an admin; call <see cref="LogInAsJury"/> to check what others see.</summary>
+    protected Bunit.TestDoubles.BunitAuthorizationContext Auth { get; }
+
+    protected void LogInAsJury()
+    {
+        Auth.SetAuthorized("Jury");
+        Auth.SetRoles();
+    }
 
     protected string StorageRoot => _temp.Path;
 

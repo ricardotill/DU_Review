@@ -5,6 +5,7 @@
 @inject ISubmissionWorkflowService WorkflowService
 @inject NavigationManager Navigation
 @inject IOptions<ScoutingSettings> ScoutingOptions
+@inject RuntimeSettingsService Runtime
 
 <PageTitle>Slack Event Simulator - Scouting Regional Game</PageTitle>
 
@@ -120,9 +121,9 @@ else
                 <label class="form-label text-secondary small fw-semibold">Reviewer</label>
                 <input type="text" class="form-control form-control-dark" list="configured-reviewers" placeholder="Slack user" @bind="reviewerName" />
                 <datalist id="configured-reviewers">
-                    @foreach (var reviewer in ScoutingOptions.Value.Reviewers)
+                    @foreach (var reviewer in Runtime.AllReviewers)
                     {
-                        <option value="@reviewer"></option>
+                        <option value="@reviewer">@Runtime.DisplayName(reviewer)</option>
                     }
                 </datalist>
             </div>

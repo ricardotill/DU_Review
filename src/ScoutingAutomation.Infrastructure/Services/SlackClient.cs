@@ -5,6 +5,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ScoutingAutomation.Contracts.Configuration;
+using ScoutingAutomation.Contracts.Slack;
 
 namespace ScoutingAutomation.Infrastructure.Services;
 
@@ -67,6 +68,74 @@ public class SlackClient : ISlackClient
         }
 
         await CallSlackApiAsync("chat.postMessage", new { channel, thread_ts = threadTs, text }, ct);
+    }
+
+    public async Task<IReadOnlyList<SlackMessageReactionDto>?> GetReactionsAsync(string channel, string messageTs, CancellationToken ct = default)
+    {
+        if (IsSimulated)
+        {
+            _logger.LogInformation("Simulation mode: reactions on message {Ts} in {Channel} cannot be read", messageTs, channel);
+            return null;
+        }
+
+        try
+        {
+            var url = $"https://slack.com/api/reactions.get?channel={Uri.EscapeDataString(channel)}&timestamp={Uri.EscapeDataString(messageTs)}&full=true";
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.Value.Slack.BotToken);
+
+            using var response = await _httpClient.SendAsync(request, ct);
+            response.EnsureSuccessStatusCode();
+
+            var body = await response.Content.ReadFromJsonAsync<SlackReactionsResponseDto>(ct);
+            if (body is not { Ok: true })
+            {
+                _logger.LogWarning("Slack API reactions.get failed: {Error}", body?.Error ?? "unknown");
+                return null;
+            }
+
+            return body.Message?.Reactions ?? new List<SlackMessageReactionDto>();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "Slack API reactions.get call failed");
+            return null;
+        }
+    }
+
+    public bool IsConnected => !IsSimulated;
+
+    public async Task<SlackUserLookup> GetUserNameAsync(string userId, CancellationToken ct = default)
+    {
+        if (IsSimulated)
+        {
+            return SlackUserLookup.Failed("simulation_mode");
+        }
+
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"https://slack.com/api/users.info?user={Uri.EscapeDataString(userId)}");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.Value.Slack.BotToken);
+
+            using var response = await _httpClient.SendAsync(request, ct);
+            response.EnsureSuccessStatusCode();
+
+            var body = await response.Content.ReadFromJsonAsync<SlackUserInfoResponseDto>(ct);
+            if (body is not { Ok: true })
+            {
+                return SlackUserLookup.Failed(body?.Error ?? "unknown");
+            }
+
+            var user = body.User;
+            var name = new[] { user?.Profile?.DisplayName, user?.Profile?.RealName, user?.RealName, user?.Name }
+                .FirstOrDefault(n => !string.IsNullOrWhiteSpace(n));
+            return name == null ? SlackUserLookup.Failed("no_name") : SlackUserLookup.Found(name.Trim());
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "Slack API users.info call failed");
+            return SlackUserLookup.Failed("request_failed");
+        }
     }
 
     private bool IsSimulated =>

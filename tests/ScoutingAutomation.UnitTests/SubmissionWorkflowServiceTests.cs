@@ -404,6 +404,7 @@ public class SubmissionWorkflowServiceTests
             _storageMock.Object,
             _slackClientMock.Object,
             _notifierMock.Object,
+            TestRuntime.For(_options),
             _options,
             NullLogger<SubmissionWorkflowService>.Instance
         );

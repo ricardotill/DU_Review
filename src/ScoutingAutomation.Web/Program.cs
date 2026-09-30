@@ -7,7 +7,11 @@ using ScoutingAutomation.Domain.Interfaces;
 using ScoutingAutomation.Infrastructure.Data;
 using ScoutingAutomation.Infrastructure.Extensions;
 using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Web.Auth;
 using ScoutingAutomation.Web.Components;
+using Microsoft.AspNetCore.Antiforgery;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Components.Authorization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -44,6 +48,24 @@ else
 
 // Add Domain & Infrastructure services
 builder.Services.AddScoutingInfrastructure(builder.Configuration);
+builder.Services.AddScoped<ScoutingAutomation.Web.Favorites.FavoritesService>();
+
+// One shared access key, plus an admin key: see Auth/KeyAuth.cs
+builder.Services.AddAuthentication(KeyAuth.Scheme)
+    .AddCookie(options =>
+    {
+        options.Cookie.Name = "du_login";
+        options.Cookie.HttpOnly = true;
+        options.Cookie.SameSite = SameSiteMode.Lax;
+        options.LoginPath = "/login";
+        options.AccessDeniedPath = "/admin";
+        options.ExpireTimeSpan = TimeSpan.FromDays(30);
+        options.SlidingExpiration = true;
+        options.Events.OnValidatePrincipal = KeyAuth.ValidatePrincipalAsync;
+    });
+builder.Services.AddAuthorization();
+builder.Services.AddCascadingAuthenticationState();
+builder.Services.AddScoped<AuthenticationStateProvider, KeyAuthenticationStateProvider>();
 
 var app = builder.Build();
 
@@ -57,6 +79,8 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseAuthentication();
+app.UseAuthorization();
 app.UseAntiforgery();
 app.MapStaticAssets();
 
@@ -170,11 +194,18 @@ api.MapGet("/files/{id:guid}", async (
     }
 
     return Results.File(stream, submission.ContentType, submission.FileName);
-});
+}).RequireAuthorization();
+
+app.MapPost("/logout", async (HttpContext http) =>
+{
+    await http.SignOutAsync(KeyAuth.Scheme);
+    return Results.Redirect("/login");
+}).WithMetadata(new RequireAntiforgeryTokenAttribute());
 
 // Blazor UI
 app.MapRazorComponents<App>()
-    .AddInteractiveServerRenderMode();
+    .AddInteractiveServerRenderMode()
+    .RequireAuthorization();
 
 app.Run();
 
