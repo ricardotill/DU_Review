@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
@@ -14,12 +15,16 @@ public class SlackClient : ISlackClient
     private readonly HttpClient _httpClient;
     private readonly IOptions<ScoutingSettings> _options;
     private readonly ILogger<SlackClient> _logger;
+    private readonly Func<TimeSpan, CancellationToken, Task> _wait;
 
-    public SlackClient(HttpClient httpClient, IOptions<ScoutingSettings> options, ILogger<SlackClient> logger)
+    /// <param name="wait">Waits between download attempts; tests pass one that does not really wait.</param>
+    public SlackClient(HttpClient httpClient, IOptions<ScoutingSettings> options, ILogger<SlackClient> logger,
+        Func<TimeSpan, CancellationToken, Task>? wait = null)
     {
         _httpClient = httpClient;
         _options = options;
         _logger = logger;
+        _wait = wait ?? Task.Delay;
     }
 
     public async Task<Stream> DownloadFileAsync(string fileUrl, string? fileName = null, CancellationToken ct = default)
@@ -34,16 +39,94 @@ public class SlackClient : ISlackClient
         }
 
         // A failed download throws: storing a placeholder would hide a lost submission
-        using var request = new HttpRequestMessage(HttpMethod.Get, fileUrl);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        var response = await SendDownloadRequestAsync(fileUrl, token, ct);
+        try
+        {
+            response.EnsureSuccessStatusCode();
 
-        using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
-        response.EnsureSuccessStatusCode();
+            // The caller reads straight from the network, so a large video is never held in memory
+            return new ResponseStream(response, await response.Content.ReadAsStreamAsync(ct));
+        }
+        catch
+        {
+            response.Dispose();
+            throw;
+        }
+    }
 
-        var memoryStream = new MemoryStream();
-        await response.Content.CopyToAsync(memoryStream, ct);
-        memoryStream.Position = 0;
-        return memoryStream;
+    public const int DownloadAttempts = 3;
+
+    /// <summary>
+    /// Downloads are safe to repeat, so a network error, a Slack server error or a rate limit is retried a few times.
+    /// Calls that post something are never retried: they could post twice.
+    /// </summary>
+    private async Task<HttpResponseMessage> SendDownloadRequestAsync(string fileUrl, string token, CancellationToken ct)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, fileUrl);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            HttpResponseMessage response;
+            try
+            {
+                response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+            }
+            catch (HttpRequestException ex) when (attempt < DownloadAttempts)
+            {
+                _logger.LogWarning(ex, "Download of {Url} failed (attempt {Attempt}), retrying", fileUrl, attempt);
+                await _wait(RetryDelay(attempt, null), ct);
+                continue;
+            }
+
+            var retry = response.StatusCode == HttpStatusCode.TooManyRequests || (int)response.StatusCode >= 500;
+            if (!retry || attempt >= DownloadAttempts)
+            {
+                return response;
+            }
+
+            _logger.LogWarning("Download of {Url} got HTTP {Status} (attempt {Attempt}), retrying", fileUrl, (int)response.StatusCode, attempt);
+            var wait = RetryDelay(attempt, response.Headers.RetryAfter?.Delta);
+            response.Dispose();
+            await _wait(wait, ct);
+        }
+    }
+
+    /// <summary>Slack's Retry-After when given (capped), otherwise 1, 2, 4... seconds.</summary>
+    private static TimeSpan RetryDelay(int attempt, TimeSpan? retryAfter) =>
+        retryAfter is { } wait
+            ? TimeSpan.FromSeconds(Math.Min(wait.TotalSeconds, 30))
+            : TimeSpan.FromSeconds(Math.Pow(2, attempt - 1));
+
+    /// <summary>The body of a download; disposing it also releases the HTTP response.</summary>
+    private sealed class ResponseStream(HttpResponseMessage response, Stream inner) : Stream
+    {
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+        public override int Read(byte[] buffer, int offset, int count) => inner.Read(buffer, offset, count);
+        public override int Read(Span<byte> buffer) => inner.Read(buffer);
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken ct) => inner.ReadAsync(buffer, offset, count, ct);
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default) => inner.ReadAsync(buffer, ct);
+        public override Task CopyToAsync(Stream destination, int bufferSize, CancellationToken ct) => inner.CopyToAsync(destination, bufferSize, ct);
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                inner.Dispose();
+                response.Dispose();
+            }
+
+            base.Dispose(disposing);
+        }
     }
 
     public async Task<bool> AddReactionAsync(string channel, string messageTs, string reaction, CancellationToken ct = default)
@@ -57,6 +140,18 @@ public class SlackClient : ISlackClient
 
         var error = await CallSlackApiAsync("reactions.add", new { channel, timestamp = messageTs, name }, ct);
         return error != "already_reacted";
+    }
+
+    public async Task RemoveReactionAsync(string channel, string messageTs, string reaction, CancellationToken ct = default)
+    {
+        var name = reaction.Trim(':');
+        if (IsSimulated)
+        {
+            _logger.LogInformation("Simulated removing reaction ':{Reaction}:' from message {Ts} in {Channel}", name, messageTs, channel);
+            return;
+        }
+
+        await CallSlackApiAsync("reactions.remove", new { channel, timestamp = messageTs, name }, ct);
     }
 
     public async Task PostThreadReplyAsync(string channel, string threadTs, string text, CancellationToken ct = default)
@@ -163,7 +258,7 @@ public class SlackClient : ISlackClient
             }
 
             var error = body.RootElement.TryGetProperty("error", out var e) ? e.GetString() ?? "unknown" : "unknown";
-            if (error != "already_reacted")
+            if (error is not ("already_reacted" or "no_reaction"))
             {
                 _logger.LogWarning("Slack API {Method} failed: {Error}", method, error);
             }

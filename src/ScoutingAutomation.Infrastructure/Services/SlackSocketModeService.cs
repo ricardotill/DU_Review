@@ -1,6 +1,5 @@
 using System.Net.WebSockets;
 using System.Text;
-using System.Threading.Channels;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -12,7 +11,8 @@ namespace ScoutingAutomation.Infrastructure.Services;
 
 /// <summary>
 /// Receives Slack events over an outgoing WebSocket (Socket Mode), so the app needs no public HTTPS address.
-/// Events are acknowledged immediately and processed from a queue, so slow downloads do not cause redeliveries.
+/// Events are acknowledged immediately and processed from a queue per channel, so slow downloads do not cause
+/// redeliveries, and one group's slow upload does not hold up the others.
 /// </summary>
 public class SlackSocketModeService : BackgroundService
 {
@@ -23,6 +23,7 @@ public class SlackSocketModeService : BackgroundService
     private readonly ISlackSocketConnector _connector;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly SlackConnectionStatus _status;
+    private readonly ISlackCatchUpService _catchUp;
     private readonly ILogger<SlackSocketModeService> _logger;
 
     public SlackSocketModeService(
@@ -30,12 +31,14 @@ public class SlackSocketModeService : BackgroundService
         ISlackSocketConnector connector,
         IServiceScopeFactory scopeFactory,
         SlackConnectionStatus status,
+        ISlackCatchUpService catchUp,
         ILogger<SlackSocketModeService> logger)
     {
         _options = options;
         _connector = connector;
         _scopeFactory = scopeFactory;
         _status = status;
+        _catchUp = catchUp;
         _logger = logger;
     }
 
@@ -55,8 +58,7 @@ public class SlackSocketModeService : BackgroundService
             return;
         }
 
-        var queue = Channel.CreateUnbounded<SlackEventEnvelopeDto>(new UnboundedChannelOptions { SingleReader = true });
-        var processing = ProcessEventsAsync(queue.Reader, stoppingToken);
+        var queue = new SlackEventQueue(envelope => ProcessEventAsync(envelope, stoppingToken));
 
         var delay = MinReconnectDelay;
         while (!stoppingToken.IsCancellationRequested)
@@ -68,7 +70,7 @@ public class SlackSocketModeService : BackgroundService
 
                 using var socket = new ClientWebSocket();
                 await socket.ConnectAsync(url, stoppingToken);
-                await ReceiveAsync(socket, queue.Writer, stoppingToken);
+                await ReceiveAsync(socket, queue, stoppingToken);
 
                 // A normal disconnect (Slack refreshes connections regularly): reconnect quickly
                 delay = MinReconnectDelay;
@@ -95,11 +97,11 @@ public class SlackSocketModeService : BackgroundService
             delay = TimeSpan.FromTicks(Math.Min(delay.Ticks * 2, MaxReconnectDelay.Ticks));
         }
 
-        queue.Writer.TryComplete();
-        await processing;
+        // Finishes the events already received, e.g. a download in progress
+        await queue.CompleteAsync();
     }
 
-    private async Task ReceiveAsync(ClientWebSocket socket, ChannelWriter<SlackEventEnvelopeDto> queue, CancellationToken ct)
+    private async Task ReceiveAsync(ClientWebSocket socket, SlackEventQueue queue, CancellationToken ct)
     {
         var buffer = new byte[16 * 1024];
         using var message = new MemoryStream();
@@ -139,13 +141,16 @@ public class SlackSocketModeService : BackgroundService
 
             if (received.Event != null)
             {
-                queue.TryWrite(received.Event);
+                queue.Enqueue(received.Event);
             }
 
             if (received.IsHello)
             {
                 _logger.LogInformation("Connected to Slack over Socket Mode");
                 _status.Set(SlackConnectionState.Connected);
+
+                // Events sent while the app was away are not sent again: read them back from the channels
+                _catchUp.Request("connected to Slack");
             }
 
             if (received.IsDisconnect)
@@ -157,17 +162,16 @@ public class SlackSocketModeService : BackgroundService
         }
     }
 
-    private async Task ProcessEventsAsync(ChannelReader<SlackEventEnvelopeDto> queue, CancellationToken ct)
+    private async Task ProcessEventAsync(SlackEventEnvelopeDto envelope, CancellationToken ct)
     {
-        // Ends when the connection loop completes the queue on shutdown
-        await foreach (var envelope in queue.ReadAllAsync(CancellationToken.None))
+        try
         {
-            try
-            {
-                await using var scope = _scopeFactory.CreateAsyncScope();
-                await scope.ServiceProvider.GetRequiredService<ISlackEventDispatcher>().DispatchAsync(envelope, ct);
-            }
-            catch (Exception ex) when (!ct.IsCancellationRequested)
+            await using var scope = _scopeFactory.CreateAsyncScope();
+            await scope.ServiceProvider.GetRequiredService<ISlackEventDispatcher>().DispatchAsync(envelope, ct);
+        }
+        catch (Exception ex)
+        {
+            if (!ct.IsCancellationRequested)
             {
                 _logger.LogError(ex, "Failed to process Slack event {EventType}", envelope.Event?.Type);
             }

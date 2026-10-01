@@ -17,6 +17,12 @@ public class ScoutingSettings
     public string RuntimeSettingsFile { get; set; } = "./runtime-settings.json";
 
     /// <summary>
+    /// Time zone of the game, e.g. "Europe/Amsterdam". File names and times on the pages use it,
+    /// whatever time zone the server runs in.
+    /// </summary>
+    public string TimeZone { get; set; } = "Europe/Amsterdam";
+
+    /// <summary>
     /// Optional first access key, shared with everyone who may use the app. Without it, one is generated.
     /// A key regenerated in the app (saved in <see cref="KeysFile"/>) always takes priority.
     /// </summary>
@@ -60,7 +66,7 @@ public class GroupConfig
     public string Name { get; set; } = string.Empty;
 
     /// <summary>
-    /// Short code used in stored file names, e.g. "CDW" gives "CDW 16.jpg".
+    /// Short code used in stored file names, e.g. "CDW" gives "CDW 16 14-32-05.jpg".
     /// </summary>
     public string? Abbreviation { get; set; }
     public string SlackChannelId { get; set; } = string.Empty;

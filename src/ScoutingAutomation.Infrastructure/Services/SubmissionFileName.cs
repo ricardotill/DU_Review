@@ -5,11 +5,14 @@ namespace ScoutingAutomation.Infrastructure.Services;
 public static class SubmissionFileName
 {
     /// <summary>
-    /// Builds the stored file name "{abbreviation} {assignment number}{extension}", e.g. "CDW 16.jpg".
+    /// Builds the stored file name "{abbreviation} {assignment number} {time}{extension}", e.g. "CDW 16 14-32-05.jpg".
+    /// The time tells several attempts at one assignment apart; the game takes one day, so no date is needed.
+    /// <paramref name="postedAt"/> is written as given, so pass it in the time zone the files are read in.
     /// Without an assignment number the original name is kept after the abbreviation.
     /// Falls back to the group name when no abbreviation is configured.
+    /// <paramref name="index"/> numbers the files of a message with several files: "CDW 16 14-32-05 (2).jpg".
     /// </summary>
-    public static string Build(Group group, int? assignmentNumber, string originalFileName)
+    public static string Build(Group group, int? assignmentNumber, string originalFileName, DateTimeOffset postedAt, int? index = null)
     {
         var prefix = string.IsNullOrWhiteSpace(group.Abbreviation) ? group.Name : group.Abbreviation;
         var extension = Path.GetExtension(originalFileName).ToLowerInvariant();
@@ -17,7 +20,8 @@ public static class SubmissionFileName
             ? assignmentNumber.Value.ToString()
             : Path.GetFileNameWithoutExtension(originalFileName);
 
-        return RemoveInvalidCharacters($"{prefix.Trim()} {suffix.Trim()}") + extension;
+        var number = index.HasValue ? $" ({index.Value})" : "";
+        return RemoveInvalidCharacters($"{prefix.Trim()} {suffix.Trim()} {postedAt:HH-mm-ss}{number}") + extension;
     }
 
     // Windows-invalid characters are removed on every OS so stored files stay portable

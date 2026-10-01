@@ -3,7 +3,7 @@
     {
         <li class="text-white-50">
             <span class="text-white">@issue.Group</span>
-            <span class="text-muted">· @issue.PostedAt.ToLocalTime().ToString("HH:mm")</span>
+            <span class="text-muted">· @issue.PostedAt.ToGameTime().ToString("HH:mm")</span>
             · @issue.Reason
             @if (!string.IsNullOrWhiteSpace(issue.Text))
             {

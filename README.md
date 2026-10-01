@@ -2,6 +2,8 @@
 
 DU Review verwerkt de inzendingen van het **Destination Unknown regiospel**. Groepen plaatsen hun opdrachten als foto, video, geluidsopname of document in hun eigen Slack-kanaal. De jury beoordeelt ze met een emoji. DU Review doet de rest: bestanden opslaan en sorteren, punten tellen, en live een scorebord tonen.
 
+Zoek je uitleg voor groepen, jury en organisatie op de speeldag? Zie de **[handleiding](docs/handleiding.md)**.
+
 ## Hoe het werkt
 
 1. **Groep plaatst een inzending.** Een scout plaatst een bestand in het Slack-kanaal van de groep, met het opdrachtnummer in de tekst, bijvoorbeeld `Opdracht 12`.
@@ -11,16 +13,23 @@ DU Review verwerkt de inzendingen van het **Destination Unknown regiospel**. Gro
    - ❤️ ⭐ 🔥 → **Awesome**: het bestand verhuist naar `awesome/`;
    - ❌ → **Rejected**: het bestand verhuist naar `rejected/`.
 
-   Haalt een jurylid de emoji weer weg, dan telt de beste beoordeling die nog op het bericht staat. Is er geen meer, dan wordt de inzending weer **Pending** en gaat het bestand terug naar de groepsmap.
+   Zijn juryleden het oneens, dan telt de beste beoordeling op het bericht, in welke volgorde de emoji's ook zijn geplaatst. Haalt een jurylid de emoji weer weg, dan telt de beste beoordeling die nog op het bericht staat. Is er geen meer, dan wordt de inzending weer **Pending** en gaat het bestand terug naar de groepsmap.
 4. **Het dashboard werkt zichzelf bij.** Scores en overzichten worden direct bijgewerkt, zonder de pagina te verversen.
 
 Klopt er iets niet aan een inzending, dan reageert de bot zelf in Slack met een emoji en een uitleg in de thread:
 
-- **Geen opdrachtnummer**, of een nummer dat niet bestaat: de inzending wordt niet opgeslagen. De groep moet hem opnieuw plaatsen.
+- **Geen opdrachtnummer**, of een nummer dat niet bestaat: de inzending wordt niet opgeslagen. De groep kan het bericht bewerken en het nummer toevoegen; dan wordt de inzending alsnog geregistreerd en haalt de bot zijn ❓ weg. Opnieuw plaatsen kan ook.
 - **Bestandstype niet ondersteund**, bijvoorbeeld een `.zip`: dat bestand wordt overgeslagen.
 - **Bestand kon niet worden gedownload**: dat bestand wordt overgeslagen, en de groep wordt gevraagd het opnieuw te plaatsen. De app slaat nooit een leeg of vervangend bestand op.
 
+Bewerken en verwijderen in Slack:
+
+- **Opdrachtnummer aangepast** in een bericht dat al is geregistreerd: de inzendingen verhuizen naar de nieuwe opdracht en de bestanden krijgen een nieuwe naam. Een beoordeling blijft staan. Is het nieuwe nummer ongeldig, dan verandert er niets.
+- **Bericht verwijderd**: de inzendingen tellen niet meer mee. De bestanden blijven bewaard in `scouting_storage/_deleted/{groep}/`. Hetzelfde geldt voor één bestand dat uit een bericht is verwijderd.
+
 Een inzending krijgt de tijd waarop het bericht in Slack is geplaatst, niet de tijd waarop de app het verwerkte.
+
+Elke groep heeft een eigen wachtrij. Een groot filmpje van de ene groep houdt de inzendingen van andere groepen en de beoordelingen daarop dus niet op. Een bericht dat twee keer binnenkomt, wordt maar één keer geregistreerd.
 
 ## Toegang
 
@@ -113,13 +122,17 @@ Beoordelen gebeurt in Slack. Voor noodgevallen kan een status op de detailpagina
 ```text
 scouting_storage/
   de-wolven/
-    CDW 16.jpg        ← nog niet beoordeeld
+    CDW 16 14-32-05.jpg   ← nog niet beoordeeld
     approved/
     awesome/
     rejected/
 ```
 
-Heeft een map al een bestand met dezelfde naam, dan krijgt het nieuwe bestand een volgnummer: `CDW 16 (2).jpg`.
+Een bestandsnaam bestaat uit de afkorting van de groep, het opdrachtnummer en het tijdstip van het Slack-bericht (`CDW 16 14-32-05.jpg`). Zo staan meerdere pogingen voor dezelfde opdracht, bijvoorbeeld twee afgekeurde, naast elkaar in één map. Het tijdstip is in de tijdzone van `TimeZone` (standaard Nederlandse tijd), ook als de server in een andere tijdzone draait.
+
+Staan er meerdere bestanden in één bericht, dan krijgen ze een volgnummer in de volgorde van Slack: `CDW 16 14-32-05 (1).jpg`, `CDW 16 14-32-05 (2).jpg`, `CDW 16 14-32-05 (3).jpg`. Een bericht met één bestand krijgt geen volgnummer. Heeft een map toch al een bestand met dezelfde naam, dan krijgt het nieuwe bestand er een extra volgnummer bij, bijvoorbeeld `CDW 16 14-32-05 (2).jpg` of `CDW 16 14-32-05 (1) (2).jpg`.
+
+Een bestand wordt eerst onder een tijdelijke naam gedownload en pas na een geslaagde download hernoemd. Valt de verbinding halverwege weg, dan blijft er dus geen half bestand achter.
 
 Geaccepteerde bestanden: alle afbeeldingen, video's en geluidsopnames, plus PDF en Word (`.doc`, `.docx`). SVG-bestanden worden geweigerd, omdat die scripts kunnen bevatten.
 
@@ -163,9 +176,20 @@ Alles staat onder `Scouting` in `src/ScoutingAutomation.Web/appsettings.json`. W
 | `SupportedExtensions`, `SupportedMimeTypePrefixes` | Welke bestanden worden geaccepteerd. |
 | `AssignmentPointsFile` | Het CSV-bestand met de punten. |
 | `StorageRoot` | De map waarin de bestanden worden opgeslagen. |
+| `TimeZone` | De tijdzone van het spel voor bestandsnamen en tijden op de pagina's (standaard `Europe/Amsterdam`). |
 | `Slack` | Simulatiemodus, verbindingsmethode (`SocketMode`) en de Slack-geheimen: bot-token, App-Level Token of Signing Secret. |
 
 Lijsten in `appsettings.json` hebben geen standaardwaarden in de code. Wat in het bestand staat, is dus precies wat de app gebruikt.
+
+## Inhalen na een onderbreking
+
+Slack stuurt een bericht of emoji maar één keer naar de app. Draaide de app even niet, of was de verbinding weg, dan haalt de app zelf in wat hij heeft gemist. Dat gebeurt bij het opstarten, en met Socket Mode ook na elke nieuwe verbinding met Slack. De app:
+
+1. leest de berichten van vandaag uit alle groepskanalen, ook antwoorden in threads;
+2. registreert inzendingen die nog ontbreken, en geeft de groep de gewone feedback als er iets niet klopt. Een bericht dat al feedback kreeg, krijgt die niet nog een keer;
+3. zet de beoordelingen gelijk aan de emoji's die nu in Slack staan. Is een emoji weggehaald, dan wordt de inzending weer **Pending**. Een **Manual status override** blijft staan zolang er in Slack geen beoordeling op het bericht staat.
+
+Er wordt niets weggegooid. Het logboek meldt wat er is ingehaald. Kan een kanaal niet worden gelezen, dan gaan de andere kanalen gewoon door. In manual mode wordt niet ingehaald, omdat de app dan alle bestanden opnieuw zou opslaan. Herbouw dan vanuit Slack.
 
 ## Herbouwen vanuit Slack
 
@@ -211,6 +235,11 @@ Tests draaien:
 dotnet test ScoutingAutomation.slnx
 ```
 
+De tests zijn per onderwerp in mappen verdeeld:
+
+- **Unittests** (`tests/ScoutingAutomation.UnitTests`): `Workflow` (verwerken van berichten en reacties), `Slack` (Slack-client, Socket Mode, inhalen, herbouwen), `Storage` (bestanden en bestandsnamen), `Data` (database en repositories), `Model` (entiteiten en punten), `Settings` (instellingen, sleutels, juryleden, tijdzone), `Web` (inloggen en favorieten) en `Components` (pagina's).
+- **Integratietests** (`tests/ScoutingAutomation.IntegrationTests`): `Slack`, `Workflow`, `Web` en `Hosting` (opstarten).
+
 Het oorspronkelijke ontwerp staat in `ScoutingAutomation.Complete.SDD.md`.
 
 ## Beperkingen
@@ -218,4 +247,4 @@ Het oorspronkelijke ontwerp staat in `ScoutingAutomation.Complete.SDD.md`.
 - Iedereen deelt dezelfde toegangssleutel. De app weet dus niet wie iets heeft gedaan; alleen dat het in admin-modus was.
 - Zonder HTTPS gaan de sleutel en het login-cookie onversleuteld over het netwerk.
 - Live bijwerken werkt binnen één server. Draai je meerdere exemplaren van de app, dan is extra werk nodig.
-- Een bewerkt Slack-bericht wordt niet direct opnieuw verwerkt. Een groep moet een correctie als nieuw bericht plaatsen, of de inzendingen worden herbouwd vanuit Slack.
+- Inhalen kijkt alleen naar berichten van vandaag. Een bericht dat is verwijderd of waarvan het nummer is aangepast terwijl de app weg was, wordt niet bijgewerkt. Herbouw in dat geval vanuit Slack.

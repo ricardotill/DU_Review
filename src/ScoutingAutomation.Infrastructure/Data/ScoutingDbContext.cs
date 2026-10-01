@@ -9,6 +9,8 @@ public class ScoutingDbContext : DbContext
     {
     }
 
+    public const string UniqueFileIndexName = "IX_Submissions_SlackFile";
+
     public DbSet<Group> Groups => Set<Group>();
     public DbSet<Assignment> Assignments => Set<Assignment>();
     public DbSet<Submission> Submissions => Set<Submission>();
@@ -45,6 +47,7 @@ public class ScoutingDbContext : DbContext
             entity.Property(s => s.Id).ValueGeneratedOnAdd();
             entity.Property(s => s.SlackChannelId).IsRequired().HasMaxLength(50);
             entity.Property(s => s.SlackMessageId).IsRequired().HasMaxLength(50);
+            entity.Property(s => s.SlackFileId).HasMaxLength(50);
             entity.Property(s => s.FileName).IsRequired().HasMaxLength(260);
             entity.Property(s => s.StoragePath).IsRequired().HasMaxLength(500);
             entity.Property(s => s.Submitter).IsRequired().HasMaxLength(100);
@@ -59,6 +62,11 @@ public class ScoutingDbContext : DbContext
                   .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasIndex(s => new { s.SlackChannelId, s.SlackMessageId });
+            // One submission per Slack file, also when an event arrives twice at the same time
+            entity.HasIndex(s => new { s.SlackChannelId, s.SlackMessageId, s.SlackFileId })
+                  .IsUnique()
+                  .HasDatabaseName(UniqueFileIndexName)
+                  .HasFilter("\"SlackFileId\" IS NOT NULL");
             entity.HasIndex(s => s.Status);
             entity.HasIndex(s => s.AssignmentNumber);
         });

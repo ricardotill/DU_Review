@@ -13,13 +13,20 @@
     else
     {
         <details class="rebuild-panel" open="@(progress.State != RebuildState.Idle)">
-            <summary class="text-secondary small">Rebuild all submissions from the Slack messages…</summary>
+            <summary class="text-secondary small">@(Group == null ? "Rebuild all submissions from the Slack messages…" : $"Rebuild the submissions of {Group.Name} from its Slack channel…")</summary>
 
             <div class="mt-3">
                 <div class="alert alert-warning small" role="alert">
-                    <div class="fw-bold mb-1"><i class="bi bi-exclamation-triangle-fill me-1"></i> This replaces all submissions</div>
+                    <div class="fw-bold mb-1"><i class="bi bi-exclamation-triangle-fill me-1"></i> @(Group == null ? "This replaces all submissions" : $"This replaces all submissions of {Group.Name}")</div>
                     <ul class="mb-0 ps-3">
-                        <li>All group folders are moved to a backup folder, and all submissions and reviews are deleted.</li>
+                        @if (Group == null)
+                        {
+                            <li>All group folders are moved to a backup folder, and all submissions and reviews are deleted.</li>
+                        }
+                        else
+                        {
+                            <li>The folder of @Group.Name is moved to a backup folder, and its submissions and reviews are deleted. Other groups are not touched.</li>
+                        }
                         <li>Every message with a file since the start time is processed again, and reviews are taken from the reactions now in Slack. When reviewers disagree, the best status wins.</li>
                         <li>Dashboard overrides are lost; they are kept in the backup's <code>submissions.json</code>.</li>
                         <li>Nothing is posted to Slack. Live events wait until the rebuild is done.</li>
@@ -64,6 +71,7 @@
                         </div>
 
                         <dl class="rebuild-stats mb-0">
+                            <dt>Groups</dt><dd>@(progress.GroupName ?? "All groups")</dd>
                             <dt>Channels read</dt><dd>@progress.ChannelsRead / @progress.ChannelsTotal</dd>
                             <dt>Messages</dt><dd>@progress.MessagesProcessed / @progress.MessagesFound</dd>
                             <dt>Submissions imported</dt><dd>@progress.SubmissionsImported</dd>
@@ -109,8 +117,12 @@
 </div>
 
 @code {
+    /// <summary>The one group to rebuild; null rebuilds all groups.</summary>
+    [Parameter]
+    public Group? Group { get; set; }
+
     private RebuildProgress progress = new();
-    private DateTime since = DateTime.Today;
+    private DateTime since = DateTimeOffset.UtcNow.ToGameTime().Date;
     private string confirmation = "";
 
     private bool IsRunning => progress.State == RebuildState.Running;
@@ -125,9 +137,9 @@
 
     private void Start()
     {
-        // The chosen time is in the server's time zone, where the event takes place
-        var start = new DateTimeOffset(since, TimeZoneInfo.Local.GetUtcOffset(since));
-        RebuildService.TryStart(start);
+        // The chosen time is in the game's time zone
+        var start = GameTime.FromGameTime(since);
+        RebuildService.TryStart(start, Group?.Id);
         confirmation = "";
         progress = RebuildService.Progress;
     }

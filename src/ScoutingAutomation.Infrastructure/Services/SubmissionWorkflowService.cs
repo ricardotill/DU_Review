@@ -4,6 +4,7 @@ using ScoutingAutomation.Contracts.Configuration;
 using ScoutingAutomation.Contracts.Slack;
 using ScoutingAutomation.Domain.Entities;
 using ScoutingAutomation.Domain.Enums;
+using ScoutingAutomation.Domain.Exceptions;
 using ScoutingAutomation.Domain.Interfaces;
 
 namespace ScoutingAutomation.Infrastructure.Services;
@@ -118,11 +119,14 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         string? submitterName = null;
         var submitterNameFetched = false;
 
+        var supportedFiles = SupportedFiles(files);
+
         foreach (var file in files)
         {
-            if (string.IsNullOrWhiteSpace(file.Name)) continue;
+            // A deleted file still shows in the message as a "tombstone", without content
+            if (string.IsNullOrWhiteSpace(file.Name) || file.IsDeleted) continue;
 
-            if (!IsSupportedFile(file))
+            if (!supportedFiles.Contains(file))
             {
                 _logger.LogInformation("Skipping unsupported file {FileName} ({Mimetype})", file.Name, file.Mimetype);
                 unsupportedFileNames.Add(file.Name);
@@ -130,33 +134,32 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
             }
 
             var exists = manual
-                ? !_runtime.TryClaimManualDownload(channelId, messageTs, file.Name)
-                : await _submissionRepository.ExistsAsync(channelId, messageTs, file.Name, ct);
+                ? !_runtime.TryClaimManualDownload(channelId, messageTs, file.Id ?? file.Name)
+                : await _submissionRepository.ExistsAsync(channelId, messageTs, file.Id, file.Name, ct);
             if (exists)
             {
                 _logger.LogInformation("Submission already registered for file {FileName} in message {Ts}", file.Name, messageTs);
                 continue;
             }
 
-            // FR-004: Download eligible file
+            // FR-004 / FR-005: Download the file straight into /group-name/, where it stays until reviewed.
+            // The download streams to disk, so a large video is never held in memory.
             var downloadUrl = file.UrlPrivateDownload ?? file.UrlPrivate ?? $"sim://{file.Name}";
-            Stream stream;
+            var storedFileName = SubmissionFileName.Build(group, assignmentNumber, file.Name, postedAt.ToGameTime(), FileIndex(supportedFiles, file));
+            string storagePath;
             try
             {
-                stream = await _slackClient.DownloadFileAsync(downloadUrl, file.Name, ct);
+                await using var stream = await _slackClient.DownloadFileAsync(downloadUrl, file.Name, ct);
+                storagePath = await _fileStorageService.SaveInitialFileAsync(group.Name, storedFileName, stream, ct);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            // A timeout also throws OperationCanceledException; only a stop of the app itself ends processing
+            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
             {
                 _logger.LogWarning(ex, "Could not download {FileName} from message {Ts} in {Channel}", file.Name, messageTs, channelId);
                 failedFileNames.Add(file.Name);
                 continue;
             }
 
-            await using var _ = stream;
-
-            // FR-005: Save to /group-name/ until reviewed
-            var storedFileName = SubmissionFileName.Build(group, assignmentNumber, file.Name);
-            var storagePath = await _fileStorageService.SaveInitialFileAsync(group.Name, storedFileName, stream, ct);
             storedFileNames.Add(Path.GetFileName(storagePath));
 
             if (manual)
@@ -178,6 +181,7 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
                 GroupId = group.Id,
                 SlackChannelId = channelId,
                 SlackMessageId = messageTs,
+                SlackFileId = string.IsNullOrWhiteSpace(file.Id) ? null : file.Id,
                 Submitter = messageEvent.User ?? "Unknown",
                 SubmitterName = submitterName,
                 FileName = file.Name,
@@ -189,7 +193,19 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
 
             submission.MarkPending(storagePath, assignmentNumber);
 
-            await _submissionRepository.AddAsync(submission, ct);
+            try
+            {
+                await _submissionRepository.AddAsync(submission, ct);
+            }
+            catch (DuplicateSubmissionException)
+            {
+                // The same event was handled at the same time elsewhere and won the race: drop this copy
+                _logger.LogInformation("Submission already registered for file {FileName} in message {Ts}", file.Name, messageTs);
+                await _fileStorageService.DeleteFileAsync(storagePath, ct);
+                storedFileNames.Remove(Path.GetFileName(storagePath));
+                continue;
+            }
+
             createdIds.Add(submission.Id);
 
             _logger.LogInformation("Registered submission {Id} for group {Group}, assignment #{Assignment}, file {File}",
@@ -220,6 +236,178 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
             FailedDownloads = failedFileNames,
             StoredFiles = storedFileNames
         };
+    }
+
+    /// <summary>The files of a message that are stored, in the order Slack lists them.</summary>
+    private List<SlackFileItemDto> SupportedFiles(IEnumerable<SlackFileItemDto> files) =>
+        files.Where(f => !string.IsNullOrWhiteSpace(f.Name) && !f.IsDeleted && IsSupportedFile(f)).ToList();
+
+    /// <summary>
+    /// Several files in one message are numbered (1), (2), ... in the order Slack lists them. The number comes from
+    /// the message, not from the disk, so it stays the same when a message is processed again or rebuilt.
+    /// </summary>
+    private static int? FileIndex(IReadOnlyList<SlackFileItemDto> supportedFiles, SlackFileItemDto file)
+    {
+        if (supportedFiles.Count < 2) return null;
+
+        for (var i = 0; i < supportedFiles.Count; i++)
+        {
+            if (file.Id != null ? supportedFiles[i].Id == file.Id : ReferenceEquals(supportedFiles[i], file)) return i + 1;
+        }
+
+        return null;
+    }
+
+    public async Task<ProcessSlackMessageResult> ProcessSlackMessageChangedAsync(SlackEventItemDto changeEvent, CancellationToken ct = default)
+    {
+        var channelId = changeEvent.Channel;
+        var edited = changeEvent.Message;
+        if (string.IsNullOrWhiteSpace(channelId) || string.IsNullOrWhiteSpace(edited?.Ts))
+        {
+            return ProcessSlackMessageResult.Ignored("Edit event without channel or message");
+        }
+
+        if (edited.BotId != null)
+        {
+            return ProcessSlackMessageResult.Ignored("Edited message is from a bot");
+        }
+
+        var files = edited.Files ?? new List<SlackFileItemDto>();
+        var previous = changeEvent.PreviousMessage;
+
+        // Files deleted from the message no longer count
+        var deletedFileIds = files.Where(f => f.IsDeleted && f.Id != null).Select(f => f.Id!).ToHashSet();
+        var existing = await _submissionRepository.GetBySlackMessageIdAsync(channelId, edited.Ts, ct);
+        var removed = existing.Where(s => s.SlackFileId != null && deletedFileIds.Contains(s.SlackFileId)).ToList();
+        if (removed.Count > 0)
+        {
+            await RemoveSubmissionsAsync(removed, ct);
+            existing = existing.Except(removed).ToList();
+            if (existing.Count == 0)
+            {
+                return ProcessSlackMessageResult.Succeeded(Array.Empty<Guid>(), $"Removed {removed.Count} submission(s) of deleted files");
+            }
+        }
+
+        // Slack also sends an edit when a thread reply is added or a link preview appears: only text changes matter
+        if (removed.Count == 0 && previous != null && edited.Text == previous.Text)
+        {
+            return ProcessSlackMessageResult.Ignored("Message text did not change");
+        }
+
+        // Ask the original message's question again; channel and time come from the event, not from the edit
+        var message = new SlackEventItemDto
+        {
+            Type = "message",
+            Channel = channelId,
+            User = edited.User ?? previous?.User,
+            Text = edited.Text,
+            Ts = edited.Ts,
+            Files = files
+        };
+
+        if (existing.Count == 0)
+        {
+            // Skipped before, e.g. for a missing assignment number: try again with the new text
+            var result = await ProcessSlackMessageAsync(message, ct);
+            if (result.CreatedSubmissionIds.Count > 0)
+            {
+                await WithdrawNumberFeedbackAsync(channelId, edited.Ts, ct);
+            }
+
+            return result;
+        }
+
+        return await ReassignAsync(existing, message, ct);
+    }
+
+    /// <summary>The scout corrected the assignment number: the submissions and their file names follow.</summary>
+    private async Task<ProcessSlackMessageResult> ReassignAsync(IReadOnlyList<Submission> submissions, SlackEventItemDto message, CancellationToken ct)
+    {
+        var parsed = _assignmentParser.Parse(message.Text);
+        if (!parsed.Success || !parsed.AssignmentNumber.HasValue
+            || await _assignmentRepository.GetByNumberAsync(parsed.AssignmentNumber.Value, ct) == null)
+        {
+            // Keep the number that was valid; a typo in an edit must not lose a registered submission
+            _logger.LogInformation("Edit of message {Ts} has no valid assignment number; submissions keep #{Number}",
+                message.Ts, submissions[0].AssignmentNumber);
+            return ProcessSlackMessageResult.Ignored("Edited text has no valid assignment number; nothing changed");
+        }
+
+        var number = parsed.AssignmentNumber.Value;
+        if (submissions.All(s => s.AssignmentNumber == number))
+        {
+            return ProcessSlackMessageResult.Ignored($"Assignment #{number} did not change");
+        }
+
+        var supportedFiles = SupportedFiles(message.Files ?? new List<SlackFileItemDto>());
+        foreach (var submission in submissions)
+        {
+            var group = submission.Group ?? await _groupRepository.GetByIdAsync(submission.GroupId, ct);
+            var storagePath = submission.StoragePath;
+            if (group != null)
+            {
+                var file = supportedFiles.FirstOrDefault(f => f.Id != null && f.Id == submission.SlackFileId)
+                           ?? new SlackFileItemDto { Name = submission.FileName };
+                var newName = SubmissionFileName.Build(group, number, submission.FileName, submission.CreatedAt.ToGameTime(), FileIndex(supportedFiles, file));
+                storagePath = await _fileStorageService.RenameFileAsync(submission.StoragePath, newName, ct);
+            }
+
+            var previousNumber = submission.AssignmentNumber;
+            submission.Reassign(number, storagePath);
+            await _submissionRepository.UpdateAsync(submission, ct);
+            _logger.LogInformation("Submission {Id} moved from assignment #{From} to #{To} after an edit in Slack", submission.Id, previousNumber, number);
+        }
+
+        _changeNotifier.NotifyChanged();
+        return ProcessSlackMessageResult.Succeeded(Array.Empty<Guid>(), $"Moved {submissions.Count} submission(s) to assignment #{number}");
+    }
+
+    /// <summary>The scout fixed the number: the bot's question mark no longer applies.</summary>
+    private async Task WithdrawNumberFeedbackAsync(string channel, string messageTs, CancellationToken ct)
+    {
+        var feedback = _options.Value.SlackFeedback ?? new SlackFeedbackConfig();
+        var reactions = new[] { feedback.MissingAssignmentNumber?.Reaction, feedback.UnknownAssignmentNumber?.Reaction }
+            .Where(r => !string.IsNullOrWhiteSpace(r))
+            .Distinct();
+        foreach (var reaction in reactions)
+        {
+            await _slackClient.RemoveReactionAsync(channel, messageTs, reaction!, ct);
+        }
+    }
+
+    public async Task<ProcessSlackMessageResult> ProcessSlackMessageDeletedAsync(SlackEventItemDto deleteEvent, CancellationToken ct = default)
+    {
+        var channelId = deleteEvent.Channel;
+        var messageTs = deleteEvent.DeletedTs ?? deleteEvent.PreviousMessage?.Ts;
+        if (string.IsNullOrWhiteSpace(channelId) || string.IsNullOrWhiteSpace(messageTs))
+        {
+            return ProcessSlackMessageResult.Ignored("Delete event without channel or message");
+        }
+
+        var submissions = await _submissionRepository.GetBySlackMessageIdAsync(channelId, messageTs, ct);
+        if (submissions.Count == 0)
+        {
+            return ProcessSlackMessageResult.Ignored($"No submission for channel {channelId}, ts {messageTs}");
+        }
+
+        await RemoveSubmissionsAsync(submissions, ct);
+        return ProcessSlackMessageResult.Succeeded(Array.Empty<Guid>(), $"Removed {submissions.Count} submission(s) of a deleted message");
+    }
+
+    /// <summary>Removes submissions whose message or file was deleted in Slack. Their files move to "_deleted".</summary>
+    private async Task RemoveSubmissionsAsync(IReadOnlyList<Submission> submissions, CancellationToken ct)
+    {
+        foreach (var submission in submissions)
+        {
+            var group = submission.Group ?? await _groupRepository.GetByIdAsync(submission.GroupId, ct);
+            var movedTo = await _fileStorageService.MoveToDeletedAsync(group?.Name ?? "unknown-group", submission.StoragePath, ct);
+            _logger.LogInformation("Removed submission {Id} (assignment #{Number}) deleted in Slack; file kept at {Path}",
+                submission.Id, submission.AssignmentNumber, movedTo ?? "(no file)");
+        }
+
+        await _submissionRepository.DeleteAsync(submissions, ct);
+        _changeNotifier.NotifyChanged();
     }
 
     public async Task<ProcessSlackReactionResult> ProcessSlackReactionAsync(SlackEventItemDto reactionEvent, CancellationToken ct = default)
@@ -267,12 +455,17 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
             return ProcessSlackReactionResult.Failed($"Submission not found for channel {targetChannel}, ts {targetTs}");
         }
 
-        await ApplyStatusAsync(submissions, targetStatus.Value, reviewer!, reaction, ct);
+        // Same rule as removing an emoji and rebuilding: when reviewers disagree, the best review counts,
+        // whatever order they reacted in. Without Slack (simulation, or reactions.get failed) only this emoji is known.
+        var current = await _slackClient.GetReactionsAsync(targetChannel, targetTs, ct);
+        var review = ChooseReview(WithReaction(current, reaction, reviewer!))!;
+
+        await ApplyStatusAsync(submissions, review.Status, review.Reviewer, review.Emoji, ct);
 
         _logger.LogInformation("Processed reaction '{Reaction}' on message {Ts}: {Count} submission(s) now {Status}",
-            reaction, targetTs, submissions.Count, targetStatus.Value);
+            reaction, targetTs, submissions.Count, review.Status);
 
-        return ProcessSlackReactionResult.Succeeded(submissions[0].Id, targetStatus.Value);
+        return ProcessSlackReactionResult.Succeeded(submissions[0].Id, review.Status);
     }
 
     public async Task<ImportedReviewResult> ApplyImportedReactionsAsync(string channelId, string messageTs, IReadOnlyList<SlackMessageReactionDto>? reactions, CancellationToken ct = default)
@@ -290,6 +483,48 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         }
 
         return new ImportedReviewResult(review.Status, review.Conflict);
+    }
+
+    public async Task<ProcessSlackMessageResult> ProcessMissedMessageAsync(SlackEventItemDto message, CancellationToken ct = default)
+    {
+        var result = await ProcessSlackMessageAsync(message, ct);
+
+        // It may have been edited to add the number while the app was away
+        if (result.CreatedSubmissionIds.Count > 0 && !string.IsNullOrWhiteSpace(message.Channel) && !string.IsNullOrWhiteSpace(message.Ts))
+        {
+            await WithdrawNumberFeedbackAsync(message.Channel, message.Ts, ct);
+        }
+
+        return result;
+    }
+
+    public const string CatchUpReviewer = "Slack catch-up";
+
+    public async Task<bool> SyncReviewAsync(string channelId, string messageTs, IReadOnlyList<SlackMessageReactionDto>? reactions, CancellationToken ct = default)
+    {
+        if (_runtime.ManualMode) return false;
+
+        var submissions = await _submissionRepository.GetBySlackMessageIdAsync(channelId, messageTs, ct);
+        if (submissions.Count == 0) return false;
+
+        var review = ChooseReview(reactions);
+        if (review != null)
+        {
+            if (submissions.All(s => s.Status == review.Status)) return false;
+
+            await ApplyStatusAsync(submissions, review.Status, review.Reviewer, review.Emoji, ct);
+            return true;
+        }
+
+        // Reviews come newest first; an override has no emoji in Slack, so Slack showing none says nothing about it
+        var takenBack = submissions
+            .Where(s => s.Status is not (SubmissionStatus.Pending or SubmissionStatus.Received)
+                        && s.Reviews.FirstOrDefault()?.Reviewer != DashboardOverrideReviewer)
+            .ToList();
+        if (takenBack.Count == 0) return false;
+
+        await ApplyStatusAsync(takenBack, SubmissionStatus.Pending, CatchUpReviewer, emoji: null, ct, notes: "Review emoji removed");
+        return true;
     }
 
     public async Task<ProcessSlackReactionResult> ProcessSlackReactionRemovedAsync(SlackEventItemDto reactionEvent, CancellationToken ct = default)
@@ -348,6 +583,23 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
             reaction, messageTs, submissions.Count, newStatus);
 
         return ProcessSlackReactionResult.Succeeded(submissions[0].Id, newStatus);
+    }
+
+    /// <summary>
+    /// The reactions on a message, including one that was just added. Slack may not list it yet,
+    /// e.g. when the event is handled right after the reaction was placed.
+    /// </summary>
+    private static IReadOnlyList<SlackMessageReactionDto> WithReaction(IReadOnlyList<SlackMessageReactionDto>? reactions, string emoji, string user)
+    {
+        var list = (reactions ?? Array.Empty<SlackMessageReactionDto>()).ToList();
+        var listed = list.Any(r => string.Equals(r.Name?.Trim(':'), emoji, StringComparison.OrdinalIgnoreCase)
+                                   && (r.Users?.Contains(user) ?? false));
+        if (!listed)
+        {
+            list.Add(new SlackMessageReactionDto { Name = emoji, Users = new List<string> { user } });
+        }
+
+        return list;
     }
 
     private sealed record ChosenReview(SubmissionStatus Status, string Reviewer, string Emoji, bool Conflict);

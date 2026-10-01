@@ -89,7 +89,7 @@ else
                             <div class="fw-semibold text-white text-truncate">@sub.FileName</div>
                             <div class="text-muted small text-truncate">@sub.UnresolvedReason</div>
                         </div>
-                        <div class="text-muted small flex-shrink-0">@sub.CreatedAt.ToLocalTime().ToString("g")</div>
+                        <div class="text-muted small flex-shrink-0">@sub.CreatedAt.ToGameTime().ToString("g")</div>
                     </a>
                 }
             </div>
@@ -133,7 +133,7 @@ else
                                     @(result.Points > 0 ? $"+{result.Points}" : "0")
                                 </td>
                                 <td class="text-center text-white-50">@result.Uploads.Count</td>
-                                <td class="text-white-50 small">@result.Uploads[0].CreatedAt.ToLocalTime().ToString("g")</td>
+                                <td class="text-white-50 small">@result.Uploads[0].CreatedAt.ToGameTime().ToString("g")</td>
                                 <td class="text-end">
                                     <a href="submissions/@result.CountingSubmissionId" class="btn btn-sm btn-scout-secondary" title="Open the submission that counts" aria-label="Open submission">
                                         <i class="bi bi-chevron-right"></i>
@@ -146,6 +146,12 @@ else
             </div>
         }
     </div>
+
+    <AuthorizeView Roles="@KeyAuth.AdminRole">
+        <div class="mt-4">
+            <RebuildPanel Group="group" />
+        </div>
+    </AuthorizeView>
 }
 
 @code {

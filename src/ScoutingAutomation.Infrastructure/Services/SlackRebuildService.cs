@@ -31,6 +31,9 @@ public sealed record RebuildProgress
 {
     public RebuildState State { get; init; }
     public DateTimeOffset? Since { get; init; }
+
+    /// <summary>The one group being rebuilt; null when all groups are.</summary>
+    public string? GroupName { get; init; }
     public DateTimeOffset? StartedAt { get; init; }
     public DateTimeOffset? FinishedAt { get; init; }
     public string Step { get; init; } = "";
@@ -57,15 +60,18 @@ public interface ISlackRebuildService
     /// <summary>Whether a rebuild is possible with the current settings (live mode with a bot token).</summary>
     bool IsAvailable { get; }
 
-    /// <summary>Starts a rebuild in the background. Returns false when one is already running.</summary>
-    bool TryStart(DateTimeOffset since);
+    /// <summary>
+    /// Starts a rebuild in the background: of one group, or of all groups when <paramref name="groupId"/> is null.
+    /// Returns false when one is already running.
+    /// </summary>
+    bool TryStart(DateTimeOffset since, Guid? groupId = null);
 
     /// <summary>The running or last rebuild, for waiting on it.</summary>
     Task Completion { get; }
 }
 
 /// <summary>
-/// Rebuilds all submissions from the Slack messages since a given time:
+/// Rebuilds the submissions of all groups, or of one group, from the Slack messages since a given time:
 /// backs up the current data, clears it, and processes every message and reaction again.
 /// </summary>
 public class SlackRebuildService : ISlackRebuildService
@@ -106,7 +112,7 @@ public class SlackRebuildService : ISlackRebuildService
     public bool IsAvailable =>
         !_options.Value.Slack.SimulationMode && !string.IsNullOrWhiteSpace(_options.Value.Slack.BotToken);
 
-    public bool TryStart(DateTimeOffset since)
+    public bool TryStart(DateTimeOffset since, Guid? groupId = null)
     {
         lock (_lock)
         {
@@ -116,12 +122,12 @@ public class SlackRebuildService : ISlackRebuildService
             }
 
             Update(_ => new RebuildProgress { State = RebuildState.Running, Since = since, StartedAt = DateTimeOffset.UtcNow, Step = "Starting" });
-            Completion = Task.Run(() => RunAsync(since));
+            Completion = Task.Run(() => RunAsync(since, groupId));
             return true;
         }
     }
 
-    private async Task RunAsync(DateTimeOffset since)
+    private async Task RunAsync(DateTimeOffset since, Guid? groupId)
     {
         try
         {
@@ -133,7 +139,7 @@ public class SlackRebuildService : ISlackRebuildService
             using (await _gate.CloseAsync())
             {
                 await using var scope = _scopeFactory.CreateAsyncScope();
-                await RebuildAsync(scope.ServiceProvider, since);
+                await RebuildAsync(scope.ServiceProvider, since, groupId);
             }
 
             Update(p => p with { State = RebuildState.Completed, Step = "Done", FinishedAt = DateTimeOffset.UtcNow });
@@ -150,9 +156,23 @@ public class SlackRebuildService : ISlackRebuildService
         }
     }
 
-    private async Task RebuildAsync(IServiceProvider services, DateTimeOffset since)
+    private async Task RebuildAsync(IServiceProvider services, DateTimeOffset since, Guid? groupId)
     {
-        var groups = await services.GetRequiredService<IGroupRepository>().GetAllAsync();
+        var groupRepository = services.GetRequiredService<IGroupRepository>();
+        IReadOnlyList<Group> groups;
+        Group? onlyGroup = null;
+        if (groupId.HasValue)
+        {
+            onlyGroup = await groupRepository.GetByIdAsync(groupId.Value)
+                ?? throw new InvalidOperationException("The group to rebuild does not exist");
+            groups = new[] { onlyGroup };
+            Update(p => p with { GroupName = onlyGroup.Name });
+        }
+        else
+        {
+            groups = await groupRepository.GetAllAsync();
+        }
+
         var submissions = services.GetRequiredService<ISubmissionRepository>();
         var workflow = services.GetRequiredService<ISubmissionWorkflowService>();
         var history = services.GetRequiredService<ISlackHistoryClient>();
@@ -185,10 +205,21 @@ public class SlackRebuildService : ISlackRebuildService
 
         // 2. Back up and clear the current data
         Update(p => p with { Step = "Backing up" });
-        var existing = await submissions.SearchSubmissionsAsync(new SubmissionFilter());
-        var backup = await _storage.MoveAllToBackupAsync();
-        await WriteBackupAsync(backup, existing);
-        await submissions.DeleteAllAsync();
+        var existing = await submissions.SearchSubmissionsAsync(new SubmissionFilter { GroupId = onlyGroup?.Id });
+        string backup;
+        if (onlyGroup != null)
+        {
+            backup = await _storage.MoveGroupToBackupAsync(onlyGroup.Name);
+            await WriteBackupAsync(backup, existing);
+            await submissions.DeleteByGroupAsync(onlyGroup.Id);
+        }
+        else
+        {
+            backup = await _storage.MoveAllToBackupAsync();
+            await WriteBackupAsync(backup, existing);
+            await submissions.DeleteAllAsync();
+        }
+
         foreach (var group in groups)
         {
             await _storage.EnsureFolderStructureAsync(group.Name);
@@ -244,12 +275,14 @@ public class SlackRebuildService : ISlackRebuildService
         _ => "See the app log for details, and check the channel in Slack."
     };
 
-    /// <summary>Messages that could be submissions: from people, with files, not from reviewers.</summary>
-    private bool IsCandidate(SlackEventItemDto message) =>
+    private bool IsCandidate(SlackEventItemDto message) => IsCandidate(message, _runtime);
+
+    /// <summary>Messages from Slack's history that could be submissions: from people, with files, not from reviewers.</summary>
+    public static bool IsCandidate(SlackEventItemDto message, RuntimeSettingsService runtime) =>
         message.BotId == null
         && message.Subtype is null or "file_share" or "thread_broadcast"
         && message.Files is { Count: > 0 }
-        && !_runtime.IsReviewer(message.User);
+        && !runtime.IsReviewer(message.User);
 
     private static IEnumerable<RebuildIssue> Issues(Group group, SlackEventItemDto message, ProcessSlackMessageResult result)
     {

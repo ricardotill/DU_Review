@@ -10,6 +10,9 @@ namespace ScoutingAutomation.Infrastructure.Extensions;
 
 public static class ServiceCollectionExtensions
 {
+    /// <summary>Time for one Slack call, including downloading a large video over a slow network.</summary>
+    public static readonly TimeSpan SlackClientTimeout = TimeSpan.FromMinutes(30);
+
     public static IServiceCollection AddScoutingInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
         services.Configure<ScoutingSettings>(configuration.GetSection(ScoutingSettings.SectionName));
@@ -27,8 +30,17 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<SlackConnectionStatus>();
         services.AddHttpClient<ISlackSocketConnector, SlackSocketConnector>();
         services.AddHostedService<SlackSocketModeService>();
+        services.AddSingleton<SlackCatchUpService>();
+        services.AddSingleton<ISlackCatchUpService>(sp => sp.GetRequiredService<SlackCatchUpService>());
+        services.AddHostedService(sp => sp.GetRequiredService<SlackCatchUpService>());
 
-        services.AddHttpClient<ISlackClient, SlackClient>();
+        // Not the app-wide resilience handler: its 10 s attempt timeout breaks large video downloads,
+        // and its retries could post a thread reply twice. SlackClient retries downloads itself.
+        // RemoveAllResilienceHandlers is marked experimental, but is the documented way to opt one client out.
+#pragma warning disable EXTEXP0001
+        services.AddHttpClient<ISlackClient, SlackClient>(http => http.Timeout = SlackClientTimeout)
+            .RemoveAllResilienceHandlers();
+#pragma warning restore EXTEXP0001
         services.AddHttpClient<ISlackHistoryClient, SlackHistoryClient>();
         services.AddSingleton<SlackProcessingGate>();
         services.AddSingleton<RuntimeSettingsService>();

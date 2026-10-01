@@ -69,6 +69,12 @@ builder.Services.AddScoped<AuthenticationStateProvider, KeyAuthenticationStatePr
 
 var app = builder.Build();
 
+var scoutingSettings = app.Services.GetRequiredService<IOptions<ScoutingSettings>>().Value;
+if (!GameTime.Configure(scoutingSettings.TimeZone))
+{
+    app.Logger.LogWarning("Unknown time zone '{TimeZone}' in Scouting:TimeZone: using the server's time zone {Local}", scoutingSettings.TimeZone, TimeZoneInfo.Local.Id);
+}
+
 // Configure the HTTP request pipeline
 app.MapDefaultEndpoints();
 
@@ -105,7 +111,7 @@ var api = app.MapGroup("/api");
 // Slack event payloads are small; anything bigger is not from Slack
 const int MaxSlackBodyBytes = 1024 * 1024;
 
-var slackSettings = app.Services.GetRequiredService<IOptions<ScoutingSettings>>().Value.Slack;
+var slackSettings = scoutingSettings.Slack;
 if (!slackSettings.SimulationMode && !slackSettings.SocketMode && string.IsNullOrWhiteSpace(slackSettings.SigningSecret))
 {
     app.Logger.LogError("Scouting:Slack:SigningSecret is not set while SimulationMode is off: all Slack requests will be rejected");
@@ -193,7 +199,8 @@ api.MapGet("/files/{id:guid}", async (
         return Results.NotFound("File stream not available on disk");
     }
 
-    return Results.File(stream, submission.ContentType, submission.FileName);
+    // Range requests let browsers seek in videos and audio
+    return Results.File(stream, submission.ContentType, submission.FileName, enableRangeProcessing: true);
 }).RequireAuthorization();
 
 app.MapPost("/logout", async (HttpContext http) =>

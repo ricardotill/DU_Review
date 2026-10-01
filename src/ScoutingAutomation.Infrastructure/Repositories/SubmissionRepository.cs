@@ -1,6 +1,9 @@
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using ScoutingAutomation.Domain.Entities;
 using ScoutingAutomation.Domain.Enums;
+using ScoutingAutomation.Domain.Exceptions;
 using ScoutingAutomation.Domain.Interfaces;
 using ScoutingAutomation.Domain.Models;
 using ScoutingAutomation.Infrastructure.Data;
@@ -216,8 +219,25 @@ public class SubmissionRepository : ISubmissionRepository
     public async Task AddAsync(Submission submission, CancellationToken ct = default)
     {
         await _context.Submissions.AddAsync(submission, ct);
-        await _context.SaveChangesAsync(ct);
+        try
+        {
+            await _context.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (IsUniqueViolation(ex))
+        {
+            // Not saved: stop tracking it, or the next save would try again
+            _context.Entry(submission).State = EntityState.Detached;
+            throw new DuplicateSubmissionException(
+                $"File {submission.SlackFileId} of message {submission.SlackMessageId} is already registered", ex);
+        }
     }
+
+    private static bool IsUniqueViolation(DbUpdateException ex) => ex.InnerException switch
+    {
+        SqliteException sqlite => sqlite.SqliteExtendedErrorCode == 2067, // SQLITE_CONSTRAINT_UNIQUE
+        PostgresException postgres => postgres.SqlState == PostgresErrorCodes.UniqueViolation,
+        _ => false
+    };
 
     public async Task UpdateAsync(Submission submission, CancellationToken ct = default)
     {
@@ -231,6 +251,14 @@ public class SubmissionRepository : ISubmissionRepository
         await _context.SaveChangesAsync(ct);
     }
 
+    public async Task DeleteAsync(IReadOnlyList<Submission> submissions, CancellationToken ct = default)
+    {
+        var ids = submissions.Select(s => s.Id).ToList();
+        _context.Reviews.RemoveRange(await _context.Reviews.Where(r => ids.Contains(r.SubmissionId)).ToListAsync(ct));
+        _context.Submissions.RemoveRange(await _context.Submissions.Where(s => ids.Contains(s.Id)).ToListAsync(ct));
+        await _context.SaveChangesAsync(ct);
+    }
+
     public async Task DeleteAllAsync(CancellationToken ct = default)
     {
         _context.Reviews.RemoveRange(await _context.Reviews.ToListAsync(ct));
@@ -238,9 +266,20 @@ public class SubmissionRepository : ISubmissionRepository
         await _context.SaveChangesAsync(ct);
     }
 
-    public async Task<bool> ExistsAsync(string channelId, string messageId, string fileName, CancellationToken ct = default)
+    public async Task DeleteByGroupAsync(Guid groupId, CancellationToken ct = default)
     {
-        return await _context.Submissions
-            .AnyAsync(s => s.SlackChannelId == channelId && s.SlackMessageId == messageId && s.FileName == fileName, ct);
+        _context.Reviews.RemoveRange(await _context.Reviews.Where(r => r.Submission!.GroupId == groupId).ToListAsync(ct));
+        _context.Submissions.RemoveRange(await _context.Submissions.Where(s => s.GroupId == groupId).ToListAsync(ct));
+        await _context.SaveChangesAsync(ct);
+    }
+
+    public async Task<bool> ExistsAsync(string channelId, string messageId, string? fileId, string fileName, CancellationToken ct = default)
+    {
+        var fromMessage = _context.Submissions.Where(s => s.SlackChannelId == channelId && s.SlackMessageId == messageId);
+
+        // Submissions registered before file IDs were stored only have a name
+        return string.IsNullOrEmpty(fileId)
+            ? await fromMessage.AnyAsync(s => s.FileName == fileName, ct)
+            : await fromMessage.AnyAsync(s => s.SlackFileId == fileId || (s.SlackFileId == null && s.FileName == fileName), ct);
     }
 }

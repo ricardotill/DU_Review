@@ -37,19 +37,39 @@ public class DatabaseInitializer
 
         if (_context.Database.IsSqlite())
         {
-            var exists = await _context.Database
-                .SqlQueryRaw<long>("SELECT COUNT(*) AS \"Value\" FROM pragma_table_info('Submissions') WHERE name = 'SubmitterName'")
-                .SingleAsync(ct);
-            if (exists == 0)
-            {
-                await _context.Database.ExecuteSqlRawAsync("ALTER TABLE \"Submissions\" ADD COLUMN \"SubmitterName\" TEXT NULL", ct);
-                _logger.LogInformation("Added column SubmitterName to Submissions");
-            }
+            await AddSqliteColumnAsync("SubmitterName", "TEXT NULL", ct);
+            await AddSqliteColumnAsync("SlackFileId", "TEXT NULL", ct);
         }
         else if (_context.Database.IsNpgsql())
         {
             await _context.Database.ExecuteSqlRawAsync(
                 "ALTER TABLE \"Submissions\" ADD COLUMN IF NOT EXISTS \"SubmitterName\" character varying(100) NULL", ct);
+            await _context.Database.ExecuteSqlRawAsync(
+                "ALTER TABLE \"Submissions\" ADD COLUMN IF NOT EXISTS \"SlackFileId\" character varying(50) NULL", ct);
+        }
+        else
+        {
+            return;
+        }
+
+        // Same SQL for both databases; IF NOT EXISTS makes it safe to run at every start
+        await _context.Database.ExecuteSqlRawAsync(
+            $"CREATE UNIQUE INDEX IF NOT EXISTS \"{ScoutingDbContext.UniqueFileIndexName}\" ON \"Submissions\" " +
+            "(\"SlackChannelId\", \"SlackMessageId\", \"SlackFileId\") WHERE \"SlackFileId\" IS NOT NULL", ct);
+    }
+
+    private async Task AddSqliteColumnAsync(string column, string definition, CancellationToken ct)
+    {
+        var exists = await _context.Database
+            .SqlQueryRaw<long>("SELECT COUNT(*) AS \"Value\" FROM pragma_table_info('Submissions') WHERE name = {0}", column)
+            .SingleAsync(ct);
+        if (exists == 0)
+        {
+            // Column names come from this class, never from input
+#pragma warning disable EF1002
+            await _context.Database.ExecuteSqlRawAsync($"ALTER TABLE \"Submissions\" ADD COLUMN \"{column}\" {definition}", ct);
+#pragma warning restore EF1002
+            _logger.LogInformation("Added column {Column} to Submissions", column);
         }
     }
 
@@ -154,7 +174,8 @@ public class DatabaseInitializer
                 {
                     var group = groups[sample.groupIndex % groups.Count];
                     using var ms = SlackClient.CreateSimulatedFileStream(sample.file);
-                    var storedName = SubmissionFileName.Build(group, sample.assignNum, sample.file);
+                    var createdAt = DateTimeOffset.UtcNow.AddHours(-1 * (sample.assignNum * 2));
+                    var storedName = SubmissionFileName.Build(group, sample.assignNum, sample.file, createdAt.ToGameTime());
                     var path = await _fileStorage.SaveInitialFileAsync(group.Name, storedName, ms, ct);
 
                     if (sample.status != SubmissionStatus.Pending)
@@ -176,7 +197,7 @@ public class DatabaseInitializer
                         ContentType = sample.file.EndsWith(".pdf") ? "application/pdf" : sample.file.EndsWith(".mp4") ? "video/mp4" : "image/jpeg",
                         Status = sample.status,
                         MessageText = sample.msg,
-                        CreatedAt = DateTimeOffset.UtcNow.AddHours(-1 * (sample.assignNum * 2))
+                        CreatedAt = createdAt
                     };
 
                     if (sample.reviewer != null)

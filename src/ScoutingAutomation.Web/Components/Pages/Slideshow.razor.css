@@ -1,0 +1,140 @@
+.setup {
+    max-width: 32rem;
+}
+
+.seconds {
+    max-width: 8rem;
+}
+
+.stage {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 7rem);
+    min-height: 360px;
+    border-radius: 12px;
+    background: #000;
+    overflow: hidden;
+    outline: none;
+}
+
+.stage:fullscreen {
+    height: 100vh;
+    border-radius: 0;
+}
+
+.media {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Fill the stage, so small photos and videos are scaled up instead of shown at their own size */
+.media img,
+.media video {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.audio-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    width: min(32rem, 90%);
+    padding: 2.5rem 2rem;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.06);
+    text-align: center;
+}
+
+.audio-card .bi {
+    font-size: 4rem;
+    color: #10b981;
+}
+
+.audio-title {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #fff;
+}
+
+.audio-subtitle {
+    font-size: 1.25rem;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.audio-card audio {
+    width: 100%;
+    margin-top: 1rem;
+}
+
+/* Shown for a few seconds when an item appears, then fades out */
+.caption {
+    position: absolute;
+    top: 1.5rem;
+    left: 1.5rem;
+    padding: 0.85rem 1.25rem;
+    border-radius: 12px;
+    background: rgba(0, 0, 0, 0.65);
+    pointer-events: none;
+    animation: caption-fade 5s ease-in forwards;
+}
+
+.caption-assignment {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #10b981;
+}
+
+.caption-group {
+    font-size: 1.25rem;
+    color: #fff;
+}
+
+@keyframes caption-fade {
+    0%, 70% { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .caption {
+        animation-timing-function: steps(1, end);
+    }
+}
+
+.controls {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    background: rgba(12, 17, 23, 0.95);
+}
+
+.position {
+    min-width: 4.5rem;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 0.9rem;
+    text-align: center;
+}
+
+.loop-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+
+.loop-toggle .form-check-input {
+    margin: 0;
+}
+
+.preload {
+    display: none;
+}

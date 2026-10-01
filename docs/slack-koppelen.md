@@ -160,7 +160,7 @@ Elke groep hoort bij één Slack-kanaal. Het kanaal-ID vind je in Slack: open he
 ]
 ```
 
-`Abbreviation` wordt gebruikt in de bestandsnamen, bijvoorbeeld `CDW 16.jpg`. Geef elke groep een eigen afkorting.
+`Abbreviation` wordt gebruikt in de bestandsnamen, bijvoorbeeld `CDW 16 14-32-05.jpg`. Geef elke groep een eigen afkorting.
 
 ### Jury
 
@@ -193,6 +193,8 @@ Heb je de Slack-app al eerder aangemaakt? Voeg dan `users:read` toe onder **OAut
 Haalt een jurylid een emoji weg, dan kijkt de app welke beoordelingen er nog op het bericht staan. De beste daarvan telt; is er geen meer, dan wordt de inzending weer **Pending**. Daarvoor is het event `reaction_removed` nodig (staat in de manifesten hierboven).
 
 Heb je de Slack-app al eerder aangemaakt? Voeg dan `reaction_removed` toe onder **Event Subscriptions** → **Subscribe to bot events**, en sla op. Er zijn geen extra rechten nodig.
+
+Bewerkte en verwijderde berichten komen binnen via dezelfde events `message.channels` en `message.groups`. Je hoeft daarvoor niets extra in te stellen. Voegt een groep het opdrachtnummer toe door het bericht te bewerken, dan haalt de bot zijn eigen ❓ weg. Daarvoor gebruikt hij het recht `reactions:write`, dat hij al heeft.
 
 ### Emoji's voor beoordelingen
 

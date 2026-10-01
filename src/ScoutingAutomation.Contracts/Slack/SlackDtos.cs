@@ -52,6 +52,19 @@ public class SlackEventItemDto
     [JsonPropertyName("files")]
     public List<SlackFileItemDto>? Files { get; set; }
 
+    // Fields below come with "message_changed" and "message_deleted" events
+
+    /// <summary>The message as it is after an edit.</summary>
+    [JsonPropertyName("message")]
+    public SlackEventItemDto? Message { get; set; }
+
+    /// <summary>The message as it was before an edit or deletion.</summary>
+    [JsonPropertyName("previous_message")]
+    public SlackEventItemDto? PreviousMessage { get; set; }
+
+    [JsonPropertyName("deleted_ts")]
+    public string? DeletedTs { get; set; }
+
     // Fields below come with messages read from the history API
 
     [JsonPropertyName("bot_id")]
@@ -189,4 +202,11 @@ public class SlackFileItemDto
 
     [JsonPropertyName("url_private_download")]
     public string? UrlPrivateDownload { get; set; }
+
+    /// <summary>"tombstone" when the file was deleted but the message still shows it.</summary>
+    [JsonPropertyName("mode")]
+    public string? Mode { get; set; }
+
+    [JsonIgnore]
+    public bool IsDeleted => Mode == "tombstone";
 }

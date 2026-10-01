@@ -1,0 +1,392 @@
+@page "/slideshow"
+@rendermode InteractiveServer
+@inherits LiveComponentBase
+@inject FavoritesService Favorites
+@inject IJSRuntime JS
+
+<PageTitle>Slideshow - Scouting Regional Game</PageTitle>
+
+@if (!started)
+{
+    <PageHeader Title="Slideshow" Subtitle="Show all photos, videos and audio. Rejected submissions are left out." BackHref="submissions" BackText="Submissions" />
+
+    <div class="glass-panel p-4 setup">
+        <div class="form-check form-switch mb-3">
+            <input class="form-check-input" type="checkbox" role="switch" id="slideshowFavorites" @bind="favoritesOnly" disabled="@(!Favorites.IsLoaded)" />
+            <label class="form-check-label text-white-50" for="slideshowFavorites">
+                <i class="bi bi-star-fill text-warning"></i> Favorites only (@Favorites.Count)
+            </label>
+        </div>
+
+        <div class="form-check form-switch mb-3">
+            <input class="form-check-input" type="checkbox" role="switch" id="slideshowLoop" @bind="loop" />
+            <label class="form-check-label text-white-50" for="slideshowLoop">Start again after the last item</label>
+        </div>
+
+        <div class="form-check form-switch mb-3">
+            <input class="form-check-input" type="checkbox" role="switch" id="slideshowShuffle" @bind="shuffle" />
+            <label class="form-check-label text-white-50" for="slideshowShuffle">Shuffle</label>
+        </div>
+
+        <div class="mb-4">
+            <label class="form-label text-secondary small fw-semibold mb-1" for="slideshowSeconds">Seconds per photo</label>
+            <select class="form-select form-select-dark seconds" id="slideshowSeconds" @bind="secondsPerImage">
+                @foreach (var seconds in SecondsOptions)
+                {
+                    <option value="@seconds">@seconds</option>
+                }
+            </select>
+        </div>
+
+        <div class="d-flex align-items-center gap-3">
+            <button class="btn btn-scout-primary d-flex align-items-center gap-2" disabled="@(Playlist.Count == 0)" @onclick="StartAsync">
+                <i class="bi bi-play-fill"></i>
+                <span>Start slideshow</span>
+            </button>
+            <span class="text-secondary small item-count">@Playlist.Count @(Playlist.Count == 1 ? "item" : "items")</span>
+        </div>
+
+        @if (loaded && Playlist.Count == 0)
+        {
+            <div class="empty-state mt-3">
+                <i class="bi bi-images"></i>
+                @(favoritesOnly ? "No favorite photos, videos or audio yet." : "No photos, videos or audio to show.")
+            </div>
+        }
+    </div>
+}
+else
+{
+    <div class="stage" tabindex="0" @ref="stage" @onkeydown="OnKeyDownAsync">
+        @if (Current is { } item)
+        {
+            var fileUrl = $"/api/files/{item.Id}";
+
+            <div class="media" @key="item.Id">
+                @if (item.ContentType.StartsWith("image/"))
+                {
+                    <img src="@fileUrl" alt="@item.FileName" />
+                }
+                else if (item.ContentType.StartsWith("video/"))
+                {
+                    <video src="@fileUrl" autoplay controls @onended="OnMediaEndedAsync"></video>
+                }
+                else
+                {
+                    <div class="audio-card">
+                        <i class="bi bi-music-note-beamed"></i>
+                        <div class="audio-title">@(item.Group?.Name ?? "Unknown group")</div>
+                        <div class="audio-subtitle">@AssignmentLabel(item)</div>
+                        <audio src="@fileUrl" autoplay controls @onended="OnMediaEndedAsync"></audio>
+                    </div>
+                }
+            </div>
+
+            @* A new key restarts the CSS animation, so the caption fades again for every item *@
+            <div class="caption" @key="(item.Id, showCount)">
+                <div class="caption-assignment">@AssignmentLabel(item)</div>
+                <div class="caption-group">@(item.Group?.Name ?? "Unknown group")</div>
+            </div>
+
+            @* Buttons keep focus off themselves, so the arrow keys and space keep working on the stage *@
+            <div class="controls" @onmousedown:preventDefault="true">
+                <button class="btn btn-scout-secondary" title="Previous (←)" aria-label="Previous" disabled="@(!CanGoBack)" @onclick="PreviousAsync">
+                    <i class="bi bi-skip-start-fill"></i>
+                </button>
+                <button class="btn btn-scout-secondary" title="@(paused ? "Play (space)" : "Pause (space)")" aria-label="@(paused ? "Play" : "Pause")" @onclick="TogglePauseAsync">
+                    <i class="bi @(paused ? "bi-play-fill" : "bi-pause-fill")"></i>
+                </button>
+                <button class="btn btn-scout-secondary" title="Next (→)" aria-label="Next" disabled="@(!CanGoForward)" @onclick="NextAsync">
+                    <i class="bi bi-skip-end-fill"></i>
+                </button>
+                <span class="position">@(index + 1) / @shown.Count</span>
+                <span class="favorite"><FavoriteStar Submission="item" /></span>
+                <label class="loop-toggle" title="Start again after the last item">
+                    <input type="checkbox" class="form-check-input" @bind="loop" /> Loop
+                </label>
+                <button class="btn btn-scout-secondary ms-auto" title="Full screen" aria-label="Full screen" @onclick="ToggleFullscreenAsync">
+                    <i class="bi bi-arrows-fullscreen"></i>
+                </button>
+                <button class="btn btn-scout-secondary" title="Stop (Esc)" aria-label="Stop" @onclick="StopAsync">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+
+            @if (PreloadUrl is { } preload)
+            {
+                <img class="preload" src="@preload" alt="" aria-hidden="true" />
+            }
+        }
+        else
+        {
+            <div class="empty-state">
+                <i class="bi bi-images"></i>
+                Nothing left to show.
+                <button class="btn btn-scout-secondary btn-sm mt-3" @onclick="StopAsync">Back</button>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private static readonly int[] SecondsOptions = { 3, 5, 8, 10, 15, 30 };
+
+    [SupplyParameterFromQuery(Name = "favorites")]
+    public bool? FavoritesFromQuery { get; set; }
+
+    [SupplyParameterFromQuery(Name = "group")]
+    public Guid? GroupFromQuery { get; set; }
+
+    [SupplyParameterFromQuery(Name = "assignment")]
+    public int? AssignmentFromQuery { get; set; }
+
+    [SupplyParameterFromQuery(Name = "status")]
+    public string? StatusFromQuery { get; set; }
+
+    private List<Submission> media = new();
+    private bool loaded;
+
+    private bool favoritesOnly;
+    private bool loop = true;
+    private bool shuffle;
+    private int secondsPerImage = 8;
+
+    private bool started;
+    private bool paused;
+    private List<Submission> shown = new();
+    private int index;
+    // Counts every time an item is shown, so showing the same item again replays the caption
+    private int showCount;
+    private CancellationTokenSource? imageTimer;
+    private ElementReference stage;
+    private bool focusStage;
+
+    /// <summary>What a start would show: media that is not rejected, optionally only favorites.</summary>
+    private List<Submission> Playlist => favoritesOnly ? media.Where(Favorites.IsFavorite).ToList() : media;
+
+    private Submission? Current => index >= 0 && index < shown.Count ? shown[index] : null;
+
+    private bool CanGoBack => index > 0 || (loop && shown.Count > 1);
+
+    private bool CanGoForward => index < shown.Count - 1 || (loop && shown.Count > 1);
+
+    private string? PreloadUrl
+    {
+        get
+        {
+            if (shown.Count < 2) return null;
+            var next = shown[(index + 1) % shown.Count];
+            return next.ContentType.StartsWith("image/") ? $"/api/files/{next.Id}" : null;
+        }
+    }
+
+    protected override Task OnInitializedAsync()
+    {
+        Favorites.Changed += OnFavoritesChanged;
+        favoritesOnly = FavoritesFromQuery == true;
+        return ReloadAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await Favorites.EnsureLoadedAsync();
+        }
+
+        if (focusStage)
+        {
+            focusStage = false;
+            await stage.FocusAsync();
+        }
+    }
+
+    protected override async Task LoadAsync(IServiceProvider services)
+    {
+        var filter = new SubmissionFilter
+        {
+            GroupId = GroupFromQuery,
+            AssignmentNumber = AssignmentFromQuery,
+            Status = Enum.TryParse<SubmissionStatus>(StatusFromQuery, out var status) ? status : null
+        };
+
+        var results = await services.GetRequiredService<ISubmissionRepository>().SearchSubmissionsAsync(filter);
+        media = results
+            .Where(s => s.Status != SubmissionStatus.Rejected && IsMedia(s.ContentType))
+            .OrderBy(s => s.CreatedAt)
+            .ToList();
+        loaded = true;
+
+        // A running show keeps its order; it only drops items that were rejected or removed
+        if (started)
+        {
+            var currentId = Current?.Id;
+            var stillShown = media.Select(s => s.Id).ToHashSet();
+            var updated = media.ToDictionary(s => s.Id);
+            shown = shown.Where(s => stillShown.Contains(s.Id)).Select(s => updated[s.Id]).ToList();
+            var newIndex = shown.FindIndex(s => s.Id == currentId);
+            if (newIndex >= 0)
+            {
+                index = newIndex;
+            }
+            else
+            {
+                index = Math.Min(index, shown.Count - 1);
+                ShowCurrent();
+            }
+        }
+    }
+
+    private static bool IsMedia(string contentType) =>
+        contentType.StartsWith("image/") || contentType.StartsWith("video/") || contentType.StartsWith("audio/");
+
+    private static string AssignmentLabel(Submission submission) =>
+        submission.AssignmentNumber.HasValue ? $"Assignment #{submission.AssignmentNumber}" : "Unknown assignment";
+
+    private Task StartAsync()
+    {
+        shown = shuffle ? Playlist.OrderBy(_ => Random.Shared.Next()).ToList() : Playlist;
+        if (shown.Count == 0) return Task.CompletedTask;
+
+        started = true;
+        paused = false;
+        index = 0;
+        focusStage = true;
+        ShowCurrent();
+        return Task.CompletedTask;
+    }
+
+    private async Task StopAsync()
+    {
+        StopImageTimer();
+        started = false;
+        await JS.InvokeVoidAsync("duSlideshow.exitFullscreen");
+    }
+
+    private Task NextAsync() => MoveAsync(+1);
+
+    private Task PreviousAsync() => MoveAsync(-1);
+
+    private Task MoveAsync(int step)
+    {
+        var target = index + step;
+        if (target < 0 || target >= shown.Count)
+        {
+            if (!loop || shown.Count == 0) return Task.CompletedTask;
+            target = (target + shown.Count) % shown.Count;
+        }
+
+        index = target;
+        ShowCurrent();
+        return Task.CompletedTask;
+    }
+
+    private Task TogglePauseAsync()
+    {
+        paused = !paused;
+        if (paused)
+        {
+            StopImageTimer();
+        }
+        else
+        {
+            StartImageTimer();
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Video and audio move on when they end; photos move on after the chosen time.</summary>
+    private Task OnMediaEndedAsync() => paused ? Task.CompletedTask : AdvanceAutomaticallyAsync();
+
+    private Task AdvanceAutomaticallyAsync()
+    {
+        if (index >= shown.Count - 1 && !loop)
+        {
+            paused = true;
+            return Task.CompletedTask;
+        }
+
+        return NextAsync();
+    }
+
+    private void ShowCurrent()
+    {
+        showCount++;
+        StartImageTimer();
+    }
+
+    private void StartImageTimer()
+    {
+        StopImageTimer();
+        if (paused || Current is not { } item || !item.ContentType.StartsWith("image/")) return;
+
+        var timer = new CancellationTokenSource();
+        imageTimer = timer;
+        _ = AdvanceAfterDelayAsync(timer.Token);
+    }
+
+    private async Task AdvanceAfterDelayAsync(CancellationToken token)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(secondsPerImage), token);
+            await InvokeAsync(async () =>
+            {
+                if (token.IsCancellationRequested) return;
+                await AdvanceAutomaticallyAsync();
+                StateHasChanged();
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            // The user moved on or paused
+        }
+        catch (ObjectDisposedException)
+        {
+            // Page closed
+        }
+    }
+
+    private void StopImageTimer()
+    {
+        imageTimer?.Cancel();
+        imageTimer?.Dispose();
+        imageTimer = null;
+    }
+
+    private async Task OnKeyDownAsync(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "ArrowRight":
+                await NextAsync();
+                break;
+            case "ArrowLeft":
+                await PreviousAsync();
+                break;
+            case " ":
+                await TogglePauseAsync();
+                break;
+            case "Escape":
+                await StopAsync();
+                break;
+        }
+    }
+
+    private async Task ToggleFullscreenAsync()
+    {
+        await JS.InvokeVoidAsync("duSlideshow.toggleFullscreen", stage);
+    }
+
+    private void OnFavoritesChanged() => InvokeAsync(StateHasChanged);
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            Favorites.Changed -= OnFavoritesChanged;
+            StopImageTimer();
+        }
+    }
+}

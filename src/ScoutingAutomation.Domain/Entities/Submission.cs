@@ -10,6 +10,9 @@ public class Submission
     public int? AssignmentNumber { get; set; }
     public string SlackChannelId { get; set; } = string.Empty;
     public string SlackMessageId { get; set; } = string.Empty;
+
+    /// <summary>Slack's ID of the uploaded file; null for submissions registered before it was stored.</summary>
+    public string? SlackFileId { get; set; }
     public string Submitter { get; set; } = string.Empty;
 
     /// <summary>The submitter's Slack name at the time of upload; null when it could not be fetched.</summary>
@@ -35,6 +38,15 @@ public class Submission
         StoragePath = storagePath;
         AssignmentNumber = assignmentNumber;
         UnresolvedReason = unresolvedReason;
+        UpdatedAt = DateTimeOffset.UtcNow;
+    }
+
+    /// <summary>Moves the submission to another assignment, e.g. after the scout corrected the number in Slack.</summary>
+    public void Reassign(int assignmentNumber, string storagePath)
+    {
+        AssignmentNumber = assignmentNumber;
+        StoragePath = storagePath;
+        UnresolvedReason = null;
         UpdatedAt = DateTimeOffset.UtcNow;
     }
 

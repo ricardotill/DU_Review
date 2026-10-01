@@ -7,6 +7,9 @@ public interface ISlackClient
     Task<Stream> DownloadFileAsync(string fileUrl, string? fileName = null, CancellationToken ct = default);
     /// <returns>False when the bot had already placed this reaction, otherwise true.</returns>
     Task<bool> AddReactionAsync(string channel, string messageTs, string reaction, CancellationToken ct = default);
+    /// <summary>Takes back a reaction the bot placed. Does nothing when it is not there.</summary>
+    Task RemoveReactionAsync(string channel, string messageTs, string reaction, CancellationToken ct = default);
+
     Task PostThreadReplyAsync(string channel, string threadTs, string text, CancellationToken ct = default);
 
     /// <summary>The reactions currently on a message.</summary>

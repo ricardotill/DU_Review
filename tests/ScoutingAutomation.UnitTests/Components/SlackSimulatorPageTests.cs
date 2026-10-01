@@ -122,6 +122,8 @@ public class SlackSimulatorPageTests : PageTestBase
         var cut = RenderSimulator();
         cut.Find("button.btn-scout-primary").Click();
         cut.WaitForAssertion(() => Log(cut).Should().NotBeEmpty());
+        // Wait until the upload is done, or its result lands in the log after clearing
+        cut.WaitForAssertion(() => cut.Find("button.btn-scout-primary").TextContent.Should().Contain("Post upload"));
 
         cut.FindAll("button").Single(b => b.TextContent.Trim() == "Clear").Click();
 

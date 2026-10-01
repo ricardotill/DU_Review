@@ -90,7 +90,8 @@ public class InProgressStateTests : PageTestBase
         cut.FindAll("select")[1].Change(seeded.Pending.Id.ToString());
         var reactButton = () => cut.FindAll("button").Single(b => b.TextContent.Contains("Add reaction") || b.TextContent.Contains("Processing…") && b.ClassList.Contains("btn-scout-secondary"));
         reactButton().Click();
-        reactButton().TextContent.Should().Contain("Processing…");
+        // The handler first loads the submission, which may finish on another thread
+        cut.WaitForAssertion(() => reactButton().TextContent.Should().Contain("Processing…"));
         reactionGate.SetResult();
         cut.WaitForAssertion(() => reactButton().TextContent.Should().Contain("Add reaction"));
     }
@@ -99,12 +100,14 @@ public class InProgressStateTests : PageTestBase
     {
         public async Task<Submission?> GetByIdAsync(Guid id, CancellationToken ct = default) { await gate; return await inner.GetByIdAsync(id, ct); }
         public Task<IReadOnlyList<Submission>> GetBySlackMessageIdAsync(string c, string m, CancellationToken ct = default) => inner.GetBySlackMessageIdAsync(c, m, ct);
+        public Task DeleteAsync(IReadOnlyList<Submission> submissions, CancellationToken ct = default) => inner.DeleteAsync(submissions, ct);
         public Task DeleteAllAsync(CancellationToken ct = default) => inner.DeleteAllAsync(ct);
+        public Task DeleteByGroupAsync(Guid groupId, CancellationToken ct = default) => inner.DeleteByGroupAsync(groupId, ct);
         public async Task<IReadOnlyList<Submission>> SearchSubmissionsAsync(SubmissionFilter filter, CancellationToken ct = default) { await gate; return await inner.SearchSubmissionsAsync(filter, ct); }
         public async Task<SubmissionStatistics> GetStatisticsAsync(CancellationToken ct = default) { await gate; return await inner.GetStatisticsAsync(ct); }
         public Task AddAsync(Submission submission, CancellationToken ct = default) => inner.AddAsync(submission, ct);
         public Task UpdateAsync(Submission submission, CancellationToken ct = default) => inner.UpdateAsync(submission, ct);
-        public Task<bool> ExistsAsync(string c, string m, string f, CancellationToken ct = default) => inner.ExistsAsync(c, m, f, ct);
+        public Task<bool> ExistsAsync(string c, string m, string? id, string f, CancellationToken ct = default) => inner.ExistsAsync(c, m, id, f, ct);
     }
 
     private sealed class GatedWorkflow(ISubmissionWorkflowService inner, Func<Task?> hold) : ISubmissionWorkflowService
@@ -120,6 +123,18 @@ public class InProgressStateTests : PageTestBase
             if (hold() is { } gate) await gate;
             return await inner.ProcessSlackReactionAsync(e, ct);
         }
+
+        public Task<ProcessSlackMessageResult> ProcessSlackMessageChangedAsync(SlackEventItemDto e, CancellationToken ct = default) =>
+            inner.ProcessSlackMessageChangedAsync(e, ct);
+
+        public Task<ProcessSlackMessageResult> ProcessSlackMessageDeletedAsync(SlackEventItemDto e, CancellationToken ct = default) =>
+            inner.ProcessSlackMessageDeletedAsync(e, ct);
+
+        public Task<ProcessSlackMessageResult> ProcessMissedMessageAsync(SlackEventItemDto message, CancellationToken ct = default) =>
+            inner.ProcessMissedMessageAsync(message, ct);
+
+        public Task<bool> SyncReviewAsync(string channelId, string messageTs, IReadOnlyList<SlackMessageReactionDto>? reactions, CancellationToken ct = default) =>
+            inner.SyncReviewAsync(channelId, messageTs, reactions, ct);
 
         public Task<Submission> OverrideStatusAsync(Guid id, SubmissionStatus status, string reason, CancellationToken ct = default) =>
             inner.OverrideStatusAsync(id, status, reason, ct);

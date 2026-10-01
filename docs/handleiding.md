@@ -1,0 +1,267 @@
+# Handleiding DU Review
+
+Laatst bijgewerkt: 1 oktober 2026
+
+## Zo werkt het
+
+Groepen plaatsen hun opdrachten in Slack, de jury beoordeelt ze daar met een emoji, en DU Review doet de rest: bestanden opslaan, punten tellen en een live scorebord tonen. Slack is altijd leidend: wat in Slack staat, telt.
+
+1. Een scout plaatst een foto, video, geluidsopname of document in het Slack-kanaal van de eigen groep, met het opdrachtnummer in de tekst.
+2. De app downloadt het bestand en slaat het op in de map van de groep, met een vaste naam zoals `CDW 12 14-32-05.jpg`.
+3. Een jurylid reageert in Slack met een emoji: goedgekeurd, awesome of afgekeurd.
+4. De app verplaatst het bestand naar de juiste map en werkt het scorebord direct bij.
+
+Klopt er iets niet, bijvoorbeeld een ontbrekend opdrachtnummer, dan reageert de bot zelf in Slack met een emoji en een uitleg in de thread.
+
+Deze handleiding heeft een deel per rol: groepen, jury, iedereen die het dashboard bekijkt, en de organisatie (admin).
+
+## Voor de groepen: een opdracht insturen
+
+Zet het opdrachtnummer in je bericht en voeg het bestand toe, in het kanaal van je eigen groep. Meer is niet nodig.
+
+1. Open het Slack-kanaal van je groep.
+2. Voeg een of meer bestanden toe: foto, video, geluidsopname, PDF of Word-document.
+3. Typ het opdrachtnummer in de tekst, bijvoorbeeld `Opdracht 12`.
+4. Verstuur het bericht.
+
+### Zo schrijf je het opdrachtnummer
+
+| Voorbeeld | Werkt |
+| --- | --- |
+| `Opdracht 12`, `taak 12`, `assignment 12` | ja |
+| `#12` | ja |
+| `A12` | ja |
+| `12 - kampvuur`, `12: kampvuur` | ja, als het nummer vooraan staat |
+| `we deden het met 12 man` | nee: een los getal in de tekst telt niet |
+
+### Goed om te weten
+
+- **Meerdere bestanden in één bericht** mag. Ze tellen allemaal voor dezelfde opdracht en krijgen een volgnummer: `(1)`, `(2)`, `(3)`.
+- **Een opdracht opnieuw insturen** mag ook. Per opdracht telt de beste beoordeling van je groep, niet de laatste.
+- **Nummer vergeten of verkeerd getypt?** Bewerk je bericht in Slack en zet het juiste nummer erin. De app pakt de wijziging op. Opnieuw plaatsen kan ook.
+- **Bericht verwijderd** in Slack? Dan telt die inzending niet meer mee.
+- **Niet geaccepteerd**: zip-bestanden, SVG-afbeeldingen en andere bestandstypen dan hierboven.
+
+### Als de bot reageert
+
+De bot zet een emoji op je bericht en legt in de thread uit wat er mis is.
+
+| De bot zet | Betekenis | Wat jij doet |
+| --- | --- | --- |
+| ❓ | Geen opdrachtnummer gevonden, of die opdracht bestaat niet | Bewerk je bericht en zet het juiste nummer erin |
+| ⚠️ bij "niet ondersteund" | Een bestand heeft een type dat niet telt | Stuur het als foto, video, geluid, PDF of Word |
+| ⚠️ bij "kon niet worden opgehaald" | Het bestand kwam niet goed binnen | Plaats het bestand opnieuw |
+
+Geen reactie van de bot betekent dat alles goed is ontvangen. De beoordeling van de jury zie je als emoji van een jurylid op je bericht.
+
+## Voor de jury: beoordelen in Slack
+
+Je beoordeelt een inzending door een emoji op het bericht van de groep te zetten. Alleen emoji's van juryleden tellen; de organisatie zet je Slack-account op de jurylijst.
+
+| Beoordeling | Emoji (Slack-naam) | Punten |
+| --- | --- | --- |
+| Approved | 👍 `:thumbsup:` · ✅ `:white_check_mark:` · ✔️ `:heavy_check_mark:` | standaardpunten van de opdracht |
+| Awesome | ❤️ `:heart:` · ⭐ `:star:` · 🔥 `:fire:` · 🏆 `:trophy:` | awesome-punten van de opdracht |
+| Rejected | ❌ `:x:` · 👎 `:-1:` · 🚫 `:no_entry_sign:` | 0 |
+
+Nog niet beoordeeld heet **Pending** en geeft 0 punten.
+
+### Zo beoordeel je
+
+1. Open het kanaal van een groep, of klik op een inzending in het dashboard om te zien welke nog open staan.
+2. Bekijk het bestand in Slack.
+3. Zet één beoordelings-emoji op het bericht.
+4. Klaar. Het scorebord werkt binnen een paar seconden bij.
+
+### Regels die je moet kennen
+
+- **Eén emoji geldt voor het hele bericht.** Staan er drie foto's in, dan krijgen ze alle drie dezelfde beoordeling. Wil je één bestand anders beoordelen, vraag dan de organisatie om een handmatige aanpassing.
+- **Oneens met een ander jurylid?** Dan telt de beste beoordeling op het bericht, in welke volgorde de emoji's ook zijn gezet. Awesome gaat voor Approved, Approved gaat voor Rejected. Overleg dus eerst als je een beoordeling naar beneden wilt halen, en vraag het andere jurylid de emoji weg te halen.
+- **Vergist?** Haal je emoji weg en zet de goede. Haal je de enige beoordeling weg, dan is de inzending weer Pending.
+- **Andere emoji's tellen niet.** Een 👀 of 😂 mag gewoon; de app negeert ze. Ook emoji's van scouts of andere leiding tellen niet.
+- **Berichten van juryleden zijn nooit een inzending.** Je kunt dus gewoon in de kanalen reageren, ook met een bestand.
+- **Per opdracht telt de beste inzending van een groep.** Keur je een eerdere poging af en een latere goed, dan telt alleen de goedkeuring.
+
+### Tips
+
+- Reageer in de thread van het bericht als je de groep iets wilt laten weten, bijvoorbeeld waarom iets is afgekeurd.
+- Gebruik op het dashboard de filters **Pending** en **Assignments** om te zien wat nog beoordeeld moet worden.
+- Twijfel je over een Awesome? Gebruik de ster ☆ op het dashboard om favorieten te markeren; die zijn alleen voor jou zichtbaar.
+
+## Het dashboard
+
+Het dashboard toont live de stand, alle inzendingen en de bestanden zelf. Je hoeft de pagina nooit te verversen: nieuwe inzendingen en beoordelingen verschijnen vanzelf.
+
+### Inloggen
+
+1. Open het adres van de app dat je van de organisatie kreeg.
+2. Vul de toegangssleutel in. Hoofdletters en spaties maken niet uit.
+3. Je browser blijft daarna 30 dagen ingelogd.
+
+Na 5 verkeerde sleutels binnen een minuut moet je even wachten voordat je het opnieuw kunt proberen.
+
+### De pagina's
+
+| Pagina | Wat je er ziet en doet |
+| --- | --- |
+| **Dashboard** | Totalen, het klassement en de voortgang per opdracht. |
+| **Submissions** | Alle inzendingen. Zoek en filter op groep, opdracht, status en jurylid, of toon alleen je favorieten. |
+| **Slideshow** | Alle foto's, video's en geluidsopnames achter elkaar, bijvoorbeeld op een beamer. Afgekeurde inzendingen worden overgeslagen. Kies alleen favorieten, herhalen, door elkaar, en het aantal seconden per foto. |
+| **Assignments** | Alle opdrachten. Per opdracht zie je de inzendingen van alle groepen naast elkaar. |
+| **Groups** | Alle groepen. Per groep zie je score, plaats en alle opdrachten. |
+| **Configuration** | De instellingen en de juryleden. Voor de organisatie. |
+| **Admin** | Naar admin-modus gaan. Voor de organisatie. |
+
+Klik op een inzending voor de detailpagina: het bestand, wie het plaatste, het bericht, en de hele beoordelingsgeschiedenis met namen van juryleden.
+
+### Zo wordt de score berekend
+
+- Approved geeft de standaardpunten van de opdracht, Awesome de awesome-punten. Pending en Rejected geven 0.
+- Elke opdracht telt één keer per groep: de beste beoordeling van al haar inzendingen voor die opdracht.
+- Groepen met evenveel punten delen een plaats.
+
+### Favorieten
+
+Klik op de ster ☆ bij een inzending om hem als favoriet te markeren, bijvoorbeeld voor de prijsuitreiking. Favorieten zijn per browser en alleen voor jou zichtbaar. Er passen er maximaal 300 in. Een andere browser of een gewiste browser heeft dus geen favorieten.
+
+## Voor de organisatie: beheer
+
+Beheertaken doe je in admin-modus. Daarvoor heb je de aparte admin-sleutel nodig; de gewone toegangssleutel is genoeg om te kijken.
+
+### Admin-modus
+
+- **Aan:** ga naar **Admin** en vul de admin-sleutel in. Inloggen met de admin-sleutel op het loginscherm kan ook.
+- **Uit:** klik op **Leave admin mode**.
+- Zolang admin-modus aan staat, staat **Admin** bovenaan de pagina.
+
+### Sleutels
+
+- Bij de eerste start maakt de app een toegangssleutel en een admin-sleutel aan. Ze staan eenmalig in het logboek en worden bewaard in `access-keys.json`.
+- Op de pagina **Admin** maak je een nieuwe sleutel aan. Iedereen die met de oude sleutel is ingelogd, wordt direct uitgelogd. Jij blijft ingelogd.
+- Een nieuwe admin-sleutel wordt maar één keer getoond. Schrijf hem meteen op.
+
+### Juryleden
+
+Op **Configuration** voeg je juryleden toe met hun Slack member-ID, haal je ze weg en pas je hun namen aan. Alleen emoji's van juryleden op deze lijst tellen. Wijzigingen gelden direct, zonder herstart.
+
+Een member-ID vind je in Slack via het profiel van iemand: **⋮** → **Copy member ID**. Het begint met `U`.
+
+### Handmatige status (Manual status override)
+
+Gebruik dit alleen als Slack hapert en een beoordeling niet aankomt.
+
+1. Open de inzending (detailpagina).
+2. Kies onder **Manual status override** de juiste status.
+3. Vul een reden in en bevestig.
+
+De aanpassing komt in de beoordelingsgeschiedenis. Slack blijft leidend: zet een jurylid later een emoji op het bericht, dan telt die emoji. Na **Rebuild from Slack** verdwijnen handmatige aanpassingen. Bij het automatisch inhalen blijft een aanpassing staan zolang er in Slack geen beoordeling op het bericht staat.
+
+### Manual mode
+
+Zet **Manual mode** aan met de schakelaar op het **Dashboard** als de organisatie alles zelf wil beoordelen. De app slaat dan alleen nog bestanden op met de juiste naam in de map van de groep. Er komen geen inzendingen op het dashboard, emoji's worden genegeerd en de bot zegt niets in Slack. Bovenaan elke pagina staat dan **Manual mode**. Na een herstart geldt weer de instelling `Scouting:ManualMode`.
+
+### Automatisch inhalen
+
+Slack stuurt elk bericht en elke emoji maar één keer. Draaide de app even niet, of was de verbinding weg, dan haalt hij zelf in wat hij heeft gemist: bij het opstarten en bij elke nieuwe verbinding met Slack.
+
+- De app leest de berichten van vandaag uit alle groepskanalen en registreert wat ontbreekt.
+- Beoordelingen worden gelijkgezet met de emoji's die nu in Slack staan.
+- Er wordt niets weggegooid. Het logboek meldt wat er is ingehaald.
+- In manual mode wordt niet ingehaald. Gebruik dan **Rebuild from Slack**.
+
+### Rebuild from Slack
+
+Rebuild bouwt alle inzendingen opnieuw op uit de Slack-berichten. Gebruik het als er iets flink mis is gegaan, bijvoorbeeld als berichten zijn verwijderd of aangepast terwijl de app niet draaide. Het werkt alleen in admin-modus.
+
+1. Ga naar **Configuration**, onderaan staat **Rebuild from Slack**. Voor één groep staat dezelfde knop op de groepspagina.
+2. Kies vanaf welk tijdstip berichten meetellen (standaard vandaag 00:00).
+3. Typ `REBUILD` en start.
+
+De app leest eerst alle kanalen. Lukt dat voor een kanaal niet, dan stopt hij en verandert er niets. Daarna gaan alle bestanden naar `scouting_storage/_backup/{tijdstip}/`, samen met een `submissions.json` van de oude stand. Vervolgens worden alle berichten en emoji's opnieuw verwerkt. Tijdens een rebuild staat het scorebord even leeg; nieuwe berichten wachten tot hij klaar is.
+
+**Doe geen rebuild tijdens het spel** tenzij het echt nodig is. Met veel video's kan het meer dan 10 minuten duren.
+
+### Waar de bestanden staan
+
+```text
+scouting_storage/
+  christiaan-de-wet/                ← nog niet beoordeeld, bijv. CDW 12 14-32-05.jpg
+    approved/
+    awesome/
+    rejected/
+  _deleted/christiaan-de-wet/       ← bestanden van verwijderde berichten
+  _backup/20261001-143000/          ← back-up van een rebuild
+```
+
+## Draaiboek voor de speeldag
+
+Doe de generale repetitie een paar dagen vóór het spel, op dezelfde server en in dezelfde Slack-workspace. Dan is de speeldag zelf vooral kijken.
+
+### Een paar dagen vooraf
+
+- [ ] Elk groepskanaal bestaat en de bot is lid van elk kanaal (`/invite @DU Review`).
+- [ ] Alle juryleden staan op **Configuration**, met hun naam.
+- [ ] `opdrachtenpunten.csv` bevat alle opdrachten met de juiste punten.
+- [ ] De tijdzone (`Scouting:TimeZone`) staat op `Europe/Amsterdam`.
+- [ ] Er is genoeg schijfruimte: reken op enkele GB voor video's.
+- [ ] Generale repetitie: vier mensen plaatsen tegelijk, één met een grote video (200 MB of meer). Twee juryleden zetten verschillende emoji's op één bericht. Iemand bewerkt een bericht en iemand verwijdert er een. Herstart de app halverwege en controleer dat niets ontbreekt.
+- [ ] Toegangssleutel en admin-sleutel staan veilig genoteerd.
+
+### Op de ochtend van het spel
+
+- [ ] Start de app en controleer bovenaan de pagina de Slack-status: **Connected to Slack**.
+- [ ] **Manual mode** staat uit (geen melding bovenaan).
+- [ ] Plaats in elk kanaal een testbericht met een foto en `Opdracht 1`. Controleer dat het op het dashboard verschijnt, en verwijder het daarna in Slack.
+- [ ] Deel de toegangssleutel met de jury en de mensen bij het scorebord.
+- [ ] Zet de slideshow of het dashboard klaar op de beamer.
+
+### Uitleg aan de groepen (twee minuten)
+
+- Plaats je opdracht in je eigen kanaal met het nummer erbij: `Opdracht 12`.
+- Meerdere foto's in één bericht mag.
+- Zet de bot een ❓, bewerk dan je bericht en zet het juiste nummer erin.
+- Zet de bot een ⚠️, lees de uitleg in de thread.
+
+### Uitleg aan de jury (twee minuten)
+
+- Eén emoji per bericht: 👍 goed, 🔥 awesome, ❌ afgekeurd.
+- De emoji geldt voor alle bestanden in het bericht.
+- Bij twee verschillende emoji's telt de beste. Overleg als je wilt afwaarderen.
+- Andere emoji's tellen niet; je kunt ze vrij gebruiken.
+
+### Tijdens het spel
+
+- Houd de Slack-status bovenaan in de gaten. Staat er een rode melding in plaats van **Connected to Slack**, kijk dan in het logboek.
+- Doe geen **Rebuild from Slack** tijdens het spel, tenzij het echt nodig is.
+- Gebruik **Manual status override** alleen als Slack hapert.
+
+### Na een herstart of storing
+
+1. Wacht tot de Slack-status **Connected** is.
+2. Kijk in het logboek of het inhalen klaar is: "Catch-up done" of "Catch-up found missed Slack activity".
+3. Ontbreekt er toch iets, of zijn er berichten verwijderd of aangepast tijdens de storing? Doe dan een **Rebuild from Slack** vanaf vandaag 00:00.
+
+### Na afloop
+
+- Maak een kopie van de map `scouting_storage` voordat je iets opruimt.
+- Gebruik de favorieten en de slideshow voor de prijsuitreiking.
+
+## Problemen oplossen
+
+Begin altijd bij de Slack-status bovenaan de pagina en het logboek van de app. De meeste problemen zijn een kanaal zonder bot of een jurylid dat niet op de lijst staat.
+
+| Wat je ziet | Wat je doet |
+| --- | --- |
+| Een inzending verschijnt niet op het dashboard | Staat er een opdrachtnummer in het bericht? Zit er een bestand bij? Is de bot lid van het kanaal? Zie je een ❓ of ⚠️ van de bot, lees dan de thread. |
+| De bot reageert met ❓ | Het nummer ontbreekt of de opdracht bestaat niet. De groep bewerkt het bericht en zet het juiste nummer erin. |
+| De bot reageert met ⚠️ "kon niet worden opgehaald" | De download mislukte, vaak door een slechte verbinding. De groep plaatst het bestand opnieuw. |
+| De emoji van een jurylid doet niets | Staat het jurylid op **Configuration**? Is het een beoordelings-emoji (zie de tabel bij de jury)? Staat **Manual mode** uit? |
+| De status is anders dan het laatste emoji | Dat klopt als juryleden het oneens zijn: de beste beoordeling telt. Haal de emoji weg die niet meer moet tellen. |
+| Bovenaan staat een rode melding **Slack: error** of **Slack: connecting** | De app heeft geen verbinding met Slack. Controleer het internet van de server en het logboek. Na herstel haalt de app vanzelf in wat hij miste. |
+| De app is herstart of was een tijd weg | Wacht op **Connected to Slack**. De app haalt de berichten van vandaag vanzelf in. Ontbreekt er daarna nog iets, doe dan een **Rebuild from Slack**. |
+| Iemand kan niet meer inloggen | Is de toegangssleutel net vernieuwd? Geef de nieuwe sleutel. Na 5 foute pogingen binnen een minuut even wachten. |
+| Een handmatige aanpassing is verdwenen | Er is een rebuild gedaan, of een jurylid heeft daarna een emoji gezet. Slack is leidend; zet de emoji in Slack. |
+| Een video speelt niet af in het dashboard | Download het bestand via de detailpagina; niet elke browser speelt elk videoformaat af. |
+| Een bestand staat in `_deleted` | Het bericht of bestand is in Slack verwijderd. Zet het terug door het opnieuw in Slack te plaatsen. |
+
+Voor problemen met het koppelen van Slack zelf (tokens, rechten, Socket Mode) staat een uitgebreide tabel in [Slack koppelen](slack-koppelen.md#problemen-oplossen).

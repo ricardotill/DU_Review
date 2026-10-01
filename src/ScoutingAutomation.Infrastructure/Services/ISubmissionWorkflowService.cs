@@ -44,10 +44,35 @@ public interface ISubmissionWorkflowService
     Task<ProcessSlackReactionResult> ProcessSlackReactionRemovedAsync(SlackEventItemDto reactionEvent, CancellationToken ct = default);
 
     /// <summary>
+    /// Handles an edited message ("message_changed"). A message that was skipped for lacking an assignment number
+    /// is registered once the number is added; a corrected number moves its submissions to that assignment.
+    /// Files deleted from the message are removed like a deleted message.
+    /// </summary>
+    Task<ProcessSlackMessageResult> ProcessSlackMessageChangedAsync(SlackEventItemDto changeEvent, CancellationToken ct = default);
+
+    /// <summary>
+    /// Handles a deleted message ("message_deleted"): its submissions no longer count. Their files are kept in "_deleted".
+    /// </summary>
+    Task<ProcessSlackMessageResult> ProcessSlackMessageDeletedAsync(SlackEventItemDto deleteEvent, CancellationToken ct = default);
+
+    /// <summary>
     /// Processes a message read back from Slack's history: same rules as a live message,
     /// but without posting reactions or replies to Slack.
     /// </summary>
     Task<ProcessSlackMessageResult> ImportSlackMessageAsync(SlackEventItemDto message, CancellationToken ct = default);
+
+    /// <summary>
+    /// Processes a message that may have been missed while the app was not connected. Same as a live message,
+    /// including feedback to the group; Slack shows feedback only once, so a message seen before gets none again.
+    /// </summary>
+    Task<ProcessSlackMessageResult> ProcessMissedMessageAsync(SlackEventItemDto message, CancellationToken ct = default);
+
+    /// <summary>
+    /// Brings a message's submissions in line with the reviews on it in Slack now. When Slack shows no review,
+    /// a Slack review is undone, but a dashboard override is kept: it stands in for Slack while Slack had problems.
+    /// </summary>
+    /// <returns>True when a status changed.</returns>
+    Task<bool> SyncReviewAsync(string channelId, string messageTs, IReadOnlyList<SlackMessageReactionDto>? reactions, CancellationToken ct = default);
 
     /// <summary>
     /// Applies the reviewer reactions currently on a message. Slack does not say in which order

@@ -45,9 +45,36 @@ public class RebuildPanelTests : BunitContext
         button().Click();
 
         _service.StartedWith.Should().NotBeNull();
+        _service.StartedForGroup.Should().BeNull("without a group, all groups are rebuilt");
         _service.StartedWith!.Value.DateTime.Should().Be(new DateTime(2026, 9, 30, 8, 30, 0));
         _service.StartedWith.Value.Offset.Should().Be(TimeZoneInfo.Local.GetUtcOffset(new DateTime(2026, 9, 30, 8, 30, 0)));
         cut.Find("input[type=text]").GetAttribute("value").Should().BeEmpty();
+    }
+
+    [Fact]
+    public void GroupPanel_ShouldRebuildOnlyThatGroup()
+    {
+        var group = new ScoutingAutomation.Domain.Entities.Group { Name = "De Wolven", SlackChannelId = "C1" };
+
+        var cut = Render<RebuildPanel>(p => p.Add(c => c.Group, group));
+
+        cut.Find("summary").TextContent.Should().Contain("of De Wolven");
+        cut.Markup.Should().Contain("Other groups are not touched").And.NotContain("All group folders");
+
+        cut.Find("input[type=text]").Input("REBUILD");
+        cut.Find("button").Click();
+
+        _service.StartedForGroup.Should().Be(group.Id);
+    }
+
+    [Fact]
+    public void Progress_ShouldNameTheRebuiltGroup()
+    {
+        _service.Publish(new RebuildProgress { State = RebuildState.Running, Step = "Importing", GroupName = "De Wolven" });
+
+        var cut = Render<RebuildPanel>();
+
+        cut.Find(".rebuild-stats").TextContent.Should().Contain("De Wolven").And.NotContain("All groups");
     }
 
     [Fact]
@@ -59,7 +86,7 @@ public class RebuildPanelTests : BunitContext
 
         cut.WaitForAssertion(() => cut.Markup.Should().Contain("Reading Slack…"));
         cut.Find("details").HasAttribute("open").Should().BeTrue();
-        cut.Find(".rebuild-stats").TextContent.Should().Contain("1 / 4").And.Contain("0 / 30");
+        cut.Find(".rebuild-stats").TextContent.Should().Contain("1 / 4").And.Contain("0 / 30").And.Contain("All groups");
         cut.FindAll("input").Should().OnlyContain(i => i.HasAttribute("disabled"));
         cut.Find("button").HasAttribute("disabled").Should().BeTrue();
         cut.FindAll(".rebuild-stats dt").Select(d => d.TextContent).Should().NotContain("Backup");
@@ -136,6 +163,7 @@ public class RebuildPanelTests : BunitContext
         public bool IsAvailable { get; set; } = true;
         public Task Completion => Task.CompletedTask;
         public DateTimeOffset? StartedWith { get; private set; }
+        public Guid? StartedForGroup { get; private set; }
         public int Listeners => _changed?.GetInvocationList().Length ?? 0;
 
         public event Action? Changed
@@ -144,9 +172,10 @@ public class RebuildPanelTests : BunitContext
             remove => _changed -= value;
         }
 
-        public bool TryStart(DateTimeOffset since)
+        public bool TryStart(DateTimeOffset since, Guid? groupId = null)
         {
             StartedWith = since;
+            StartedForGroup = groupId;
             Progress = new RebuildProgress { State = RebuildState.Running, Step = "Starting" };
             return true;
         }

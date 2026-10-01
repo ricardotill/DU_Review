@@ -87,7 +87,7 @@ else
                 <div class="slack-message">
                     <div class="d-flex justify-content-between flex-wrap gap-2 mb-2 small">
                         <span class="fw-bold text-white" title="@submission.Submitter">@submission.SubmitterDisplayName</span>
-                        <span class="text-muted">@submission.CreatedAt.ToLocalTime().ToString("f")</span>
+                        <span class="text-muted">@submission.CreatedAt.ToGameTime().ToString("f")</span>
                     </div>
                     <div class="text-white-50 text-break">
                         @(string.IsNullOrWhiteSpace(submission.MessageText) ? "(no text)" : submission.MessageText)
@@ -133,7 +133,7 @@ else
                                     <StatusBadge Status="@rev.Status" />
                                 </div>
                                 <div class="text-muted small mt-1">
-                                    @rev.CreatedAt.ToLocalTime().ToString("g")
+                                    @rev.CreatedAt.ToGameTime().ToString("g")
                                     @if (!string.IsNullOrEmpty(rev.ReactionEmoji))
                                     {
                                         <span> · <code>:@rev.ReactionEmoji:</code></span>

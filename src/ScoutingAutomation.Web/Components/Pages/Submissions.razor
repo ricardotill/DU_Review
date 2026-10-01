@@ -74,6 +74,10 @@
                 <i class="bi bi-star-fill text-warning"></i> Favorites only (@Favorites.Count)
             </label>
         </div>
+        <a href="@SlideshowHref" class="btn btn-sm btn-scout-secondary d-flex align-items-center gap-1 me-2 slideshow-link" title="Show these photos, videos and audio as a slideshow">
+            <i class="bi bi-play-btn"></i>
+            <span>Slideshow</span>
+        </a>
         @if (HasActiveFilters)
         {
             <button class="btn btn-sm btn-scout-secondary d-flex align-items-center gap-1" @onclick="ResetFilters">
@@ -152,7 +156,7 @@
                             </td>
                             <td>
                                 <div class="text-white-50" title="@sub.Submitter">@sub.SubmitterDisplayName</div>
-                                <div class="text-muted small">@sub.CreatedAt.ToLocalTime().ToString("g")</div>
+                                <div class="text-muted small">@sub.CreatedAt.ToGameTime().ToString("g")</div>
                             </td>
                             <td class="text-end">
                                 <a href="submissions/@sub.Id" class="btn btn-sm btn-scout-secondary" title="View details" aria-label="View details">
@@ -255,6 +259,20 @@
     }
 
     private bool favoritesOnly;
+
+    /// <summary>Opens the slideshow with the same group, assignment, status and favorites choice.</summary>
+    private string SlideshowHref
+    {
+        get
+        {
+            var query = new List<string>();
+            if (Guid.TryParse(selectedGroupId, out var groupId)) query.Add($"group={groupId}");
+            if (int.TryParse(selectedAssignmentNumber, out var number)) query.Add($"assignment={number}");
+            if (Enum.TryParse<SubmissionStatus>(selectedStatus, out var status)) query.Add($"status={status}");
+            if (favoritesOnly) query.Add("favorites=true");
+            return query.Count == 0 ? "slideshow" : $"slideshow?{string.Join('&', query)}";
+        }
+    }
 
     private List<Submission> VisibleSubmissions => favoritesOnly ? submissions.Where(Favorites.IsFavorite).ToList() : submissions;
 

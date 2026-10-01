@@ -42,6 +42,17 @@ public class GroupDetailPageTests : PageTestBase
     }
 
     [Fact]
+    public void Group_ShouldOfferGroupRebuildToAdminsOnly()
+    {
+        Seed();
+
+        RenderGroup(Wolves.Id).Markup.Should().Contain("Rebuild from Slack");
+
+        LogInAsJury();
+        RenderGroup(Wolves.Id).Markup.Should().NotContain("Rebuild from Slack");
+    }
+
+    [Fact]
     public void Group_ShouldShowScoreAssignmentsAndLinks()
     {
         var seeded = Seed();
