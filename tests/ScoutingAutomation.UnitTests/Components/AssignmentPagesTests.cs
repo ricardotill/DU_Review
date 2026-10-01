@@ -46,7 +46,7 @@ public class AssignmentsPageTests : PageTestBase
         cut.FindAll("tbody tr").Should().ContainSingle().Which.TextContent.Should().Contain("#2");
 
         cut.Find("input[type=number]").Input("9");
-        cut.Markup.Should().Contain("No assignments match.");
+        cut.Markup.Should().Contain("Geen opdrachten gevonden.");
     }
 
     [Fact]
@@ -94,8 +94,8 @@ public class AssignmentDetailPageTests : PageTestBase
 
         var cut = RenderAssignment(1);
 
-        cut.Find("h1").TextContent.Should().Be("Assignment #1");
-        cut.Markup.Should().Contain("1 pts approved").And.Contain("2 pts awesome").And.Contain("2 / 3 groups submitted");
+        cut.Find("h1").TextContent.Should().Be("Opdracht 1");
+        cut.Markup.Should().Contain("1 pnt goedgekeurd").And.Contain("2 pnt awesome").And.Contain("2 / 3 groepen ingezonden");
 
         var cards = cut.FindAll(".col-xl-6");
         cards.Select(c => c.QuerySelector("h2")!.TextContent.Trim()).Should().Equal("De Bosuilen", "De Wolven");
@@ -106,7 +106,7 @@ public class AssignmentDetailPageTests : PageTestBase
         rows.Should().HaveCount(2);
         rows[0].GetAttribute("href").Should().Be($"submissions/{seeded.Approved.Id}");
         rows[0].ClassList.Should().Contain("counts");
-        rows[0].TextContent.Should().Contain("counts");
+        rows[0].TextContent.Should().Contain("telt");
         rows[0].QuerySelector("img").Should().NotBeNull("images get a thumbnail");
 
         var owls = cards[0];
@@ -122,13 +122,13 @@ public class AssignmentDetailPageTests : PageTestBase
         Seed();
 
         var first = RenderAssignment(1);
-        first.Find("a[aria-label='Previous assignment']").ClassList.Should().Contain("disabled");
-        first.Find("a[aria-label='Next assignment']").GetAttribute("href").Should().Be("assignments/2");
+        first.Find("a[aria-label='Vorige opdracht']").ClassList.Should().Contain("disabled");
+        first.Find("a[aria-label='Volgende opdracht']").GetAttribute("href").Should().Be("assignments/2");
 
         var last = RenderAssignment(3);
-        last.Find("a[aria-label='Previous assignment']").GetAttribute("href").Should().Be("assignments/2");
-        last.Find("a[aria-label='Next assignment']").ClassList.Should().Contain("disabled");
-        last.Markup.Should().Contain("No group has submitted this assignment yet.");
+        last.Find("a[aria-label='Vorige opdracht']").GetAttribute("href").Should().Be("assignments/2");
+        last.Find("a[aria-label='Volgende opdracht']").ClassList.Should().Contain("disabled");
+        last.Markup.Should().Contain("Nog geen groep heeft deze opdracht ingezonden.");
     }
 
     [Fact]
@@ -139,7 +139,7 @@ public class AssignmentDetailPageTests : PageTestBase
 
         cut.Render(p => p.Add(c => c.Number, 2));
 
-        cut.WaitForAssertion(() => cut.Find("h1").TextContent.Should().Be("Assignment #2"));
+        cut.WaitForAssertion(() => cut.Find("h1").TextContent.Should().Be("Opdracht 2"));
         cut.FindAll(".col-xl-6").Should().ContainSingle();
     }
 
@@ -150,7 +150,7 @@ public class AssignmentDetailPageTests : PageTestBase
 
         var cut = RenderAssignment(999);
 
-        cut.Markup.Should().Contain("Not in the assignment list");
+        cut.Markup.Should().Contain("Staat niet in de opdrachtenlijst");
     }
 
     [Fact]

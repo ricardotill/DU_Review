@@ -144,11 +144,11 @@ public class SlackRebuildServiceTests : IDisposable
         progress.MessagesProcessed.Should().Be(9);
         progress.SubmissionsImported.Should().Be(3);
         progress.ReviewsApplied.Should().Be(2);
-        progress.Conflicts.Should().ContainSingle().Which.Reason.Should().Contain("Approved applied");
+        progress.Conflicts.Should().ContainSingle().Which.Reason.Should().Contain("Goedgekeurd toegepast");
         progress.Skipped.Select(i => i.Reason).Should().BeEquivalentTo(
-            "No valid assignment number pattern found in: 'hallo'",
-            "Unsupported file: data.zip",
-            "Download failed: weg.jpg");
+            "Geen geldig opdrachtnummer gevonden in: 'hallo'",
+            "Bestandstype niet ondersteund: data.zip",
+            "Download mislukt: weg.jpg");
         progress.Skipped.Should().OnlyContain(i => i.Group == "De Wolven" && i.PostedAt > _since);
         changes.Should().BeGreaterThan(5);
 
@@ -236,7 +236,7 @@ public class SlackRebuildServiceTests : IDisposable
         await Service.Completion;
 
         Service.Progress.State.Should().Be(RebuildState.Failed);
-        Service.Progress.Error.Should().Contain("does not exist");
+        Service.Progress.Error.Should().Contain("bestaat niet");
         File.Exists(oldPath).Should().BeTrue();
         WithDb(db => db.Submissions.Count()).Should().Be(1);
         _history.VerifyNoOtherCalls();
@@ -255,11 +255,11 @@ public class SlackRebuildServiceTests : IDisposable
         await Service.Completion;
 
         Service.Progress.State.Should().Be(RebuildState.Failed);
-        Service.Progress.Error.Should().Be("2 channel(s) could not be read; nothing was changed");
+        Service.Progress.Error.Should().Be("2 kanaal/kanalen konden niet worden gelezen; er is niets veranderd");
         Service.Progress.ChannelProblems.Should().BeEquivalentTo(new[]
         {
-            new RebuildChannelProblem("De Wolven", "C1", "Connection refused", "See the app log for details, and check the channel in Slack."),
-            new RebuildChannelProblem("De Bosuilen", "C2", "not_in_channel", "Invite the bot to this channel: type /invite @DU Review in it.")
+            new RebuildChannelProblem("De Wolven", "C1", "Connection refused", "Bekijk het app-log voor details en controleer het kanaal in Slack."),
+            new RebuildChannelProblem("De Bosuilen", "C2", "not_in_channel", "Nodig de bot uit in dit kanaal: typ daar /invite @DU Review.")
         });
         Service.Progress.BackupFolder.Should().BeNull();
         File.Exists(oldPath).Should().BeTrue();
@@ -268,12 +268,12 @@ public class SlackRebuildServiceTests : IDisposable
     }
 
     [Theory]
-    [InlineData("channel_not_found", "Check this channel ID")]
-    [InlineData("missing_scope", "channels:history or groups:history")]
-    [InlineData("invalid_auth", "bot token is not valid")]
-    [InlineData("not_authed", "bot token is not valid")]
-    [InlineData("token_revoked", "bot token is not valid")]
-    [InlineData("account_inactive", "bot token is not valid")]
+    [InlineData("channel_not_found", "Controleer dit kanaal-ID")]
+    [InlineData("missing_scope", "channels:history of groups:history")]
+    [InlineData("invalid_auth", "bot-token is niet geldig")]
+    [InlineData("not_authed", "bot-token is niet geldig")]
+    [InlineData("token_revoked", "bot-token is niet geldig")]
+    [InlineData("account_inactive", "bot-token is niet geldig")]
     public async Task SlackFailure_ShouldAdviseWhatToDo(string error, string advice)
     {
         SlackHas("C1");
@@ -310,7 +310,7 @@ public class SlackRebuildServiceTests : IDisposable
         await Service.Completion;
 
         Service.Progress.State.Should().Be(RebuildState.Failed);
-        Service.Progress.Error.Should().Contain("live mode");
+        Service.Progress.Error.Should().Contain("Slack verbonden");
         _history.VerifyNoOtherCalls();
     }
 

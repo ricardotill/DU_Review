@@ -2,7 +2,7 @@
 @rendermode InteractiveServer
 @inherits LiveComponentBase
 
-<PageTitle>@(group?.Name ?? "Group") - Scouting Regional Game</PageTitle>
+<PageTitle>@(group?.Name ?? "Groep") - DU Review</PageTitle>
 
 @if (!loaded)
 {
@@ -12,11 +12,11 @@
 }
 else if (group == null)
 {
-    <PageHeader Title="Group not found" BackHref="groups" BackText="Groups" />
+    <PageHeader Title="Groep niet gevonden" BackHref="groups" BackText="Groepen" />
 }
 else
 {
-    <PageHeader Title="@group.Name" Subtitle="@group.Description" BackHref="groups" BackText="Groups">
+    <PageHeader Title="@group.Name" Subtitle="@group.Description" BackHref="groups" BackText="Groepen">
         <Details>
             <div class="d-flex gap-2 flex-wrap mt-2">
                 @if (!string.IsNullOrWhiteSpace(group.Abbreviation))
@@ -29,7 +29,7 @@ else
         <Actions>
             <a href="submissions?group=@group.Id" class="btn btn-scout-secondary d-flex align-items-center gap-2">
                 <i class="bi bi-folder2-open"></i>
-                <span>All uploads</span>
+                <span>Alle uploads</span>
             </a>
         </Actions>
     </PageHeader>
@@ -40,25 +40,25 @@ else
             <div class="stat-card stat-total h-100">
                 <div class="stat-label">Score</div>
                 <div class="stat-value text-white">@(groupStats?.Score ?? 0)</div>
-                <div class="stat-caption">Rank #@(groupStats?.Rank ?? 0) of @groupCount</div>
+                <div class="stat-caption">Plaats @(groupStats?.Rank ?? 0) van @groupCount</div>
             </div>
         </div>
         <div class="col-lg col-md-4 col-6">
             <div class="stat-card h-100" style="border-left: 4px solid var(--border-color);">
-                <div class="stat-label">Submitted</div>
+                <div class="stat-label">Ingezonden</div>
                 <div class="stat-value text-white">@results.Count</div>
-                <div class="stat-caption">of @assignmentCount assignments</div>
+                <div class="stat-caption">van @assignmentCount opdrachten</div>
             </div>
         </div>
         <div class="col-lg col-md-4 col-6">
             <div class="stat-card stat-pending h-100">
-                <div class="stat-label">Pending</div>
+                <div class="stat-label">Open</div>
                 <div class="stat-value text-warning">@(groupStats?.PendingCount ?? 0)</div>
             </div>
         </div>
         <div class="col-lg col-md-4 col-6">
             <div class="stat-card stat-approved h-100">
-                <div class="stat-label">Approved</div>
+                <div class="stat-label">Goedgekeurd</div>
                 <div class="stat-value text-success">@(groupStats?.ApprovedCount ?? 0)</div>
             </div>
         </div>
@@ -70,7 +70,7 @@ else
         </div>
         <div class="col-lg col-md-4 col-6">
             <div class="stat-card stat-rejected h-100">
-                <div class="stat-label">Rejected</div>
+                <div class="stat-label">Afgekeurd</div>
                 <div class="stat-value text-danger">@(groupStats?.RejectedCount ?? 0)</div>
             </div>
         </div>
@@ -79,7 +79,7 @@ else
     @if (unresolved.Count > 0)
     {
         <div class="glass-panel p-4 mb-4 unresolved-panel">
-            <h2 class="panel-title"><i class="bi bi-exclamation-triangle-fill text-warning"></i> Uploads without assignment (@unresolved.Count)</h2>
+            <h2 class="panel-title"><i class="bi bi-exclamation-triangle-fill text-warning"></i> Uploads zonder opdracht (@unresolved.Count)</h2>
             <div class="d-flex flex-column gap-2">
                 @foreach (var sub in unresolved)
                 {
@@ -98,13 +98,13 @@ else
 
     <!-- Per assignment -->
     <div class="glass-panel p-4">
-        <h2 class="panel-title"><i class="bi bi-list-ol text-info"></i> Assignments</h2>
+        <h2 class="panel-title"><i class="bi bi-list-ol text-info"></i> Opdrachten</h2>
 
         @if (results.Count == 0)
         {
             <div class="empty-state">
                 <i class="bi bi-inbox"></i>
-                This group has not submitted anything yet.
+                Deze groep heeft nog niets ingezonden.
             </div>
         }
         else
@@ -113,11 +113,11 @@ else
                 <table class="custom-table">
                     <thead>
                         <tr>
-                            <th>Assignment</th>
+                            <th>Opdracht</th>
                             <th>Status</th>
-                            <th class="text-center">Points</th>
+                            <th class="text-center">Punten</th>
                             <th class="text-center">Uploads</th>
-                            <th>Last upload</th>
+                            <th>Laatste upload</th>
                             <th></th>
                         </tr>
                     </thead>
@@ -135,7 +135,7 @@ else
                                 <td class="text-center text-white-50">@result.Uploads.Count</td>
                                 <td class="text-white-50 small">@result.Uploads[0].CreatedAt.ToGameTime().ToString("g")</td>
                                 <td class="text-end">
-                                    <a href="submissions/@result.CountingSubmissionId" class="btn btn-sm btn-scout-secondary" title="Open the submission that counts" aria-label="Open submission">
+                                    <a href="submissions/@result.CountingSubmissionId" class="btn btn-sm btn-scout-secondary" title="Open de inzending die telt" aria-label="Inzending openen">
                                         <i class="bi bi-chevron-right"></i>
                                     </a>
                                 </td>

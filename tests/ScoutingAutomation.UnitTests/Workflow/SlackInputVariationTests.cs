@@ -45,7 +45,7 @@ public class SlackInputVariationTests
 
         var result = await Create(new ScoutingSettings()).ProcessSlackMessageAsync(new SlackEventItemDto { Channel = "C1", User = "U", Files = null });
 
-        result.Message.Should().Contain("No files");
+        result.Message.Should().Contain("Geen bestanden");
     }
 
     [Fact]
@@ -59,7 +59,7 @@ public class SlackInputVariationTests
             Channel = "C1", User = "U", Files = new List<SlackFileItemDto> { new() { Name = "a.jpg" } }
         });
 
-        result.Message.Should().Be("No assignment number found");
+        result.Message.Should().Be("Geen opdrachtnummer gevonden");
     }
 
     [Theory]
@@ -93,7 +93,7 @@ public class SlackInputVariationTests
         var settings = new ScoutingSettings { Reviewers = new List<string> { "U_JURY" } };
 
         (await Create(settings).ProcessSlackReactionAsync(new SlackEventItemDto { User = "U_JURY", Reaction = null })).Success.Should().BeFalse();
-        (await Create(settings).ProcessSlackReactionAsync(new SlackEventItemDto { User = "U_JURY", Reaction = "thumbsup", Item = null })).Message.Should().Contain("missing target");
+        (await Create(settings).ProcessSlackReactionAsync(new SlackEventItemDto { User = "U_JURY", Reaction = "thumbsup", Item = null })).Message.Should().Contain("zonder kanaal of tijdstempel");
     }
 
     [Fact]
@@ -110,14 +110,14 @@ public class SlackInputVariationTests
             User = "U_JURY", Reaction = "thumbsup", Item = new SlackReactionTargetDto { Channel = "C1", Ts = "1.0" }
         });
 
-        result.Message.Should().Contain("no review mapping");
+        result.Message.Should().Contain("is geen beoordeling");
     }
 
     [Fact]
     public async Task Dispatcher_ReactionWithoutItem_ShouldStillReachWorkflow()
     {
         var workflow = new Mock<ISubmissionWorkflowService>();
-        var dispatcher = new SlackEventDispatcher(workflow.Object, new SlackProcessingGate(), NullLogger<SlackEventDispatcher>.Instance);
+        var dispatcher = new SlackEventDispatcher(workflow.Object, new SlackProcessingGate(), new SlackEventLog(NullLogger<SlackEventLog>.Instance), TimeProvider.System, NullLogger<SlackEventDispatcher>.Instance);
 
         await dispatcher.DispatchAsync(new SlackEventEnvelopeDto { Type = "event_callback", Event = new SlackEventItemDto { Type = "reaction_added" } });
 

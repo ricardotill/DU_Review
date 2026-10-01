@@ -4,25 +4,25 @@
 @inject NavigationManager Navigation
 @inject RuntimeSettingsService Runtime
 
-<PageTitle>Dashboard - Scouting Regional Game</PageTitle>
+<PageTitle>Dashboard - DU Review</PageTitle>
 
-<PageHeader Title="Dashboard" Subtitle="Scores and review progress for all groups.">
+<PageHeader Title="Dashboard" Subtitle="Scores en voortgang van de beoordeling voor alle groepen.">
     <Actions>
         <AuthorizeView Roles="@KeyAuth.AdminRole">
             <Authorized>
-                <div class="form-check form-switch mb-0 align-self-center me-2" title="Only download and name files; nothing else is processed">
+                <div class="form-check form-switch mb-0 align-self-center me-2" title="Alleen bestanden downloaden en benoemen; verder wordt niets verwerkt">
                     <input class="form-check-input" type="checkbox" role="switch" id="manualMode" checked="@Runtime.ManualMode" @onchange="ToggleManualMode" />
-                    <label class="form-check-label text-white small fw-semibold" for="manualMode">Manual mode</label>
+                    <label class="form-check-label text-white small fw-semibold" for="manualMode">Handmatige modus</label>
                 </div>
             </Authorized>
             <NotAuthorized>
                 @if (Runtime.ManualMode)
                 {
-                    <span class="badge badge-pending align-self-center" title="Only admins can switch manual mode">Manual mode</span>
+                    <span class="badge badge-pending align-self-center" title="Alleen beheerders kunnen de handmatige modus wisselen">Handmatige modus</span>
                 }
             </NotAuthorized>
         </AuthorizeView>
-        <span class="badge badge-approved align-self-center" title="This page updates automatically">
+        <span class="badge badge-approved align-self-center" title="Deze pagina werkt zichzelf bij">
             <span class="live-dot me-1"></span> Live
         </span>
     </Actions>
@@ -33,8 +33,8 @@
     <div class="alert alert-warning d-flex gap-2 mb-4" role="status">
         <i class="bi bi-cone-striped"></i>
         <div class="small">
-            <strong>Manual mode is on.</strong> Uploads with a valid assignment number are only saved as files with the right name in each group folder.
-            Nothing is registered or reviewed, the bot posts nothing in Slack, and reactions are ignored, so this dashboard does not change.
+            <strong>Handmatige modus staat aan.</strong> Uploads met een geldig opdrachtnummer worden alleen als bestand met de juiste naam in de map van de groep opgeslagen.
+            Er wordt niets geregistreerd of beoordeeld, de bot plaatst niets in Slack en reacties worden genegeerd. Dit dashboard verandert dus niet.
         </div>
     </div>
 }
@@ -51,21 +51,21 @@ else
     <div class="row g-3 mb-4">
         <div class="col-lg col-md-4 col-6">
             <div class="stat-card stat-total h-100">
-                <div class="stat-label">Submitted</div>
+                <div class="stat-label">Ingezonden</div>
                 <div class="stat-value text-white">@stats.TotalSubmissions</div>
-                <div class="stat-caption">Assignments, per group</div>
+                <div class="stat-caption">Opdrachten, per groep</div>
             </div>
         </div>
         <div class="col-lg col-md-4 col-6">
             <div class="stat-card stat-pending h-100">
-                <div class="stat-label">Pending</div>
+                <div class="stat-label">Open</div>
                 <div class="stat-value text-warning">@stats.PendingCount</div>
-                <div class="stat-caption">Awaiting review in Slack</div>
+                <div class="stat-caption">Wacht op beoordeling in Slack</div>
             </div>
         </div>
         <div class="col-lg col-md-4 col-6">
             <div class="stat-card stat-approved h-100">
-                <div class="stat-label">Approved</div>
+                <div class="stat-label">Goedgekeurd</div>
                 <div class="stat-value text-success">@stats.ApprovedCount</div>
                 <div class="stat-caption">@stats.OverallApprovalRate% incl. awesome</div>
             </div>
@@ -74,23 +74,23 @@ else
             <div class="stat-card stat-awesome h-100">
                 <div class="stat-label">Awesome</div>
                 <div class="stat-value text-awesome">@stats.AwesomeCount</div>
-                <div class="stat-caption">Extra points</div>
+                <div class="stat-caption">Extra punten</div>
             </div>
         </div>
         <div class="col-lg col-md-4 col-6">
             <div class="stat-card stat-rejected h-100">
-                <div class="stat-label">Rejected</div>
+                <div class="stat-label">Afgekeurd</div>
                 <div class="stat-value text-danger">@stats.RejectedCount</div>
-                <div class="stat-caption">Not resubmitted yet</div>
+                <div class="stat-caption">Nog niet opnieuw ingezonden</div>
             </div>
         </div>
         @if (stats.UnresolvedCount > 0)
         {
             <div class="col-lg col-md-4 col-6">
                 <a href="submissions" class="stat-card d-block h-100 text-decoration-none" style="border-left: 4px solid var(--status-rejected);">
-                    <div class="stat-label">Unresolved</div>
+                    <div class="stat-label">Onopgelost</div>
                     <div class="stat-value text-danger">@stats.UnresolvedCount</div>
-                    <div class="stat-caption">Older uploads without valid number</div>
+                    <div class="stat-caption">Oudere uploads zonder geldig nummer</div>
                 </a>
             </div>
         }
@@ -98,11 +98,11 @@ else
 
     <!-- Leaderboard -->
     <div class="glass-panel p-4 mb-4">
-        <h2 class="panel-title"><i class="bi bi-trophy-fill text-warning"></i> Leaderboard</h2>
+        <h2 class="panel-title"><i class="bi bi-trophy-fill text-warning"></i> Scorebord</h2>
 
         @if (stats.GroupStatistics.Count == 0)
         {
-            <div class="empty-state">No groups configured.</div>
+            <div class="empty-state">Geen groepen ingesteld.</div>
         }
         else
         {
@@ -111,20 +111,20 @@ else
                     <thead>
                         <tr>
                             <th style="width: 3rem;">#</th>
-                            <th>Group</th>
+                            <th>Groep</th>
                             <th class="text-center">Score</th>
-                            <th class="text-center">Assignments</th>
-                            <th class="text-center">Pending</th>
-                            <th class="text-center">Approved</th>
+                            <th class="text-center">Opdrachten</th>
+                            <th class="text-center">Open</th>
+                            <th class="text-center">Goedgekeurd</th>
                             <th class="text-center">Awesome</th>
-                            <th class="text-center">Rejected</th>
-                            <th style="width: 180px;">Approval rate</th>
+                            <th class="text-center">Afgekeurd</th>
+                            <th style="width: 180px;">Goedgekeurd %</th>
                         </tr>
                     </thead>
                     <tbody>
                         @foreach (var g in stats.GroupStatistics.OrderBy(x => x.Rank).ThenBy(x => x.GroupName))
                         {
-                            <tr class="clickable-row" title="Open @g.GroupName" @onclick="@(() => Navigation.NavigateTo($"groups/{g.GroupId}"))">
+                            <tr class="clickable-row" title="@g.GroupName openen" @onclick="@(() => Navigation.NavigateTo($"groups/{g.GroupId}"))">
                                 <td class="text-secondary fw-semibold">@g.Rank</td>
                                 <td>
                                     <a href="groups/@g.GroupId" class="fw-bold text-white text-decoration-none hover-underline">@g.GroupName</a>
@@ -158,15 +158,15 @@ else
     <!-- Assignments with submissions -->
     <div class="glass-panel p-4">
         <div class="d-flex justify-content-between align-items-center">
-            <h2 class="panel-title"><i class="bi bi-list-ol text-info"></i> Assignment progress</h2>
-            <a href="assignments" class="small text-secondary text-decoration-none hover-underline mb-3">All assignments <i class="bi bi-arrow-right"></i></a>
+            <h2 class="panel-title"><i class="bi bi-list-ol text-info"></i> Voortgang per opdracht</h2>
+            <a href="assignments" class="small text-secondary text-decoration-none hover-underline mb-3">Alle opdrachten <i class="bi bi-arrow-right"></i></a>
         </div>
 
         @if (!ActiveAssignments.Any())
         {
             <div class="empty-state">
                 <i class="bi bi-inbox"></i>
-                No submissions yet.
+                Nog geen inzendingen.
             </div>
         }
         else
@@ -178,13 +178,13 @@ else
                         <a href="assignments/@assign.AssignmentNumber" class="inset-panel d-block h-100 text-decoration-none assignment-card">
                             <div class="d-flex justify-content-between align-items-center mb-2">
                                 <span class="fw-bold text-white">#@assign.AssignmentNumber</span>
-                                <span class="text-secondary small">@assign.TotalSubmissions / @stats.GroupStatistics.Count groups</span>
+                                <span class="text-secondary small">@assign.TotalSubmissions / @stats.GroupStatistics.Count groepen</span>
                             </div>
                             <div class="d-flex gap-3 mb-2 small">
-                                <span class="text-success" title="Approved"><i class="bi bi-check2"></i> @assign.ApprovedCount</span>
+                                <span class="text-success" title="Goedgekeurd"><i class="bi bi-check2"></i> @assign.ApprovedCount</span>
                                 <span class="text-awesome" title="Awesome"><i class="bi bi-star-fill"></i> @assign.AwesomeCount</span>
-                                <span class="text-warning" title="Pending"><i class="bi bi-hourglass-split"></i> @assign.PendingCount</span>
-                                <span class="text-danger" title="Rejected"><i class="bi bi-x-circle"></i> @assign.RejectedCount</span>
+                                <span class="text-warning" title="Open"><i class="bi bi-hourglass-split"></i> @assign.PendingCount</span>
+                                <span class="text-danger" title="Afgekeurd"><i class="bi bi-x-circle"></i> @assign.RejectedCount</span>
                             </div>
                             <div class="progress-bar-custom" style="height: 6px;">
                                 <div class="progress-fill-scout" style="width: @((assign.ApprovedCount + assign.AwesomeCount) * 100 / assign.TotalSubmissions)%"></div>

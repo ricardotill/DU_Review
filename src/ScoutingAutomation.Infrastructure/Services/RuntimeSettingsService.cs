@@ -8,20 +8,36 @@ using ScoutingAutomation.Contracts.Configuration;
 namespace ScoutingAutomation.Infrastructure.Services;
 
 /// <summary>
-/// Settings that can change while the app runs: manual mode, reviewers added on the fly and reviewer names.
-/// Manual mode starts from appsettings on every start; reviewers and names are saved to a file.
+/// Settings that can change while the app runs: manual mode, reviewers added on the fly, reviewer names,
+/// the texts of the bot's Slack messages, the start and end of the event, the channels that got the
+/// game-start and game-end messages, whether attempts after approval are blocked, and when the jury is reminded.
+/// Manual mode starts from appsettings on every start; the rest is saved to a file.
 /// </summary>
 public partial class RuntimeSettingsService
 {
     public const int MaxNameLength = 60;
+
+    /// <summary>Well below Slack's own limit, and long enough for any instruction to the groups.</summary>
+    public const int MaxSlackTextLength = 4000;
+
+    /// <summary>The longest wait that can be set for a reminder: four hours.</summary>
+    public const int MaxReminderMinutes = 240;
 
     private readonly object _lock = new();
     private readonly string _file;
     private readonly IOptions<ScoutingSettings> _options;
     private readonly ILogger<RuntimeSettingsService> _logger;
     private readonly ConcurrentDictionary<string, byte> _manualDownloads = new();
-    private List<string> _addedReviewers;
-    private Dictionary<string, SavedName> _names;
+    // Filled by Load in the constructor
+    private List<string> _addedReviewers = new();
+    private Dictionary<string, SavedName> _names = new();
+    private Dictionary<string, DateTimeOffset> _gameStartPosted = new();
+    private Dictionary<string, DateTimeOffset> _gameEndPosted = new();
+    private TimeOverride? _eventStart;
+    private TimeOverride? _eventEnd;
+    private Dictionary<SlackText, string> _texts = new();
+    private bool? _blockAttempts;
+    private ReminderOverride? _reminder;
 
     public RuntimeSettingsService(IOptions<ScoutingSettings> options, ILogger<RuntimeSettingsService> logger)
     {
@@ -29,13 +45,113 @@ public partial class RuntimeSettingsService
         _logger = logger;
         _file = Path.GetFullPath(string.IsNullOrWhiteSpace(options.Value.RuntimeSettingsFile) ? "./runtime-settings.json" : options.Value.RuntimeSettingsFile);
         ManualMode = options.Value.ManualMode;
-        (_addedReviewers, _names) = Load();
+        Load();
     }
 
-    /// <summary>Raised when manual mode, the reviewers or their names change, from any thread.</summary>
+    /// <summary>Raised when any setting of this service changes, from any thread.</summary>
     public event Action? Changed;
 
     public bool ManualMode { get; private set; }
+
+    /// <summary>The start of the event as a point in time: set in the app, otherwise from appsettings; null when there is none.</summary>
+    // Converted on each read: the game's time zone is configured after this service may be created
+    public DateTimeOffset? EventStart => EventStartGameTime is { } start ? GameTime.FromGameTime(start) : null;
+
+    /// <summary>The end of the event as a point in time: set in the app, otherwise from appsettings; null when there is none.</summary>
+    public DateTimeOffset? EventEnd => EventEndGameTime is { } end ? GameTime.FromGameTime(end) : null;
+
+    /// <summary>The start of the event in the game's time zone, as it is set.</summary>
+    public DateTime? EventStartGameTime
+    {
+        get { lock (_lock) return _eventStart != null ? _eventStart.Value : _options.Value.EventStart; }
+    }
+
+    /// <summary>The end of the event in the game's time zone, as it is set.</summary>
+    public DateTime? EventEndGameTime
+    {
+        get { lock (_lock) return _eventEnd != null ? _eventEnd.Value : _options.Value.EventEnd; }
+    }
+
+    /// <summary>Whether the start of the event was changed in the app.</summary>
+    public bool IsEventStartChanged
+    {
+        get { lock (_lock) return _eventStart != null; }
+    }
+
+    /// <summary>Whether the end of the event was changed in the app.</summary>
+    public bool IsEventEndChanged
+    {
+        get { lock (_lock) return _eventEnd != null; }
+    }
+
+    /// <summary>Sets the start of the event in the app, in the game's time zone; null means no start time.</summary>
+    /// <returns>Null when saved, otherwise why not.</returns>
+    public string? SetEventStart(DateTime? start) => SetEventTime(start, isEnd: false);
+
+    /// <summary>Sets the end of the event in the app, in the game's time zone; null means no end time.</summary>
+    /// <returns>Null when saved, otherwise why not.</returns>
+    public string? SetEventEnd(DateTime? end) => SetEventTime(end, isEnd: true);
+
+    /// <summary>Goes back to the start time from appsettings.</summary>
+    public void ResetEventStart() => ResetEventTime(isEnd: false);
+
+    /// <summary>Goes back to the end time from appsettings.</summary>
+    public void ResetEventEnd() => ResetEventTime(isEnd: true);
+
+    private string? SetEventTime(DateTime? value, bool isEnd)
+    {
+        // Seconds are not shown in the app; a stray value would make the boundary unclear
+        value = value is { } v ? DateTime.SpecifyKind(v.AddTicks(-(v.Ticks % TimeSpan.TicksPerMinute)), DateTimeKind.Unspecified) : null;
+        lock (_lock)
+        {
+            var start = isEnd ? EventStartGameTime : value;
+            var end = isEnd ? value : EventEndGameTime;
+            if (start is { } s && end is { } e && e <= s)
+            {
+                return "De eindtijd moet na de starttijd liggen.";
+            }
+
+            if (isEnd) _eventEnd = new TimeOverride { Value = value };
+            else _eventStart = new TimeOverride { Value = value };
+            Save();
+        }
+
+        _logger.LogWarning("Event {Kind} set to {Time} in the app", isEnd ? "end" : "start", value?.ToString("yyyy-MM-dd HH:mm") ?? "none");
+        Changed?.Invoke();
+        return null;
+    }
+
+    private void ResetEventTime(bool isEnd)
+    {
+        lock (_lock)
+        {
+            if ((isEnd ? _eventEnd : _eventStart) == null) return;
+            if (isEnd) _eventEnd = null;
+            else _eventStart = null;
+            Save();
+        }
+
+        _logger.LogWarning("Event {Kind} reset to appsettings", isEnd ? "end" : "start");
+        Changed?.Invoke();
+    }
+
+    /// <summary>
+    /// Whether a Slack message was posted before the event started. A message without a valid timestamp
+    /// is never treated as early, so a live message cannot be lost.
+    /// </summary>
+    public bool IsBeforeEventStart(string? ts) =>
+        EventStart is { } start && SlackTimestamp.ToDateTimeOffset(ts) is { } postedAt && postedAt < start;
+
+    /// <summary>
+    /// Whether a Slack message was posted at or after the end of the event. A message without a valid timestamp
+    /// is never treated as late, so a live message cannot be lost.
+    /// </summary>
+    public bool IsAfterEventEnd(string? ts) =>
+        EventEnd is { } end && SlackTimestamp.ToDateTimeOffset(ts) is { } postedAt && postedAt >= end;
+
+    /// <summary>The later of <paramref name="since"/> and the start of the event.</summary>
+    public DateTimeOffset NotBeforeEventStart(DateTimeOffset since) =>
+        EventStart is { } start && start > since ? start : since;
 
     /// <summary>Reviewers from appsettings; these can only be changed there.</summary>
     public IReadOnlyList<string> ConfiguredReviewers =>
@@ -73,7 +189,13 @@ public partial class RuntimeSettingsService
     }
 
     /// <summary>The name to show: the reviewer's name, or the ID itself when there is none.</summary>
-    public string DisplayName(string? userId) => NameOf(userId) ?? userId ?? "";
+    public string DisplayName(string? userId) => userId switch
+    {
+        // Stored values that are not Slack users; they stay as they are so older data still matches
+        SubmissionWorkflowService.DashboardOverrideReviewer => "Handmatig aangepast",
+        SubmissionWorkflowService.CatchUpReviewer => "Bijgewerkt uit Slack",
+        _ => NameOf(userId) ?? userId ?? ""
+    };
 
     /// <summary>Whether the name was entered by hand, which a fetch from Slack never overwrites.</summary>
     public bool HasManualName(string userId)
@@ -96,14 +218,14 @@ public partial class RuntimeSettingsService
         var id = userId?.Trim() ?? "";
         if (!ReviewerIdPattern().IsMatch(id))
         {
-            return "Enter a Slack member ID: letters and digits only, such as U04ABC123.";
+            return "Vul een Slack-member-ID in: alleen letters en cijfers, zoals U04ABC123.";
         }
 
         lock (_lock)
         {
             if (IsReviewer(id))
             {
-                return $"{id} is already a reviewer.";
+                return $"{id} is al jurylid.";
             }
 
             _addedReviewers = _addedReviewers.Append(id).ToList();
@@ -140,12 +262,12 @@ public partial class RuntimeSettingsService
         var trimmed = name?.Trim() ?? "";
         if (!IsReviewer(userId))
         {
-            return $"{userId} is not a reviewer.";
+            return $"{userId} is geen jurylid.";
         }
 
         if (trimmed.Length > MaxNameLength)
         {
-            return $"A name can be at most {MaxNameLength} characters.";
+            return $"Een naam mag maximaal {MaxNameLength} tekens zijn.";
         }
 
         lock (_lock)
@@ -183,6 +305,239 @@ public partial class RuntimeSettingsService
         return true;
     }
 
+    /// <summary>The text of a Slack message from appsettings.</summary>
+    public string? ConfiguredText(SlackText kind)
+    {
+        var settings = _options.Value;
+        var feedback = settings.SlackFeedback ?? new SlackFeedbackConfig();
+        return kind switch
+        {
+            SlackText.GameStart => settings.GameStartAnnouncement?.Message,
+            SlackText.GameEnd => settings.GameEndAnnouncement?.Message,
+            SlackText.UnsupportedFile => feedback.UnsupportedFile?.Message,
+            SlackText.MissingAssignmentNumber => feedback.MissingAssignmentNumber?.Message,
+            SlackText.UnknownAssignmentNumber => feedback.UnknownAssignmentNumber?.Message,
+            SlackText.DownloadFailed => feedback.DownloadFailed?.Message,
+            SlackText.AlreadyCompleted => feedback.AlreadyCompleted?.Message,
+            SlackText.TooLate => feedback.TooLate?.Message,
+            _ => throw new ArgumentOutOfRangeException(nameof(kind))
+        };
+    }
+
+    /// <summary>The text the bot posts: the one set in the app, otherwise the one from appsettings. Empty means nothing is posted.</summary>
+    public string? Text(SlackText kind)
+    {
+        lock (_lock)
+        {
+            if (_texts.TryGetValue(kind, out var text)) return text;
+        }
+
+        return ConfiguredText(kind);
+    }
+
+    /// <summary>Whether the text was changed in the app.</summary>
+    public bool IsTextChanged(SlackText kind)
+    {
+        lock (_lock) return _texts.ContainsKey(kind);
+    }
+
+    /// <summary>
+    /// The feedback from appsettings, with the texts changed in the app. The emoji always come from appsettings.
+    /// </summary>
+    public SlackFeedbackConfig Feedback
+    {
+        get
+        {
+            var configured = _options.Value.SlackFeedback ?? new SlackFeedbackConfig();
+            return new SlackFeedbackConfig
+            {
+                UnsupportedFile = WithText(configured.UnsupportedFile, SlackText.UnsupportedFile),
+                MissingAssignmentNumber = WithText(configured.MissingAssignmentNumber, SlackText.MissingAssignmentNumber),
+                UnknownAssignmentNumber = WithText(configured.UnknownAssignmentNumber, SlackText.UnknownAssignmentNumber),
+                DownloadFailed = WithText(configured.DownloadFailed, SlackText.DownloadFailed),
+                AlreadyCompleted = WithText(configured.AlreadyCompleted, SlackText.AlreadyCompleted),
+                TooLate = WithText(configured.TooLate, SlackText.TooLate)
+            };
+        }
+    }
+
+    private FeedbackConfig WithText(FeedbackConfig? configured, SlackText kind) =>
+        new() { Reaction = configured?.Reaction, Message = Text(kind) };
+
+    /// <summary>Sets the text of a Slack message in the app; an empty text means nothing is posted.</summary>
+    /// <returns>Null when saved, otherwise why not.</returns>
+    public string? SetText(SlackText kind, string? text)
+    {
+        var value = text?.Trim() ?? "";
+        if (value.Length > MaxSlackTextLength)
+        {
+            return $"Een bericht mag maximaal {MaxSlackTextLength} tekens zijn.";
+        }
+
+        lock (_lock)
+        {
+            _texts[kind] = value;
+            Save();
+        }
+
+        _logger.LogWarning("Slack text {Kind} changed in the app", kind);
+        Changed?.Invoke();
+        return null;
+    }
+
+    /// <summary>Goes back to the text from appsettings.</summary>
+    public void ResetText(SlackText kind)
+    {
+        lock (_lock)
+        {
+            if (!_texts.Remove(kind)) return;
+            Save();
+        }
+
+        _logger.LogWarning("Slack text {Kind} reset to appsettings", kind);
+        Changed?.Invoke();
+    }
+
+    /// <summary>
+    /// Whether a new attempt for an assignment the group already has approved or awesome is blocked:
+    /// set in the app, otherwise from appsettings.
+    /// </summary>
+    public bool BlockAttemptsAfterApproval
+    {
+        get
+        {
+            lock (_lock) return _blockAttempts ?? _options.Value.BlockAttemptsAfterApproval;
+        }
+    }
+
+    /// <summary>Whether <see cref="BlockAttemptsAfterApproval"/> was switched in the app.</summary>
+    public bool IsBlockAttemptsChanged
+    {
+        get { lock (_lock) return _blockAttempts.HasValue; }
+    }
+
+    public void SetBlockAttemptsAfterApproval(bool enabled)
+    {
+        lock (_lock)
+        {
+            if (_blockAttempts == enabled) return;
+            _blockAttempts = enabled;
+            Save();
+        }
+
+        _logger.LogWarning("Blocking attempts after approval switched {State} in the app", enabled ? "on" : "off");
+        Changed?.Invoke();
+    }
+
+    /// <summary>Goes back to the setting from appsettings.</summary>
+    public void ResetBlockAttemptsAfterApproval()
+    {
+        lock (_lock)
+        {
+            if (_blockAttempts == null) return;
+            _blockAttempts = null;
+            Save();
+        }
+
+        Changed?.Invoke();
+    }
+
+    /// <summary>The jury channel for reminders from appsettings; null when there is none.</summary>
+    public string? ReminderChannelId =>
+        string.IsNullOrWhiteSpace(_options.Value.ReviewReminder?.ChannelId) ? null : _options.Value.ReviewReminder.ChannelId.Trim();
+
+    /// <summary>
+    /// After how many minutes of waiting the jury is reminded: set in the app, otherwise from appsettings.
+    /// Null means no reminders.
+    /// </summary>
+    public int? ReviewReminderMinutes
+    {
+        get
+        {
+            lock (_lock)
+            {
+                if (_reminder != null) return _reminder.Minutes;
+            }
+
+            return _options.Value.ReviewReminder?.AfterMinutes is int minutes && minutes > 0 ? minutes : null;
+        }
+    }
+
+    /// <summary>Whether the reminder time was changed in the app.</summary>
+    public bool IsReviewReminderChanged
+    {
+        get { lock (_lock) return _reminder != null; }
+    }
+
+    /// <summary>Sets the reminder time in the app; null switches reminders off.</summary>
+    /// <returns>Null when saved, otherwise why not.</returns>
+    public string? SetReviewReminderMinutes(int? minutes)
+    {
+        if (minutes is < 1 or > MaxReminderMinutes)
+        {
+            return $"Kies tussen 1 en {MaxReminderMinutes} minuten, of laat het leeg om geen herinneringen te sturen.";
+        }
+
+        lock (_lock)
+        {
+            _reminder = new ReminderOverride { Minutes = minutes };
+            Save();
+        }
+
+        _logger.LogWarning("Review reminder set to {Minutes} minutes in the app", minutes?.ToString() ?? "off");
+        Changed?.Invoke();
+        return null;
+    }
+
+    /// <summary>Goes back to the reminder time from appsettings.</summary>
+    public void ResetReviewReminder()
+    {
+        lock (_lock)
+        {
+            if (_reminder == null) return;
+            _reminder = null;
+            Save();
+        }
+
+        Changed?.Invoke();
+    }
+
+    /// <summary>When the game-start message was posted in a channel; null when it was not.</summary>
+    public DateTimeOffset? GameStartPostedAt(string channelId)
+    {
+        lock (_lock) return _gameStartPosted.TryGetValue(channelId, out var at) ? at : null;
+    }
+
+    /// <summary>Remembers that the game-start message was posted in a channel, so a restart does not post it again.</summary>
+    public void MarkGameStartPosted(string channelId, DateTimeOffset postedAt)
+    {
+        lock (_lock)
+        {
+            _gameStartPosted[channelId] = postedAt;
+            Save();
+        }
+
+        Changed?.Invoke();
+    }
+
+    /// <summary>When the game-end message was posted in a channel; null when it was not.</summary>
+    public DateTimeOffset? GameEndPostedAt(string channelId)
+    {
+        lock (_lock) return _gameEndPosted.TryGetValue(channelId, out var at) ? at : null;
+    }
+
+    /// <summary>Remembers that the game-end message was posted in a channel, so a restart does not post it again.</summary>
+    public void MarkGameEndPosted(string channelId, DateTimeOffset postedAt)
+    {
+        lock (_lock)
+        {
+            _gameEndPosted[channelId] = postedAt;
+            Save();
+        }
+
+        Changed?.Invoke();
+    }
+
     /// <summary>
     /// Claims one file of one message for a manual-mode download. Slack can deliver an event twice;
     /// only the first claim downloads. Kept in memory: redeliveries come within minutes.
@@ -190,27 +545,55 @@ public partial class RuntimeSettingsService
     public bool TryClaimManualDownload(string channel, string messageTs, string fileName) =>
         _manualDownloads.TryAdd($"{channel}|{messageTs}|{fileName}", 0);
 
-    private (List<string> Reviewers, Dictionary<string, SavedName> Names) Load()
+    private void Load()
     {
-        var names = new Dictionary<string, SavedName>(StringComparer.OrdinalIgnoreCase);
-        if (!File.Exists(_file)) return (new List<string>(), names);
+        _addedReviewers = new List<string>();
+        _names = new Dictionary<string, SavedName>(StringComparer.OrdinalIgnoreCase);
+        _gameStartPosted = new Dictionary<string, DateTimeOffset>(StringComparer.OrdinalIgnoreCase);
+        _gameEndPosted = new Dictionary<string, DateTimeOffset>(StringComparer.OrdinalIgnoreCase);
+        _texts = new Dictionary<SlackText, string>();
+        if (!File.Exists(_file)) return;
 
         try
         {
             var saved = JsonSerializer.Deserialize<SavedSettings>(File.ReadAllText(_file));
-            var reviewers = saved?.Reviewers?.Where(r => ReviewerIdPattern().IsMatch(r)).Distinct(StringComparer.OrdinalIgnoreCase).ToList() ?? new List<string>();
+            _addedReviewers = saved?.Reviewers?.Where(r => ReviewerIdPattern().IsMatch(r)).Distinct(StringComparer.OrdinalIgnoreCase).ToList() ?? new List<string>();
             foreach (var (id, name) in saved?.ReviewerNames ?? new Dictionary<string, SavedName>())
             {
-                if (!string.IsNullOrWhiteSpace(name?.Name)) names[id] = name;
+                if (!string.IsNullOrWhiteSpace(name?.Name)) _names[id] = name;
             }
 
-            return (reviewers, names);
+            foreach (var (channel, at) in saved?.GameStartPosted ?? new Dictionary<string, DateTimeOffset>())
+            {
+                _gameStartPosted[channel] = at;
+            }
+
+            foreach (var (channel, at) in saved?.GameEndPosted ?? new Dictionary<string, DateTimeOffset>())
+            {
+                _gameEndPosted[channel] = at;
+            }
+
+            _eventStart = saved?.EventStart;
+            _eventEnd = saved?.EventEnd;
+
+            foreach (var (key, text) in saved?.SlackTexts ?? new Dictionary<string, string>())
+            {
+                // A text of a kind this version does not know is skipped
+                if (Enum.TryParse<SlackText>(key, out var kind) && text != null) _texts[kind] = text;
+            }
+
+            _blockAttempts = saved?.BlockAttemptsAfterApproval;
+            // An out-of-range value in a hand-edited file falls back to appsettings
+            if (saved?.ReviewReminder is { } reminder && reminder.Minutes is null or (>= 1 and <= MaxReminderMinutes))
+            {
+                _reminder = reminder;
+            }
         }
         catch (JsonException ex)
         {
             // A damaged file must not stop the app; the reviewers from appsettings still apply
             _logger.LogError(ex, "Could not read {File}; reviewers and names set in the app are not loaded", _file);
-            return (new List<string>(), names);
+            _addedReviewers = new List<string>();
         }
     }
 
@@ -218,7 +601,10 @@ public partial class RuntimeSettingsService
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_file)!);
         var temp = _file + ".tmp";
-        var settings = new SavedSettings { Reviewers = _addedReviewers, ReviewerNames = _names };
+        var settings = new SavedSettings { Reviewers = _addedReviewers, ReviewerNames = _names, GameStartPosted = _gameStartPosted,
+            GameEndPosted = _gameEndPosted, EventStart = _eventStart, EventEnd = _eventEnd,
+            SlackTexts = _texts.ToDictionary(t => t.Key.ToString(), t => t.Value),
+            BlockAttemptsAfterApproval = _blockAttempts, ReviewReminder = _reminder };
         File.WriteAllText(temp, JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true }));
         File.Move(temp, _file, overwrite: true);
     }
@@ -230,6 +616,25 @@ public partial class RuntimeSettingsService
     {
         public List<string>? Reviewers { get; set; }
         public Dictionary<string, SavedName>? ReviewerNames { get; set; }
+        public Dictionary<string, DateTimeOffset>? GameStartPosted { get; set; }
+        public Dictionary<string, DateTimeOffset>? GameEndPosted { get; set; }
+        public TimeOverride? EventStart { get; set; }
+        public TimeOverride? EventEnd { get; set; }
+        public Dictionary<string, string>? SlackTexts { get; set; }
+        public bool? BlockAttemptsAfterApproval { get; set; }
+        public ReminderOverride? ReviewReminder { get; set; }
+    }
+
+    /// <summary>A reminder time set in the app; <see cref="Minutes"/> null means reminders are off.</summary>
+    private sealed class ReminderOverride
+    {
+        public int? Minutes { get; set; }
+    }
+
+    /// <summary>A start or end time set in the app, in the game's time zone; <see cref="Value"/> null means none.</summary>
+    private sealed class TimeOverride
+    {
+        public DateTime? Value { get; set; }
     }
 
     private sealed class SavedName
@@ -237,4 +642,17 @@ public partial class RuntimeSettingsService
         public string Name { get; set; } = "";
         public bool FromSlack { get; set; }
     }
+}
+
+/// <summary>The Slack messages whose text an admin can change in the app.</summary>
+public enum SlackText
+{
+    GameStart,
+    GameEnd,
+    UnsupportedFile,
+    MissingAssignmentNumber,
+    UnknownAssignmentNumber,
+    DownloadFailed,
+    AlreadyCompleted,
+    TooLate
 }

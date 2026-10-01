@@ -26,7 +26,7 @@ public class SubmissionDetailPageTests : PageTestBase
         cut.Find("h1").TextContent.Should().Be("DWO 1.jpg");
         cut.Find(".preview img").GetAttribute("src").Should().Be($"/api/files/{seeded.Approved.Id}");
         cut.Find("a[href^='groups/']").TextContent.Should().Be("De Wolven");
-        cut.Find("a[href='assignments/1']").TextContent.Should().Be("Assignment #1");
+        cut.Find("a[href='assignments/1']").TextContent.Should().Be("Opdracht 1");
         cut.Find(".detail-list").TextContent.Should().Contain("vuur2.jpg").And.Contain("#C1");
         cut.Find(".slack-message").TextContent.Should().Contain("Opdracht 1");
         cut.FindAll(".timeline-item").Should().ContainSingle().Which.TextContent.Should().Contain(":thumbsup:");
@@ -46,7 +46,7 @@ public class SubmissionDetailPageTests : PageTestBase
         var cut = RenderSubmission(submission.Id);
 
         cut.Find(selector);
-        cut.Markup.Should().Contain("No reviews yet.");
+        cut.Markup.Should().Contain("Nog geen beoordeling.");
     }
 
     [Fact]
@@ -57,7 +57,7 @@ public class SubmissionDetailPageTests : PageTestBase
         var cut = RenderSubmission(seeded.Unresolved.Id);
 
         cut.Find(".alert-warning.d-flex").TextContent.Should().Contain("No valid assignment number");
-        cut.Markup.Should().Contain("Unresolved");
+        cut.Markup.Should().Contain("Onopgelost");
         cut.Find("h1").TextContent.Should().Be("raadsel.m4a");
     }
 
@@ -73,7 +73,7 @@ public class SubmissionDetailPageTests : PageTestBase
         var cut = RenderSubmission(submission.Id);
 
         cut.Find("h1").TextContent.Should().Be("origineel.jpg");
-        cut.Find(".slack-message").TextContent.Should().Contain("(no text)");
+        cut.Find(".slack-message").TextContent.Should().Contain("(geen tekst)");
     }
 
     [Theory]
@@ -127,7 +127,7 @@ public class SubmissionDetailPageTests : PageTestBase
     {
         var cut = RenderSubmission(Guid.NewGuid());
 
-        cut.Find("h1").TextContent.Should().Be("Submission not found");
+        cut.Find("h1").TextContent.Should().Be("Inzending niet gevonden");
     }
 
     [Fact]
@@ -148,8 +148,8 @@ public class SubmissionDetailPageTests : PageTestBase
         button().HasAttribute("disabled").Should().BeFalse();
         button().Click();
 
-        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Dashboard override"));
-        cut.Find("h1 + div, .badge-status").TextContent.Should().Contain("Approved");
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Handmatig aangepast"));
+        cut.Find("h1 + div, .badge-status").TextContent.Should().Contain("Goedgekeurd");
         cut.Find("details.override-panel textarea").GetAttribute("value").Should().BeNullOrEmpty();
         WithDb(db => db.Submissions.Single(s => s.Id == seeded.Pending.Id).Status).Should().Be(SubmissionStatus.Approved);
     }
@@ -165,7 +165,7 @@ public class SubmissionDetailPageTests : PageTestBase
 
         cut.Find("details.override-panel button").Click();
 
-        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Override failed"));
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Aanpassen mislukt"));
     }
 
     [Fact]

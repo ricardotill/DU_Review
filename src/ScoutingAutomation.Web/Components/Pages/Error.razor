@@ -2,20 +2,20 @@
 @attribute [AllowAnonymous]
 @using System.Diagnostics
 
-<PageTitle>Error - Scouting Regional Game</PageTitle>
+<PageTitle>Fout - DU Review</PageTitle>
 
 <div class="glass-panel empty-state">
     <i class="bi bi-exclamation-octagon text-danger"></i>
-    <h1 class="h4 text-white">Something went wrong</h1>
-    <p class="mb-3">An error occurred while processing your request.</p>
+    <h1 class="h4 text-white">Er ging iets mis</h1>
+    <p class="mb-3">Er is een fout opgetreden bij het verwerken van je verzoek.</p>
     @if (ShowRequestId)
     {
-        <p class="small">Request ID: <code>@RequestId</code></p>
+        <p class="small">Verzoek-ID: <code>@RequestId</code></p>
     }
     <p class="small text-muted">
-        Run the app with <code>ASPNETCORE_ENVIRONMENT=Development</code> for error details. Never enable this for a deployed app.
+        Start de app met <code>ASPNETCORE_ENVIRONMENT=Development</code> voor details over de fout. Zet dit nooit aan in productie.
     </p>
-    <a href="" class="btn btn-scout-secondary">Go to dashboard</a>
+    <a href="" class="btn btn-scout-secondary">Naar het dashboard</a>
 </div>
 
 @code{

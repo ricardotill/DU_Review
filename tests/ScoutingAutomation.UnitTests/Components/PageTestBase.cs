@@ -29,6 +29,7 @@ public abstract class PageTestBase : BunitContext
         Services.AddScoutingInfrastructure(new ConfigurationBuilder().Build());
         Services.AddLogging();
         Services.AddScoped<ScoutingAutomation.Web.Favorites.FavoritesService>();
+        Services.AddScoped<ScoutingAutomation.Web.Notifications.NotificationPreferences>();
         JSInterop.Mode = JSRuntimeMode.Loose;
         Auth = AddAuthorization();
         Auth.SetAuthorized("Admin");
@@ -130,6 +131,16 @@ public abstract class PageTestBase : BunitContext
             MessageText = number.HasValue ? $"Opdracht {number}" : "hoi",
             CreatedAt = createdAt
         };
+    }
+
+    /// <summary>
+    /// Renders the layout around <paramref name="body"/>, interactive like in the app.
+    /// Setting the renderer info builds the services, so call this after all services are added.
+    /// </summary>
+    protected IRenderedComponent<ScoutingAutomation.Web.Components.Layout.MainLayout> RenderLayout(string body)
+    {
+        SetRendererInfo(new Microsoft.AspNetCore.Components.RendererInfo("Server", isInteractive: true));
+        return Render<ScoutingAutomation.Web.Components.Layout.MainLayout>(p => p.Add(l => l.Body, (Microsoft.AspNetCore.Components.RenderFragment)(b => b.AddContent(0, body))));
     }
 
     protected void NotifyChanged() => Services.GetRequiredService<ISubmissionChangeNotifier>().NotifyChanged();

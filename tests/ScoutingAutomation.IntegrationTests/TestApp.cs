@@ -14,15 +14,38 @@ namespace ScoutingAutomation.IntegrationTests;
 /// </summary>
 public sealed class TestApp : IAsyncDisposable
 {
-    private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"scouting_it_{Guid.NewGuid():N}.db");
+    private readonly string _dbPath;
+    private readonly WebApplicationFactory<Program> _baseFactory;
+    private readonly IDictionary<string, string?>? _settings;
+    private readonly Action<IServiceCollection>? _services;
+    private readonly string _environment;
+    private bool _restarted;
 
     public TestApp(
         WebApplicationFactory<Program> baseFactory,
         IDictionary<string, string?>? settings = null,
         Action<IServiceCollection>? services = null,
         string environment = "Development")
+        : this(baseFactory, settings, services, environment,
+            Path.Combine(Path.GetTempPath(), $"scouting_it_{Guid.NewGuid():N}.db"),
+            Path.Combine(Path.GetTempPath(), $"scouting_it_storage_{Guid.NewGuid():N}"))
     {
-        StorageRoot = Path.Combine(Path.GetTempPath(), $"scouting_it_storage_{Guid.NewGuid():N}");
+    }
+
+    private TestApp(
+        WebApplicationFactory<Program> baseFactory,
+        IDictionary<string, string?>? settings,
+        Action<IServiceCollection>? services,
+        string environment,
+        string dbPath,
+        string storageRoot)
+    {
+        _baseFactory = baseFactory;
+        _settings = settings;
+        _services = services;
+        _environment = environment;
+        _dbPath = dbPath;
+        StorageRoot = storageRoot;
         Directory.CreateDirectory(StorageRoot);
 
         Factory = baseFactory.WithWebHostBuilder(builder =>
@@ -74,6 +97,72 @@ public sealed class TestApp : IAsyncDisposable
 
         // Same position as appsettings.json, so later sources (such as test overrides) still win
         config.Sources.Insert(appSettingsIndex >= 0 ? appSettingsIndex : 0, testSettings);
+    }
+
+    /// <summary>The signing secret of apps made with <see cref="Live"/>.</summary>
+    public const string LiveSecret = "live-test-secret";
+
+    /// <summary>The reviewer of apps made with <see cref="Live"/>.</summary>
+    public const string Reviewer = "U_JURY";
+
+    /// <summary>
+    /// The app connected to Slack (no simulation), with Slack's Web API and file hosting faked by <paramref name="slack"/>.
+    /// Webhook requests must be signed with <see cref="LiveSecret"/>; <see cref="SendEventAsync"/> does that.
+    /// </summary>
+    public static TestApp Live(
+        WebApplicationFactory<Program> baseFactory,
+        FakeSlackApi slack,
+        IDictionary<string, string?>? settings = null,
+        Action<IServiceCollection>? services = null)
+    {
+        var all = new Dictionary<string, string?>
+        {
+            ["Scouting:Slack:SimulationMode"] = "false",
+            ["Scouting:Slack:SigningSecret"] = LiveSecret,
+            ["Scouting:Slack:BotToken"] = "xoxb-test",
+            ["Scouting:Reviewers:0"] = Reviewer
+        };
+        foreach (var (key, value) in settings ?? new Dictionary<string, string?>())
+        {
+            all[key] = value;
+        }
+
+        return new TestApp(baseFactory, all, s =>
+        {
+            s.AddHttpClient<Infrastructure.Services.ISlackClient, Infrastructure.Services.SlackClient>().ConfigurePrimaryHttpMessageHandler(() => slack);
+            s.AddHttpClient<Infrastructure.Services.ISlackHistoryClient, Infrastructure.Services.SlackHistoryClient>().ConfigurePrimaryHttpMessageHandler(() => slack);
+            services?.Invoke(s);
+        });
+    }
+
+    /// <summary>
+    /// Stops this app and starts it again on the same database, storage and settings files, like a restart of the server.
+    /// The returned app owns the files; this one must not be used any more.
+    /// </summary>
+    public async Task<TestApp> RestartAsync()
+    {
+        await Factory.DisposeAsync();
+        _restarted = true;
+        return new TestApp(_baseFactory, _settings, _services, _environment, _dbPath, StorageRoot);
+    }
+
+    /// <summary>
+    /// Sends a Slack event to the webhook as an event_callback, signed when the app runs live, and returns the app's answer.
+    /// </summary>
+    public async Task<System.Text.Json.JsonElement> SendEventAsync(HttpClient client, object ev)
+    {
+        var body = System.Text.Json.JsonSerializer.Serialize(new { type = "event_callback", @event = ev });
+        var live = _settings?.TryGetValue("Scouting:Slack:SigningSecret", out var secret) == true && secret == LiveSecret;
+        var response = live
+            ? await client.SendAsync(SignedSlackRequest(LiveSecret, body))
+            : await client.PostAsync("/api/slack/events", new StringContent(body, System.Text.Encoding.UTF8, "application/json"));
+        var answer = await response.Content.ReadAsStringAsync();
+        if (response.StatusCode != System.Net.HttpStatusCode.OK)
+        {
+            throw new InvalidOperationException($"Slack event was answered with {response.StatusCode}: {answer}");
+        }
+
+        return System.Text.Json.JsonDocument.Parse(answer).RootElement.Clone();
     }
 
     public static string PointsFile { get; } =
@@ -143,6 +232,8 @@ public sealed class TestApp : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await Factory.DisposeAsync();
+        if (_restarted) return;
+
         TryDelete(() => File.Delete(_dbPath));
         TryDelete(() => Directory.Delete(StorageRoot, recursive: true));
     }

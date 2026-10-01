@@ -1,0 +1,167 @@
+@implements IDisposable
+@inject GameStartAnnouncer StartAnnouncer
+@inject GameEndAnnouncer EndAnnouncer
+@inject RuntimeSettingsService Runtime
+@inject IGroupRepository GroupRepository
+@inject IOptions<ScoutingSettings> ScoutingOptions
+
+@* The message every group channel gets at the start or the end of the game. *@
+<div class="glass-panel p-4">
+    @if (End)
+    {
+        <h2 class="panel-title"><i class="bi bi-stopwatch-fill text-danger"></i> Eindbericht in Slack</h2>
+        <p class="text-secondary small">
+            Bij het einde van het spel krijgt elk groepskanaal één bericht: inzendingen tellen niet meer mee.
+        </p>
+    }
+    else
+    {
+        <h2 class="panel-title"><i class="bi bi-flag-fill text-success"></i> Startbericht in Slack</h2>
+        <p class="text-secondary small">
+            Bij de start van het spel krijgt elk groepskanaal één bericht: inzenden kan nu, zo stuur je een inzending in, en wat de emoji betekenen.
+        </p>
+    }
+
+    <div class="inset-panel py-2 mb-3">
+        <div class="fw-semibold text-white small mb-1">Tekst</div>
+        @if (End)
+        {
+            <SlackTextEditor Kind="SlackText.GameEnd" Label="het eindbericht" Rows="5" DraftChanged="OnDraftChanged" Placeholders="{group}, {end}" />
+        }
+        else
+        {
+            <SlackTextEditor Kind="SlackText.GameStart" Label="het startbericht" Rows="12" DraftChanged="OnDraftChanged"
+                             Placeholders="{group}, {retryRule}, {approved}, {awesome}, {rejected}, {missingNumber}, {unknownNumber}, {unsupportedFile}, {downloadFailed}, {alreadyCompleted}" />
+        }
+    </div>
+
+    <div class="small mb-3">
+        @if (!IsConnected)
+        {
+            <i class="bi bi-plug text-warning me-1"></i><span class="text-white-50">Niet verbonden met Slack (<code>SimulationMode</code> aan of geen bot-token): er wordt niets geplaatst.</span>
+        }
+        else if (!AutoPost)
+        {
+            <i class="bi bi-hand-index text-info me-1"></i><span class="text-white-50">Automatisch plaatsen staat uit: stuur het bericht hieronder met de hand.</span>
+        }
+        else if (PostTime is { } at)
+        {
+            <i class="bi bi-clock text-info me-1"></i><span class="text-white-50">Wordt automatisch geplaatst om <strong class="text-white">@at.ToGameTime().ToString("dd-MM-yyyy HH:mm")</strong> in kanalen die het nog niet kregen.</span>
+        }
+        else
+        {
+            <i class="bi bi-hand-index text-info me-1"></i><span class="text-white-50">Geen @(End ? "eindtijd" : "starttijd") ingesteld (zie Speeltijd): stuur het bericht hieronder met de hand.</span>
+        }
+    </div>
+
+    @if (preview == null)
+    {
+        <p class="text-muted small">Geen bericht ingesteld: er wordt niets geplaatst.</p>
+    }
+    else
+    {
+        <details class="announcement-panel mb-3" open="@(draft != null)">
+            <summary class="text-secondary small">Voorbeeld voor @(groups.FirstOrDefault()?.Name ?? "een groep")</summary>
+            <pre class="inset-panel small text-white-50 mt-2 mb-0 announcement-preview">@preview</pre>
+        </details>
+
+        <ul class="list-unstyled small d-flex flex-column gap-1 mb-3">
+            @foreach (var group in groups)
+            {
+                var result = results?.FirstOrDefault(r => r.ChannelId == group.SlackChannelId && !r.Skipped);
+                <li class="d-flex justify-content-between gap-2">
+                    <span class="text-white">@group.Name</span>
+                    @if (result is { Error: { } error })
+                    {
+                        <span class="text-danger">Mislukt: <code>@error</code></span>
+                    }
+                    else if (Announcer.PostedAt(group.SlackChannelId) is { } postedAt)
+                    {
+                        <span class="text-success"><i class="bi bi-check-circle-fill me-1"></i>Geplaatst om @postedAt.ToGameTime().ToString("dd-MM HH:mm")</span>
+                    }
+                    else
+                    {
+                        <span class="text-muted">Nog niet geplaatst</span>
+                    }
+                </li>
+            }
+        </ul>
+
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+            <button class="btn btn-outline-success" disabled="@(!IsConnected || posting)" @onclick="() => Post(resend: false)">
+                <i class="bi bi-send me-1"></i> @(End ? "Eindbericht" : "Startbericht") nu sturen
+            </button>
+            <span class="text-muted small">Alleen naar kanalen die het nog niet kregen.</span>
+        </div>
+
+        <details class="announcement-panel mt-3">
+            <summary class="text-secondary small">Opnieuw sturen naar alle kanalen…</summary>
+            <div class="row g-2 align-items-end mt-1">
+                <div class="col-md-8">
+                    <label class="form-label text-secondary small fw-semibold mb-1">Typ OPNIEUW om te bevestigen; elk kanaal krijgt het bericht nog een keer</label>
+                    <input type="text" class="form-control form-control-dark" @bind="confirmation" @bind:event="oninput" disabled="@posting" />
+                </div>
+                <div class="col-md-4">
+                    <button class="btn btn-outline-warning w-100" disabled="@(!IsConnected || posting || confirmation.Trim() != "OPNIEUW")" @onclick="() => Post(resend: true)">
+                        <i class="bi bi-arrow-repeat me-1"></i> Opnieuw sturen
+                    </button>
+                </div>
+            </div>
+        </details>
+    }
+</div>
+
+@code {
+    /// <summary>The game-end message instead of the game-start message.</summary>
+    [Parameter] public bool End { get; set; }
+
+    private IReadOnlyList<Group> groups = new List<Group>();
+    private IReadOnlyList<AnnouncementPostResult>? results;
+    private string? draft;
+
+    // The preview follows the text while an admin edits it
+    private string? preview => draft != null
+        ? Announcer.Preview(PreviewGroup, draft)
+        : Announcer.Preview(PreviewGroup);
+
+    private ScheduledAnnouncer Announcer => End ? EndAnnouncer : StartAnnouncer;
+
+    private bool AutoPost => End
+        ? ScoutingOptions.Value.GameEndAnnouncement?.AutoPost ?? false
+        : ScoutingOptions.Value.GameStartAnnouncement?.AutoPost ?? false;
+
+    private DateTimeOffset? PostTime => End ? Runtime.EventEnd : Runtime.EventStart;
+
+    private string PreviewGroup => groups.FirstOrDefault()?.Name ?? "Groepsnaam";
+    private string confirmation = "";
+    private bool posting;
+
+    private bool IsConnected =>
+        !ScoutingOptions.Value.Slack.SimulationMode && !string.IsNullOrWhiteSpace(ScoutingOptions.Value.Slack.BotToken);
+
+    protected override async Task OnInitializedAsync()
+    {
+        groups = await GroupRepository.GetAllAsync();
+        Runtime.Changed += OnRuntimeChanged;
+    }
+
+    private async Task Post(bool resend)
+    {
+        posting = true;
+        try
+        {
+            results = await Announcer.PostAsync(resend);
+            confirmation = "";
+        }
+        finally
+        {
+            posting = false;
+        }
+    }
+
+    private void OnDraftChanged(string? text) => draft = text;
+
+    private void OnRuntimeChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Runtime.Changed -= OnRuntimeChanged;
+}

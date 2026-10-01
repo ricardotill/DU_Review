@@ -6,23 +6,23 @@
 @inject SlackConnectionStatus ConnectionStatus
 @inject RuntimeSettingsService Runtime
 
-<PageTitle>Configuration - Scouting Regional Game</PageTitle>
+<PageTitle>Configuratie - DU Review</PageTitle>
 
-<PageHeader Title="Configuration" Subtitle="Read-only overview. Change these settings in appsettings.json and restart the app." />
+<PageHeader Title="Configuratie" Subtitle="Wijzig de meeste instellingen in appsettings.json en herstart de app. Juryleden en de teksten van de bot pas je hier aan in beheermodus." />
 
 <div class="row g-4">
     <!-- Groups -->
     <div class="col-12">
         <div class="glass-panel p-4">
-            <h2 class="panel-title"><i class="bi bi-people-fill text-success"></i> Groups</h2>
+            <h2 class="panel-title"><i class="bi bi-people-fill text-success"></i> Groepen</h2>
             <div class="table-responsive">
                 <table class="custom-table">
                     <thead>
                         <tr>
-                            <th>Name</th>
-                            <th>Abbreviation</th>
-                            <th>Slack channel</th>
-                            <th>Description</th>
+                            <th>Naam</th>
+                            <th>Afkorting</th>
+                            <th>Slack-kanaal</th>
+                            <th>Omschrijving</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -33,7 +33,7 @@
                                 <td>
                                     @if (string.IsNullOrWhiteSpace(g.Abbreviation))
                                     {
-                                        <span class="text-warning small" title="Files are named after the group instead">not set</span>
+                                        <span class="text-warning small" title="Bestanden krijgen dan de naam van de groep">niet ingesteld</span>
                                     }
                                     else
                                     {
@@ -53,7 +53,7 @@
     <!-- Review in Slack -->
     <div class="col-lg-6">
         <div class="glass-panel p-4 h-100">
-            <h2 class="panel-title"><i class="bi bi-hand-thumbs-up-fill text-warning"></i> Reviewing in Slack</h2>
+            <h2 class="panel-title"><i class="bi bi-hand-thumbs-up-fill text-warning"></i> Beoordelen in Slack</h2>
 
             <ReviewerManager />
 
@@ -63,7 +63,7 @@
                     <div class="inset-panel py-2">
                         <div class="d-flex justify-content-between align-items-center mb-1">
                             <span class="badge @badge">@label</span>
-                            <span class="text-muted small">moves to <code>/@folder/</code></span>
+                            <span class="text-muted small">verhuist naar <code>/@folder/</code></span>
                         </div>
                         <div class="d-flex flex-wrap gap-1">
                             @foreach (var emoji in emojis)
@@ -80,25 +80,25 @@
     <!-- Automatic feedback -->
     <div class="col-lg-6">
         <div class="glass-panel p-4 h-100">
-            <h2 class="panel-title"><i class="bi bi-chat-left-text-fill text-info"></i> Automatic feedback</h2>
-            <p class="text-secondary small">The bot reacts and replies in the thread when a submission has a problem.</p>
+            <h2 class="panel-title"><i class="bi bi-chat-left-text-fill text-info"></i> Automatische feedback</h2>
+            <p class="text-secondary small">De bot reageert met een emoji en antwoordt in de thread als er iets mis is met een inzending. Beheerders kunnen de teksten hier aanpassen; de emoji staan in appsettings.json.</p>
 
             <div class="d-flex flex-column gap-2">
-                @foreach (var (label, feedback) in FeedbackRows)
+                @foreach (var (label, feedback, kind, placeholders) in FeedbackRows)
                 {
                     <div class="inset-panel py-2">
                         <div class="d-flex justify-content-between align-items-center mb-1">
                             <span class="fw-semibold text-white small">@label</span>
                             @if (string.IsNullOrWhiteSpace(feedback.Reaction))
                             {
-                                <span class="text-muted small">no reaction</span>
+                                <span class="text-muted small">geen emoji</span>
                             }
                             else
                             {
                                 <code>:@feedback.Reaction.Trim(':'):</code>
                             }
                         </div>
-                        <div class="text-white-50 small">@(string.IsNullOrWhiteSpace(feedback.Message) ? "No reply" : feedback.Message)</div>
+                        <SlackTextEditor Kind="kind" Label="@label" Placeholders="@placeholders" EmptyText="Geen antwoord" />
                     </div>
                 }
             </div>
@@ -108,17 +108,17 @@
     <!-- Files -->
     <div class="col-lg-6">
         <div class="glass-panel p-4 h-100">
-            <h2 class="panel-title"><i class="bi bi-hdd-fill text-secondary"></i> Files &amp; storage</h2>
+            <h2 class="panel-title"><i class="bi bi-hdd-fill text-secondary"></i> Bestanden &amp; opslag</h2>
             <dl class="config-list mb-3">
-                <dt>Storage folder</dt>
+                <dt>Opslagmap</dt>
                 <dd class="font-monospace small text-break">@options.StorageRoot</dd>
-                <dt>Layout</dt>
-                <dd class="small"><code>/group/</code> until reviewed, then <code>approved/</code>, <code>awesome/</code> or <code>rejected/</code></dd>
-                <dt>File names</dt>
-                <dd class="small"><code>{abbreviation} {assignment} {time}</code>, e.g. <code>CDW 16 14-32-05.jpg</code></dd>
+                <dt>Indeling</dt>
+                <dd class="small"><code>/groep/</code> tot de beoordeling, daarna <code>approved/</code>, <code>awesome/</code> of <code>rejected/</code></dd>
+                <dt>Bestandsnamen</dt>
+                <dd class="small"><code>{afkorting} {opdracht} {tijd}</code>, bijv. <code>CDW 16 14-32-05.jpg</code></dd>
             </dl>
 
-            <div class="field-label">Accepted files</div>
+            <div class="field-label">Toegestane bestanden</div>
             <div class="d-flex flex-wrap gap-1">
                 @foreach (var prefix in options.SupportedMimeTypePrefixes)
                 {
@@ -135,23 +135,23 @@
     <!-- Assignments & Slack -->
     <div class="col-lg-6">
         <div class="glass-panel p-4 h-100">
-            <h2 class="panel-title"><i class="bi bi-gear-fill text-secondary"></i> Assignments &amp; Slack</h2>
+            <h2 class="panel-title"><i class="bi bi-gear-fill text-secondary"></i> Opdrachten &amp; Slack</h2>
             <dl class="config-list mb-0">
-                <dt>Points file</dt>
+                <dt>Puntenbestand</dt>
                 <dd class="font-monospace small text-break">@options.AssignmentPointsFile</dd>
-                <dt>Assignments</dt>
-                <dd>@assignmentCount loaded</dd>
-                <dt>Manual mode</dt>
+                <dt>Opdrachten</dt>
+                <dd>@assignmentCount geladen</dd>
+                <dt>Handmatige modus</dt>
                 <dd>
-                    @(Runtime.ManualMode ? "On" : "Off")
-                    <span class="text-muted small ms-1">default @(options.ManualMode ? "on" : "off"); switch it on the dashboard</span>
+                    @(Runtime.ManualMode ? "Aan" : "Uit")
+                    <span class="text-muted small ms-1">standaard @(options.ManualMode ? "aan" : "uit"); wissel op het dashboard</span>
                 </dd>
-                <dt>Slack mode</dt>
+                <dt>Slack-modus</dt>
                 <dd>
                     @if (options.Slack.SimulationMode)
                     {
-                        <span class="badge badge-pending">Simulation</span>
-                        <span class="text-muted small ms-1">no calls to Slack</span>
+                        <span class="badge badge-pending">Simulatie</span>
+                        <span class="text-muted small ms-1">geen verkeer met Slack</span>
                     }
                     else
                     {
@@ -160,12 +160,12 @@
                 </dd>
                 @if (!options.Slack.SimulationMode)
                 {
-                    <dt>Connection</dt>
+                    <dt>Verbinding</dt>
                     <dd>
                         @if (options.Slack.SocketMode)
                         {
                             <span>Socket Mode</span>
-                            <span class="badge @ConnectionBadge ms-1">@ConnectionStatus.State</span>
+                            <span class="badge @ConnectionBadge ms-1">@ConnectionStatus.State.Label()</span>
                             @if (!string.IsNullOrEmpty(ConnectionStatus.Detail))
                             {
                                 <div class="text-muted small">@ConnectionStatus.Detail</div>
@@ -174,7 +174,7 @@
                         else
                         {
                             <span>Events API</span>
-                            <span class="text-muted small ms-1">Slack posts to <code>/api/slack/events</code></span>
+                            <span class="text-muted small ms-1">Slack stuurt naar <code>/api/slack/events</code></span>
                         }
                     </dd>
                 }
@@ -184,11 +184,11 @@
                     <dd>
                         @if (string.IsNullOrWhiteSpace(options.Slack.AppToken))
                         {
-                            <span class="text-danger small">not set: no events are received</span>
+                            <span class="text-danger small">niet ingesteld: er komen geen gebeurtenissen binnen</span>
                         }
                         else
                         {
-                            <span class="text-success small">set</span>
+                            <span class="text-success small">ingesteld</span>
                         }
                     </dd>
                 }
@@ -196,35 +196,71 @@
                 <dd>
                     @if (options.Slack.SimulationMode)
                     {
-                        <span class="text-muted small">not checked in simulation</span>
+                        <span class="text-muted small">niet gecontroleerd in simulatie</span>
                     }
                     else if (options.Slack.SocketMode)
                     {
-                        <span class="text-muted small">not needed in Socket Mode</span>
+                        <span class="text-muted small">niet nodig bij Socket Mode</span>
                     }
                     else if (string.IsNullOrWhiteSpace(options.Slack.SigningSecret))
                     {
-                        <span class="text-danger small">not set: all Slack requests are rejected</span>
+                        <span class="text-danger small">niet ingesteld: alle verzoeken van Slack worden geweigerd</span>
                     }
                     else
                     {
-                        <span class="text-success small">set, requests are verified</span>
+                        <span class="text-success small">ingesteld, verzoeken worden gecontroleerd</span>
                     }
                 </dd>
                 <dt>Bot token</dt>
                 <dd>
                     @if (string.IsNullOrWhiteSpace(options.Slack.BotToken))
                     {
-                        <span class="text-warning small">not set</span>
+                        <span class="text-warning small">niet ingesteld</span>
                     }
                     else
                     {
-                        <span class="text-success small">set</span>
+                        <span class="text-success small">ingesteld</span>
                     }
                 </dd>
             </dl>
         </div>
     </div>
+</div>
+
+<div class="mt-4">
+    <EventTimesPanel />
+</div>
+
+<div class="mt-4">
+    <ReviewRulesPanel />
+</div>
+
+<div class="mt-4">
+    <AuthorizeView Roles="@KeyAuth.AdminRole">
+        <Authorized>
+            <AnnouncementPanel />
+        </Authorized>
+        <NotAuthorized>
+            <div class="glass-panel p-4">
+                <h2 class="panel-title"><i class="bi bi-flag-fill text-success"></i> Startbericht in Slack</h2>
+                <p class="text-secondary small mb-0">Alleen beheerders kunnen het startbericht sturen. <a href="admin">Naar beheermodus</a>.</p>
+            </div>
+        </NotAuthorized>
+    </AuthorizeView>
+</div>
+
+<div class="mt-4">
+    <AuthorizeView Roles="@KeyAuth.AdminRole">
+        <Authorized>
+            <AnnouncementPanel End="true" />
+        </Authorized>
+        <NotAuthorized>
+            <div class="glass-panel p-4">
+                <h2 class="panel-title"><i class="bi bi-stopwatch-fill text-danger"></i> Eindbericht in Slack</h2>
+                <p class="text-secondary small mb-0">Alleen beheerders kunnen het eindbericht sturen. <a href="admin">Naar beheermodus</a>.</p>
+            </div>
+        </NotAuthorized>
+    </AuthorizeView>
 </div>
 
 <div class="mt-4">
@@ -234,8 +270,8 @@
         </Authorized>
         <NotAuthorized>
             <div class="glass-panel p-4">
-                <h2 class="panel-title"><i class="bi bi-arrow-repeat text-warning"></i> Rebuild from Slack</h2>
-                <p class="text-secondary small mb-0">Only admins can rebuild. <a href="admin">Switch to admin mode</a>.</p>
+                <h2 class="panel-title"><i class="bi bi-arrow-repeat text-warning"></i> Opnieuw opbouwen uit Slack</h2>
+                <p class="text-secondary small mb-0">Alleen beheerders kunnen opnieuw opbouwen. <a href="admin">Naar beheermodus</a>.</p>
             </div>
         </NotAuthorized>
     </AuthorizeView>
@@ -256,17 +292,19 @@
 
     private IEnumerable<(string Label, string Badge, string Folder, List<string> Emojis)> ReactionRows => new[]
     {
-        ("Approved", "badge-approved", "approved", options.ReviewStatusReactions.Approved),
-        ("Awesome", "badge-awesome", "awesome", options.ReviewStatusReactions.Awesome),
-        ("Rejected", "badge-rejected", "rejected", options.ReviewStatusReactions.Rejected)
+        (SubmissionStatus.Approved.StatusLabel(), "badge-approved", "approved", options.ReviewStatusReactions.Approved),
+        (SubmissionStatus.Awesome.StatusLabel(), "badge-awesome", "awesome", options.ReviewStatusReactions.Awesome),
+        (SubmissionStatus.Rejected.StatusLabel(), "badge-rejected", "rejected", options.ReviewStatusReactions.Rejected)
     };
 
-    private IEnumerable<(string Label, FeedbackConfig Feedback)> FeedbackRows => new[]
+    private IEnumerable<(string Label, FeedbackConfig Feedback, SlackText Kind, string? Placeholders)> FeedbackRows => new[]
     {
-        ("Unsupported file", options.SlackFeedback.UnsupportedFile),
-        ("No assignment number", options.SlackFeedback.MissingAssignmentNumber),
-        ("Unknown assignment number", options.SlackFeedback.UnknownAssignmentNumber),
-        ("Download failed", options.SlackFeedback.DownloadFailed)
+        ("Bestandstype niet ondersteund", options.SlackFeedback.UnsupportedFile, SlackText.UnsupportedFile, "{files}"),
+        ("Geen opdrachtnummer", options.SlackFeedback.MissingAssignmentNumber, SlackText.MissingAssignmentNumber, null),
+        ("Onbekend opdrachtnummer", options.SlackFeedback.UnknownAssignmentNumber, SlackText.UnknownAssignmentNumber, "{number}"),
+        ("Download mislukt", options.SlackFeedback.DownloadFailed, SlackText.DownloadFailed, "{files}"),
+        ("Nieuwe poging na goedkeuring", options.SlackFeedback.AlreadyCompleted, SlackText.AlreadyCompleted, "{number}"),
+        ("Na de eindtijd", options.SlackFeedback.TooLate, SlackText.TooLate, "{end}")
     };
 
     protected override async Task OnInitializedAsync()

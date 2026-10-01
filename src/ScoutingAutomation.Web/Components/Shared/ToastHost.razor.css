@@ -1,0 +1,113 @@
+.toast-stack {
+    position: fixed;
+    right: 1.25rem;
+    bottom: 1.25rem;
+    z-index: 1050;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    width: min(22rem, calc(100vw - 2rem));
+    pointer-events: none;
+}
+
+.submission-toast, .toast-overflow {
+    pointer-events: auto;
+}
+
+.submission-toast {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    background: rgba(22, 27, 34, 0.97);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--border-color);
+    border-left: 4px solid var(--status-pending);
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+    animation: toast-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+    .submission-toast:hover {
+        border-color: rgba(255, 255, 255, 0.18);
+        border-left-color: var(--status-pending);
+    }
+
+.toast-body-link {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    padding: 0.8rem 0.5rem 0.8rem 1rem;
+    color: var(--text-primary);
+    text-decoration: none;
+}
+
+.toast-eyebrow {
+    font-size: 0.75rem;
+    color: var(--status-pending);
+    font-weight: 600;
+}
+
+.toast-group {
+    font-family: 'Outfit', sans-serif;
+    font-size: 1.1rem;
+    font-weight: 700;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+    .toast-group .badge {
+        font-size: 0.7rem;
+        vertical-align: middle;
+        margin-left: 0.25rem;
+    }
+
+.toast-detail {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.toast-close {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    padding: 0.6rem 0.75rem;
+}
+
+    .toast-close:hover {
+        color: var(--text-primary);
+    }
+
+.toast-overflow {
+    align-self: flex-end;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    background: rgba(22, 27, 34, 0.95);
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    padding: 0.25rem 0.75rem;
+}
+
+    .toast-overflow .btn-link {
+        background: none;
+        border: none;
+        color: var(--accent-scout);
+        padding: 0 0 0 0.5rem;
+        font-size: inherit;
+    }
+
+@keyframes toast-in {
+    from {
+        opacity: 0;
+        transform: translateY(0.75rem);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .submission-toast {
+        animation: none;
+    }
+}

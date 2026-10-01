@@ -4,32 +4,62 @@
 @inject FavoritesService Favorites
 @inject IJSRuntime JS
 
-<PageTitle>Slideshow - Scouting Regional Game</PageTitle>
+<PageTitle>Diavoorstelling - DU Review</PageTitle>
 
 @if (!started)
 {
-    <PageHeader Title="Slideshow" Subtitle="Show all photos, videos and audio. Rejected submissions are left out." BackHref="submissions" BackText="Submissions" />
+    <PageHeader Title="Diavoorstelling" Subtitle="Toon alle foto's, video's en geluidsopnames. Afgekeurde inzendingen worden overgeslagen." BackHref="submissions" BackText="Inzendingen" />
 
     <div class="glass-panel p-4 setup">
+        <div class="row g-2 mb-3">
+            <div class="col-sm-6">
+                <label class="form-label text-secondary small fw-semibold mb-1" for="slideshowGroup">Groep</label>
+                <select class="form-select form-select-dark" id="slideshowGroup" @bind="selectedGroupId">
+                    <option value="">Alle groepen</option>
+                    @foreach (var g in Groups)
+                    {
+                        <option value="@g.Id">@g.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="col-sm-6">
+                <label class="form-label text-secondary small fw-semibold mb-1" for="slideshowAssignment">Opdracht</label>
+                <select class="form-select form-select-dark" id="slideshowAssignment" @bind="selectedAssignmentNumber">
+                    <option value="">Alle opdrachten</option>
+                    @foreach (var number in media.Select(s => s.AssignmentNumber).OfType<int>().Distinct().Order())
+                    {
+                        <option value="@number">Opdracht @number</option>
+                    }
+                </select>
+            </div>
+        </div>
+
+        <div class="form-check form-switch mb-3">
+            <input class="form-check-input" type="checkbox" role="switch" id="slideshowAwesome" @bind="awesomeOnly" />
+            <label class="form-check-label text-white-50" for="slideshowAwesome">
+                <i class="bi bi-fire" style="color: #f472b6;"></i> Alleen awesome
+            </label>
+        </div>
+
         <div class="form-check form-switch mb-3">
             <input class="form-check-input" type="checkbox" role="switch" id="slideshowFavorites" @bind="favoritesOnly" disabled="@(!Favorites.IsLoaded)" />
             <label class="form-check-label text-white-50" for="slideshowFavorites">
-                <i class="bi bi-star-fill text-warning"></i> Favorites only (@Favorites.Count)
+                <i class="bi bi-star-fill text-warning"></i> Alleen favorieten (@Favorites.Count)
             </label>
         </div>
 
         <div class="form-check form-switch mb-3">
             <input class="form-check-input" type="checkbox" role="switch" id="slideshowLoop" @bind="loop" />
-            <label class="form-check-label text-white-50" for="slideshowLoop">Start again after the last item</label>
+            <label class="form-check-label text-white-50" for="slideshowLoop">Opnieuw beginnen na het laatste item</label>
         </div>
 
         <div class="form-check form-switch mb-3">
             <input class="form-check-input" type="checkbox" role="switch" id="slideshowShuffle" @bind="shuffle" />
-            <label class="form-check-label text-white-50" for="slideshowShuffle">Shuffle</label>
+            <label class="form-check-label text-white-50" for="slideshowShuffle">Willekeurige volgorde</label>
         </div>
 
         <div class="mb-4">
-            <label class="form-label text-secondary small fw-semibold mb-1" for="slideshowSeconds">Seconds per photo</label>
+            <label class="form-label text-secondary small fw-semibold mb-1" for="slideshowSeconds">Seconden per foto</label>
             <select class="form-select form-select-dark seconds" id="slideshowSeconds" @bind="secondsPerImage">
                 @foreach (var seconds in SecondsOptions)
                 {
@@ -41,7 +71,7 @@
         <div class="d-flex align-items-center gap-3">
             <button class="btn btn-scout-primary d-flex align-items-center gap-2" disabled="@(Playlist.Count == 0)" @onclick="StartAsync">
                 <i class="bi bi-play-fill"></i>
-                <span>Start slideshow</span>
+                <span>Diavoorstelling starten</span>
             </button>
             <span class="text-secondary small item-count">@Playlist.Count @(Playlist.Count == 1 ? "item" : "items")</span>
         </div>
@@ -50,7 +80,9 @@
         {
             <div class="empty-state mt-3">
                 <i class="bi bi-images"></i>
-                @(favoritesOnly ? "No favorite photos, videos or audio yet." : "No photos, videos or audio to show.")
+                @(media.Count == 0 ? "Geen foto's, video's of geluidsopnames om te tonen."
+                    : favoritesOnly ? "Nog geen favoriete foto's, video's of geluidsopnames met deze keuzes."
+                    : "Geen foto's, video's of geluidsopnames met deze keuzes.")
             </div>
         }
     </div>
@@ -58,6 +90,7 @@
 else
 {
     <div class="stage" tabindex="0" @ref="stage" @onkeydown="OnKeyDownAsync">
+        <GameCountdown />
         @if (Current is { } item)
         {
             var fileUrl = $"/api/files/{item.Id}";
@@ -75,7 +108,7 @@ else
                 {
                     <div class="audio-card">
                         <i class="bi bi-music-note-beamed"></i>
-                        <div class="audio-title">@(item.Group?.Name ?? "Unknown group")</div>
+                        <div class="audio-title">@(item.Group?.Name ?? "Onbekende groep")</div>
                         <div class="audio-subtitle">@AssignmentLabel(item)</div>
                         <audio src="@fileUrl" autoplay controls @onended="OnMediaEndedAsync"></audio>
                     </div>
@@ -85,29 +118,29 @@ else
             @* A new key restarts the CSS animation, so the caption fades again for every item *@
             <div class="caption" @key="(item.Id, showCount)">
                 <div class="caption-assignment">@AssignmentLabel(item)</div>
-                <div class="caption-group">@(item.Group?.Name ?? "Unknown group")</div>
+                <div class="caption-group">@(item.Group?.Name ?? "Onbekende groep")</div>
             </div>
 
             @* Buttons keep focus off themselves, so the arrow keys and space keep working on the stage *@
             <div class="controls" @onmousedown:preventDefault="true">
-                <button class="btn btn-scout-secondary" title="Previous (←)" aria-label="Previous" disabled="@(!CanGoBack)" @onclick="PreviousAsync">
+                <button class="btn btn-scout-secondary" title="Vorige (←)" aria-label="Vorige" disabled="@(!CanGoBack)" @onclick="PreviousAsync">
                     <i class="bi bi-skip-start-fill"></i>
                 </button>
-                <button class="btn btn-scout-secondary" title="@(paused ? "Play (space)" : "Pause (space)")" aria-label="@(paused ? "Play" : "Pause")" @onclick="TogglePauseAsync">
+                <button class="btn btn-scout-secondary" title="@(paused ? "Afspelen (spatie)" : "Pauzeren (spatie)")" aria-label="@(paused ? "Afspelen" : "Pauzeren")" @onclick="TogglePauseAsync">
                     <i class="bi @(paused ? "bi-play-fill" : "bi-pause-fill")"></i>
                 </button>
-                <button class="btn btn-scout-secondary" title="Next (→)" aria-label="Next" disabled="@(!CanGoForward)" @onclick="NextAsync">
+                <button class="btn btn-scout-secondary" title="Volgende (→)" aria-label="Volgende" disabled="@(!CanGoForward)" @onclick="NextAsync">
                     <i class="bi bi-skip-end-fill"></i>
                 </button>
                 <span class="position">@(index + 1) / @shown.Count</span>
                 <span class="favorite"><FavoriteStar Submission="item" /></span>
-                <label class="loop-toggle" title="Start again after the last item">
+                <label class="loop-toggle" title="Opnieuw beginnen na het laatste item">
                     <input type="checkbox" class="form-check-input" @bind="loop" /> Loop
                 </label>
-                <button class="btn btn-scout-secondary ms-auto" title="Full screen" aria-label="Full screen" @onclick="ToggleFullscreenAsync">
+                <button class="btn btn-scout-secondary ms-auto" title="Volledig scherm" aria-label="Volledig scherm" @onclick="ToggleFullscreenAsync">
                     <i class="bi bi-arrows-fullscreen"></i>
                 </button>
-                <button class="btn btn-scout-secondary" title="Stop (Esc)" aria-label="Stop" @onclick="StopAsync">
+                <button class="btn btn-scout-secondary" title="Stoppen (Esc)" aria-label="Stoppen" @onclick="StopAsync">
                     <i class="bi bi-x-lg"></i>
                 </button>
             </div>
@@ -121,8 +154,8 @@ else
         {
             <div class="empty-state">
                 <i class="bi bi-images"></i>
-                Nothing left to show.
-                <button class="btn btn-scout-secondary btn-sm mt-3" @onclick="StopAsync">Back</button>
+                Niets meer om te tonen.
+                <button class="btn btn-scout-secondary btn-sm mt-3" @onclick="StopAsync">Terug</button>
             </div>
         }
     </div>
@@ -147,6 +180,9 @@ else
     private bool loaded;
 
     private bool favoritesOnly;
+    private bool awesomeOnly;
+    private string? selectedGroupId;
+    private string? selectedAssignmentNumber;
     private bool loop = true;
     private bool shuffle;
     private int secondsPerImage = 8;
@@ -161,8 +197,16 @@ else
     private ElementReference stage;
     private bool focusStage;
 
-    /// <summary>What a start would show: media that is not rejected, optionally only favorites.</summary>
-    private List<Submission> Playlist => favoritesOnly ? media.Where(Favorites.IsFavorite).ToList() : media;
+    /// <summary>What a start would show: media that is not rejected, narrowed by the choices in the setup.</summary>
+    private List<Submission> Playlist => media
+        .Where(s => !favoritesOnly || Favorites.IsFavorite(s))
+        .Where(s => !awesomeOnly || s.Status == SubmissionStatus.Awesome)
+        .Where(s => !Guid.TryParse(selectedGroupId, out var groupId) || s.GroupId == groupId)
+        .Where(s => !int.TryParse(selectedAssignmentNumber, out var number) || s.AssignmentNumber == number)
+        .ToList();
+
+    /// <summary>The groups that have something to show.</summary>
+    private IEnumerable<Group> Groups => media.Select(s => s.Group).OfType<Group>().DistinctBy(g => g.Id).OrderBy(g => g.Name);
 
     private Submission? Current => index >= 0 && index < shown.Count ? shown[index] : null;
 
@@ -184,6 +228,9 @@ else
     {
         Favorites.Changed += OnFavoritesChanged;
         favoritesOnly = FavoritesFromQuery == true;
+        awesomeOnly = StatusFromQuery == nameof(SubmissionStatus.Awesome);
+        selectedGroupId = GroupFromQuery?.ToString();
+        selectedAssignmentNumber = AssignmentFromQuery?.ToString();
         return ReloadAsync();
     }
 
@@ -203,14 +250,9 @@ else
 
     protected override async Task LoadAsync(IServiceProvider services)
     {
-        var filter = new SubmissionFilter
-        {
-            GroupId = GroupFromQuery,
-            AssignmentNumber = AssignmentFromQuery,
-            Status = Enum.TryParse<SubmissionStatus>(StatusFromQuery, out var status) ? status : null
-        };
-
-        var results = await services.GetRequiredService<ISubmissionRepository>().SearchSubmissionsAsync(filter);
+        // A status other than awesome from the query still narrows the show; group and assignment are chosen in the setup
+        var status = Enum.TryParse<SubmissionStatus>(StatusFromQuery, out var parsed) && parsed != SubmissionStatus.Awesome ? parsed : (SubmissionStatus?)null;
+        var results = await services.GetRequiredService<ISubmissionRepository>().SearchSubmissionsAsync(new SubmissionFilter { Status = status });
         media = results
             .Where(s => s.Status != SubmissionStatus.Rejected && IsMedia(s.ContentType))
             .OrderBy(s => s.CreatedAt)
@@ -241,7 +283,7 @@ else
         contentType.StartsWith("image/") || contentType.StartsWith("video/") || contentType.StartsWith("audio/");
 
     private static string AssignmentLabel(Submission submission) =>
-        submission.AssignmentNumber.HasValue ? $"Assignment #{submission.AssignmentNumber}" : "Unknown assignment";
+        submission.AssignmentNumber.HasValue ? $"Opdracht {submission.AssignmentNumber}" : "Onbekende opdracht";
 
     private Task StartAsync()
     {

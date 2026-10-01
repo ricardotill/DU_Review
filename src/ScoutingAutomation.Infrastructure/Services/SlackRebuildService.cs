@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using ScoutingAutomation.Contracts.Configuration;
 using ScoutingAutomation.Contracts.Slack;
 using ScoutingAutomation.Domain.Entities;
+using ScoutingAutomation.Domain.Enums;
 using ScoutingAutomation.Domain.Interfaces;
 using ScoutingAutomation.Domain.Models;
 
@@ -114,6 +115,8 @@ public class SlackRebuildService : ISlackRebuildService
 
     public bool TryStart(DateTimeOffset since, Guid? groupId = null)
     {
+        // Slack is not read before the event started: those messages never count
+        since = _runtime.NotBeforeEventStart(since);
         lock (_lock)
         {
             if (Progress.State == RebuildState.Running)
@@ -121,7 +124,7 @@ public class SlackRebuildService : ISlackRebuildService
                 return false;
             }
 
-            Update(_ => new RebuildProgress { State = RebuildState.Running, Since = since, StartedAt = DateTimeOffset.UtcNow, Step = "Starting" });
+            Update(_ => new RebuildProgress { State = RebuildState.Running, Since = since, StartedAt = DateTimeOffset.UtcNow, Step = "Starten" });
             Completion = Task.Run(() => RunAsync(since, groupId));
             return true;
         }
@@ -133,7 +136,7 @@ public class SlackRebuildService : ISlackRebuildService
         {
             if (!IsAvailable)
             {
-                throw new InvalidOperationException("Rebuilding needs live mode (SimulationMode off) and a bot token");
+                throw new InvalidOperationException("Opnieuw opbouwen kan alleen met Slack verbonden (SimulationMode uit) en met een bot-token");
             }
 
             using (await _gate.CloseAsync())
@@ -142,7 +145,7 @@ public class SlackRebuildService : ISlackRebuildService
                 await RebuildAsync(scope.ServiceProvider, since, groupId);
             }
 
-            Update(p => p with { State = RebuildState.Completed, Step = "Done", FinishedAt = DateTimeOffset.UtcNow });
+            Update(p => p with { State = RebuildState.Completed, Step = "Klaar", FinishedAt = DateTimeOffset.UtcNow });
             _logger.LogInformation("Rebuild from Slack finished: {Imported} submissions, {Skipped} skipped", Progress.SubmissionsImported, Progress.Skipped.Count);
         }
         catch (Exception ex)
@@ -164,7 +167,7 @@ public class SlackRebuildService : ISlackRebuildService
         if (groupId.HasValue)
         {
             onlyGroup = await groupRepository.GetByIdAsync(groupId.Value)
-                ?? throw new InvalidOperationException("The group to rebuild does not exist");
+                ?? throw new InvalidOperationException("De groep om opnieuw op te bouwen bestaat niet");
             groups = new[] { onlyGroup };
             Update(p => p with { GroupName = onlyGroup.Name });
         }
@@ -178,7 +181,7 @@ public class SlackRebuildService : ISlackRebuildService
         var history = services.GetRequiredService<ISlackHistoryClient>();
 
         // 1. Read every channel first: if any fails, nothing has been touched yet
-        Update(p => p with { Step = "Reading Slack", ChannelsTotal = groups.Count });
+        Update(p => p with { Step = "Slack lezen", ChannelsTotal = groups.Count });
         var messages = new List<(Group Group, SlackEventItemDto Message)>();
         var problems = new List<RebuildChannelProblem>();
         foreach (var group in groups)
@@ -200,11 +203,11 @@ public class SlackRebuildService : ISlackRebuildService
         if (problems.Count > 0)
         {
             Update(p => p with { ChannelProblems = problems });
-            throw new InvalidOperationException($"{problems.Count} channel(s) could not be read; nothing was changed");
+            throw new InvalidOperationException($"{problems.Count} kanaal/kanalen konden niet worden gelezen; er is niets veranderd");
         }
 
         // 2. Back up and clear the current data
-        Update(p => p with { Step = "Backing up" });
+        Update(p => p with { Step = "Back-up maken" });
         var existing = await submissions.SearchSubmissionsAsync(new SubmissionFilter { GroupId = onlyGroup?.Id });
         string backup;
         if (onlyGroup != null)
@@ -225,7 +228,7 @@ public class SlackRebuildService : ISlackRebuildService
             await _storage.EnsureFolderStructureAsync(group.Name);
         }
 
-        Update(p => p with { BackupFolder = backup, Step = "Importing" });
+        Update(p => p with { BackupFolder = backup, Step = "Importeren" });
 
         // 3. Import in the order the messages were posted, so resubmissions are numbered as they were live
         var ordered = messages.OrderBy(m => SlackTimestamp.ToDateTimeOffset(m.Message.Ts)).ToList();
@@ -249,7 +252,7 @@ public class SlackRebuildService : ISlackRebuildService
         }
 
         // 4. Apply the reviews as they stand in Slack now
-        Update(p => p with { Step = "Applying reviews" });
+        Update(p => p with { Step = "Beoordelingen verwerken" });
         foreach (var (group, message) in imported)
         {
             var review = await workflow.ApplyImportedReactionsAsync(message.Channel!, message.Ts!, message.Reactions);
@@ -260,7 +263,7 @@ public class SlackRebuildService : ISlackRebuildService
 
             if (review.Conflict)
             {
-                var issue = Issue(group, message, $"Reviewers disagree; {review.Status} applied");
+                var issue = Issue(group, message, $"Juryleden zijn het oneens; {review.Status?.StatusLabel()} toegepast");
                 Update(p => p with { Conflicts = p.Conflicts.Append(issue).ToList() });
             }
         }
@@ -268,11 +271,11 @@ public class SlackRebuildService : ISlackRebuildService
 
     private static string AdviceFor(string error) => error switch
     {
-        "not_in_channel" => "Invite the bot to this channel: type /invite @DU Review in it.",
-        "channel_not_found" => "Check this channel ID under Groups in appsettings.json. For a private channel, the bot must be a member.",
-        "missing_scope" => "The Slack app lacks channels:history or groups:history. Add the permission and reinstall the app.",
-        "invalid_auth" or "not_authed" or "token_revoked" or "account_inactive" => "The bot token is not valid. Copy the Bot User OAuth Token again.",
-        _ => "See the app log for details, and check the channel in Slack."
+        "not_in_channel" => "Nodig de bot uit in dit kanaal: typ daar /invite @DU Review.",
+        "channel_not_found" => "Controleer dit kanaal-ID onder Groups in appsettings.json. Bij een privékanaal moet de bot lid zijn.",
+        "missing_scope" => "De Slack-app mist channels:history of groups:history. Voeg de rechten toe en installeer de app opnieuw.",
+        "invalid_auth" or "not_authed" or "token_revoked" or "account_inactive" => "Het bot-token is niet geldig. Kopieer het Bot User OAuth Token opnieuw.",
+        _ => "Bekijk het app-log voor details en controleer het kanaal in Slack."
     };
 
     private bool IsCandidate(SlackEventItemDto message) => IsCandidate(message, _runtime);
@@ -282,7 +285,9 @@ public class SlackRebuildService : ISlackRebuildService
         message.BotId == null
         && message.Subtype is null or "file_share" or "thread_broadcast"
         && message.Files is { Count: > 0 }
-        && !runtime.IsReviewer(message.User);
+        && !runtime.IsReviewer(message.User)
+        && !runtime.IsBeforeEventStart(message.Ts)
+        && !runtime.IsAfterEventEnd(message.Ts);
 
     private static IEnumerable<RebuildIssue> Issues(Group group, SlackEventItemDto message, ProcessSlackMessageResult result)
     {
@@ -293,12 +298,12 @@ public class SlackRebuildService : ISlackRebuildService
 
         if (result.UnsupportedFiles.Count > 0)
         {
-            yield return Issue(group, message, $"Unsupported file: {string.Join(", ", result.UnsupportedFiles)}");
+            yield return Issue(group, message, $"Bestandstype niet ondersteund: {string.Join(", ", result.UnsupportedFiles)}");
         }
 
         if (result.FailedDownloads.Count > 0)
         {
-            yield return Issue(group, message, $"Download failed: {string.Join(", ", result.FailedDownloads)}");
+            yield return Issue(group, message, $"Download mislukt: {string.Join(", ", result.FailedDownloads)}");
         }
     }
 

@@ -3,12 +3,12 @@
 @inject ReviewerNameFetcher NameFetcher
 
 <div class="d-flex justify-content-between align-items-center mb-1">
-    <div class="field-label mb-0">Reviewers</div>
+    <div class="field-label mb-0">Juryleden</div>
     @if (NameFetcher.CanFetch)
     {
         <AuthorizeView Roles="@KeyAuth.AdminRole">
             <button type="button" class="btn btn-sm btn-link text-secondary p-0 fetch-names" disabled="@fetching" @onclick="FetchAll">
-                <i class="bi bi-arrow-repeat me-1"></i>@(fetching ? "Fetching…" : "Fetch names from Slack")
+                <i class="bi bi-arrow-repeat me-1"></i>@(fetching ? "Ophalen…" : "Namen ophalen uit Slack")
             </button>
         </AuthorizeView>
     }
@@ -23,24 +23,24 @@
             {
                 <form class="d-flex gap-1 flex-grow-1" @onsubmit="SaveName">
                     <input type="text" class="form-control form-control-dark form-control-sm" maxlength="@RuntimeSettingsService.MaxNameLength"
-                           aria-label="Name of @reviewer" placeholder="Name" @bind="editName" @bind:event="oninput" />
-                    <button type="submit" class="btn btn-sm btn-scout-secondary" aria-label="Save name"><i class="bi bi-check-lg"></i></button>
-                    <button type="button" class="btn btn-sm btn-scout-secondary" aria-label="Cancel" @onclick="() => editing = null"><i class="bi bi-x-lg"></i></button>
+                           aria-label="Naam van @reviewer" placeholder="Naam" @bind="editName" @bind:event="oninput" />
+                    <button type="submit" class="btn btn-sm btn-scout-secondary" aria-label="Naam opslaan"><i class="bi bi-check-lg"></i></button>
+                    <button type="button" class="btn btn-sm btn-scout-secondary" aria-label="Annuleren" @onclick="() => editing = null"><i class="bi bi-x-lg"></i></button>
                 </form>
             }
             else
             {
-                <i class="bi @(configured ? "bi-lock-fill text-muted" : "bi-person-plus text-info")" title="@(configured ? "From appsettings.json" : "Added in the app")"></i>
-                <span class="reviewer-name text-white text-truncate">@(Runtime.NameOf(reviewer) ?? "no name")</span>
+                <i class="bi @(configured ? "bi-lock-fill text-muted" : "bi-person-plus text-info")" title="@(configured ? "Uit appsettings.json" : "Toegevoegd in de app")"></i>
+                <span class="reviewer-name text-white text-truncate">@(Runtime.NameOf(reviewer) ?? "geen naam")</span>
                 <span class="font-monospace text-muted small">@reviewer</span>
                 <AuthorizeView Roles="@KeyAuth.AdminRole">
                     <span class="ms-auto d-flex gap-1">
-                        <button type="button" class="btn btn-sm btn-link text-secondary p-0 edit-name" aria-label="Edit name of @reviewer" @onclick="() => StartEdit(reviewer)">
+                        <button type="button" class="btn btn-sm btn-link text-secondary p-0 edit-name" aria-label="Naam van @reviewer bewerken" @onclick="() => StartEdit(reviewer)">
                             <i class="bi bi-pencil"></i>
                         </button>
                         @if (!configured)
                         {
-                            <button type="button" class="btn btn-sm btn-link text-danger p-0 remove-reviewer" aria-label="Remove @reviewer" @onclick="() => Runtime.RemoveReviewer(reviewer)">
+                            <button type="button" class="btn btn-sm btn-link text-danger p-0 remove-reviewer" aria-label="@reviewer verwijderen" @onclick="() => Runtime.RemoveReviewer(reviewer)">
                                 <i class="bi bi-trash"></i>
                             </button>
                         }
@@ -54,21 +54,21 @@
 <div class="stat-caption mb-2">
     @if (Runtime.AllReviewers.Count == 0)
     {
-        <span class="text-danger">No reviewers: all reactions are ignored.</span>
+        <span class="text-danger">Geen juryleden: alle reacties worden genegeerd.</span>
     }
     else
     {
-        <span>Only reactions from these Slack users count. Their own messages are never submissions.</span>
+        <span>Alleen reacties van deze Slack-gebruikers tellen. Hun eigen berichten zijn nooit inzendingen.</span>
     }
 </div>
 
 <AuthorizeView Roles="@KeyAuth.AdminRole">
     <Authorized>
         <form class="d-flex gap-2 mb-1" @onsubmit="Add">
-            <input type="text" class="form-control form-control-dark form-control-sm font-monospace" placeholder="Slack member ID, e.g. U04ABC123"
-                   aria-label="Slack member ID" @bind="newReviewer" @bind:event="oninput" />
+            <input type="text" class="form-control form-control-dark form-control-sm font-monospace" placeholder="Slack-member-ID, bijv. U04ABC123"
+                   aria-label="Slack-member-ID" @bind="newReviewer" @bind:event="oninput" />
             <button type="submit" class="btn btn-sm btn-scout-secondary text-nowrap add-reviewer" disabled="@string.IsNullOrWhiteSpace(newReviewer)">
-                <i class="bi bi-person-plus me-1"></i> Add
+                <i class="bi bi-person-plus me-1"></i> Toevoegen
             </button>
         </form>
         <div class="stat-caption mb-3 reviewer-status">
@@ -78,12 +78,12 @@
             }
             else
             {
-                <span>Added reviewers count right away and are kept after a restart. Reviewers with a lock are set in appsettings.json. A name you enter is never replaced by one from Slack.</span>
+                <span>Toegevoegde juryleden tellen direct mee en blijven bewaard na een herstart. Juryleden met een slotje staan in appsettings.json. Een naam die je invult, wordt nooit vervangen door een naam uit Slack.</span>
             }
         </div>
     </Authorized>
     <NotAuthorized>
-        <div class="stat-caption mb-3">Only admins can add reviewers or change their names.</div>
+        <div class="stat-caption mb-3">Alleen beheerders kunnen juryleden toevoegen of hun naam wijzigen.</div>
     </NotAuthorized>
 </AuthorizeView>
 
@@ -109,7 +109,7 @@
 
         newReviewer = "";
         var problem = NameFetcher.CanFetch ? await NameFetcher.FetchAsync(id) : null;
-        Show(problem ?? $"{Runtime.DisplayName(id)} is now a reviewer.", problem != null);
+        Show(problem ?? $"{Runtime.DisplayName(id)} is nu jurylid.", problem != null);
     }
 
     private void StartEdit(string reviewer)
@@ -137,7 +137,7 @@
         var result = await NameFetcher.FetchAllAsync();
         fetching = false;
 
-        var summary = $"{result.Updated} name(s) fetched from Slack" + (result.KeptManual > 0 ? $", {result.KeptManual} kept as entered" : "") + ".";
+        var summary = $"{result.Updated} naam/namen opgehaald uit Slack" + (result.KeptManual > 0 ? $", {result.KeptManual} zoals ingevuld gehouden" : "") + ".";
         Show(result.Problems.Count == 0 ? summary : $"{summary} {string.Join(" ", result.Problems)}", result.Problems.Count > 0);
     }
 

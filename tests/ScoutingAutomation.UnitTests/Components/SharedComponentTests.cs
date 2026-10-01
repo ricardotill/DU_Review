@@ -22,7 +22,7 @@ public class SharedComponentTests : BunitContext
 
         cut.Find("span").ClassList.Should().Contain(badge);
         cut.Find("i").ClassList.Should().Contain(icon);
-        cut.Markup.Should().Contain(status.ToString());
+        cut.Markup.Should().Contain(status.StatusLabel());
     }
 
     [Theory]
@@ -73,7 +73,7 @@ public class SharedComponentTests : BunitContext
     {
         var cut = Render<NotFound>();
 
-        cut.Find("h1").TextContent.Should().Be("Page not found");
+        cut.Find("h1").TextContent.Should().Be("Pagina niet gevonden");
         cut.Find("a").GetAttribute("href").Should().Be("");
     }
 
@@ -105,6 +105,6 @@ public class SharedComponentTests : BunitContext
 
         var cut = Render<Error>();
 
-        cut.Markup.Should().NotContain("Request ID");
+        cut.Markup.Should().NotContain("Verzoek-ID");
     }
 }

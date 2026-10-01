@@ -81,19 +81,19 @@ public class InProgressStateTests : PageTestBase
         var uploadGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _workflowHold = uploadGate.Task;
         cut.Find("button.btn-scout-primary").Click();
-        cut.Find("button.btn-scout-primary").TextContent.Should().Contain("Processing…");
+        cut.Find("button.btn-scout-primary").TextContent.Should().Contain("Verwerken…");
         uploadGate.SetResult();
-        cut.WaitForAssertion(() => cut.Find("button.btn-scout-primary").TextContent.Should().Contain("Post upload"));
+        cut.WaitForAssertion(() => cut.Find("button.btn-scout-primary").TextContent.Should().Contain("Upload plaatsen"));
 
         var reactionGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _workflowHold = reactionGate.Task;
         cut.FindAll("select")[1].Change(seeded.Pending.Id.ToString());
-        var reactButton = () => cut.FindAll("button").Single(b => b.TextContent.Contains("Add reaction") || b.TextContent.Contains("Processing…") && b.ClassList.Contains("btn-scout-secondary"));
+        var reactButton = () => cut.FindAll("button").Single(b => b.TextContent.Contains("Emoji :") || b.TextContent.Contains("Verwerken…") && b.ClassList.Contains("btn-scout-secondary"));
         reactButton().Click();
         // The handler first loads the submission, which may finish on another thread
-        cut.WaitForAssertion(() => reactButton().TextContent.Should().Contain("Processing…"));
+        cut.WaitForAssertion(() => reactButton().TextContent.Should().Contain("Verwerken…"));
         reactionGate.SetResult();
-        cut.WaitForAssertion(() => reactButton().TextContent.Should().Contain("Add reaction"));
+        cut.WaitForAssertion(() => reactButton().TextContent.Should().Contain("Emoji :"));
     }
 
     private sealed class GatedSubmissionRepository(ISubmissionRepository inner, Task gate) : ISubmissionRepository

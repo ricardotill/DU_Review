@@ -1,6 +1,8 @@
 using Bunit;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
+using ScoutingAutomation.Contracts.Configuration;
 using ScoutingAutomation.Infrastructure.Services;
 using ScoutingAutomation.Web.Components.Pages;
 using ScoutingAutomation.Web.Components.Shared;
@@ -11,10 +13,24 @@ namespace ScoutingAutomation.UnitTests.Components;
 public class RebuildPanelTests : BunitContext
 {
     private readonly FakeRebuildService _service = new();
+    private readonly ScoutingSettings _settings = new();
 
     public RebuildPanelTests()
     {
         Services.AddSingleton<ISlackRebuildService>(_service);
+        Services.AddSingleton(_ => TestRuntime.For(Options.Create(_settings)));
+    }
+
+    [Fact]
+    public void SinceTime_ShouldDefaultToEventStartWhenLaterThanMidnight()
+    {
+        // Tomorrow 09:00 is always after today's midnight
+        var start = DateTime.Today.AddDays(1).AddHours(9);
+        _settings.EventStart = start;
+
+        var cut = Render<RebuildPanel>();
+
+        cut.Find("input[type=datetime-local]").GetAttribute("value").Should().StartWith(start.ToString("yyyy-MM-ddTHH:mm"));
     }
 
     [Fact]
@@ -24,7 +40,7 @@ public class RebuildPanelTests : BunitContext
 
         var cut = Render<RebuildPanel>();
 
-        cut.Markup.Should().Contain("Available when the app is connected to Slack");
+        cut.Markup.Should().Contain("Beschikbaar als de app met Slack is verbonden");
         cut.FindAll("details").Should().BeEmpty();
     }
 
@@ -37,11 +53,11 @@ public class RebuildPanelTests : BunitContext
         button().HasAttribute("disabled").Should().BeTrue();
         cut.Find("details").HasAttribute("open").Should().BeFalse();
 
-        cut.Find("input[type=datetime-local]").Change("2026-09-30T08:30");
+        cut.Find("input[type=datetime-local]").Change("2026-09-30T08:30:00");
         cut.Find("input[type=text]").Input("rebuild");
         button().HasAttribute("disabled").Should().BeTrue("the confirmation is case-sensitive");
 
-        cut.Find("input[type=text]").Input(" REBUILD ");
+        cut.Find("input[type=text]").Input(" OPBOUWEN ");
         button().Click();
 
         _service.StartedWith.Should().NotBeNull();
@@ -58,10 +74,10 @@ public class RebuildPanelTests : BunitContext
 
         var cut = Render<RebuildPanel>(p => p.Add(c => c.Group, group));
 
-        cut.Find("summary").TextContent.Should().Contain("of De Wolven");
-        cut.Markup.Should().Contain("Other groups are not touched").And.NotContain("All group folders");
+        cut.Find("summary").TextContent.Should().Contain("van De Wolven");
+        cut.Markup.Should().Contain("Andere groepen blijven ongemoeid").And.NotContain("Alle groepsmappen");
 
-        cut.Find("input[type=text]").Input("REBUILD");
+        cut.Find("input[type=text]").Input("OPBOUWEN");
         cut.Find("button").Click();
 
         _service.StartedForGroup.Should().Be(group.Id);
@@ -70,11 +86,11 @@ public class RebuildPanelTests : BunitContext
     [Fact]
     public void Progress_ShouldNameTheRebuiltGroup()
     {
-        _service.Publish(new RebuildProgress { State = RebuildState.Running, Step = "Importing", GroupName = "De Wolven" });
+        _service.Publish(new RebuildProgress { State = RebuildState.Running, Step = "Importeren", GroupName = "De Wolven" });
 
         var cut = Render<RebuildPanel>();
 
-        cut.Find(".rebuild-stats").TextContent.Should().Contain("De Wolven").And.NotContain("All groups");
+        cut.Find(".rebuild-stats").TextContent.Should().Contain("De Wolven").And.NotContain("Alle groepen");
     }
 
     [Fact]
@@ -82,14 +98,14 @@ public class RebuildPanelTests : BunitContext
     {
         var cut = Render<RebuildPanel>();
 
-        _service.Publish(new RebuildProgress { State = RebuildState.Running, Step = "Reading Slack", ChannelsRead = 1, ChannelsTotal = 4, MessagesFound = 30 });
+        _service.Publish(new RebuildProgress { State = RebuildState.Running, Step = "Slack lezen", ChannelsRead = 1, ChannelsTotal = 4, MessagesFound = 30 });
 
-        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Reading Slack…"));
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Slack lezen…"));
         cut.Find("details").HasAttribute("open").Should().BeTrue();
-        cut.Find(".rebuild-stats").TextContent.Should().Contain("1 / 4").And.Contain("0 / 30").And.Contain("All groups");
+        cut.Find(".rebuild-stats").TextContent.Should().Contain("1 / 4").And.Contain("0 / 30").And.Contain("Alle groepen");
         cut.FindAll("input").Should().OnlyContain(i => i.HasAttribute("disabled"));
         cut.Find("button").HasAttribute("disabled").Should().BeTrue();
-        cut.FindAll(".rebuild-stats dt").Select(d => d.TextContent).Should().NotContain("Backup");
+        cut.FindAll(".rebuild-stats dt").Select(d => d.TextContent).Should().NotContain("Back-up");
     }
 
     [Fact]
@@ -102,14 +118,14 @@ public class RebuildPanelTests : BunitContext
             SubmissionsImported = 12,
             ReviewsApplied = 9,
             BackupFolder = "/data/_backup/20260930-120000",
-            Conflicts = new[] { new RebuildIssue("De Wolven", at, "Reviewers disagree; Approved applied", "Opdracht 4") },
+            Conflicts = new[] { new RebuildIssue("De Wolven", at, "Juryleden zijn het oneens; Goedgekeurd toegepast", "Opdracht 4") },
             Skipped = new[] { new RebuildIssue("De Bosuilen", at, "Unsupported file: a.zip", null) }
         });
 
         var cut = Render<RebuildPanel>();
 
-        cut.Markup.Should().Contain("Rebuild finished").And.Contain("/data/_backup/20260930-120000");
-        cut.Markup.Should().Contain("Reviewers disagreed (1)").And.Contain("Not imported (1)");
+        cut.Markup.Should().Contain("Opnieuw opbouwen klaar").And.Contain("/data/_backup/20260930-120000");
+        cut.Markup.Should().Contain("Juryleden waren het oneens (1)").And.Contain("Niet geïmporteerd (1)");
         var issues = cut.FindAll("ul.list-unstyled li");
         issues[0].TextContent.Should().Contain("De Wolven").And.Contain(at.ToLocalTime().ToString("HH:mm")).And.Contain("\"Opdracht 4\"");
         issues[1].TextContent.Should().Contain("Unsupported file: a.zip").And.NotContain("\"");
@@ -121,15 +137,15 @@ public class RebuildPanelTests : BunitContext
         _service.Publish(new RebuildProgress
         {
             State = RebuildState.Failed,
-            Error = "1 channel(s) could not be read; nothing was changed",
-            ChannelProblems = new[] { new RebuildChannelProblem("Wilo", "C07PF3EK20Z", "not_in_channel", "Invite the bot to this channel.") }
+            Error = "1 kanaal/kanalen konden niet worden gelezen; er is niets veranderd",
+            ChannelProblems = new[] { new RebuildChannelProblem("Wilo", "C07PF3EK20Z", "not_in_channel", "Nodig de bot uit in dit kanaal.") }
         });
 
         var cut = Render<RebuildPanel>();
 
         var problem = cut.Find("ul.channel-problems li");
-        problem.TextContent.Should().Contain("Wilo").And.Contain("#C07PF3EK20Z").And.Contain("not_in_channel").And.Contain("Invite the bot");
-        cut.Markup.Should().Contain("Channels that could not be read (1)");
+        problem.TextContent.Should().Contain("Wilo").And.Contain("#C07PF3EK20Z").And.Contain("not_in_channel").And.Contain("Nodig de bot uit");
+        cut.Markup.Should().Contain("Kanalen die niet gelezen konden worden (1)");
     }
 
     [Fact]
@@ -140,7 +156,7 @@ public class RebuildPanelTests : BunitContext
 
         var cut = Render<RebuildPanel>();
 
-        cut.Markup.Should().Contain("Rebuild failed: not_in_channel");
+        cut.Markup.Should().Contain("Opnieuw opbouwen mislukt: not_in_channel");
         cut.FindAll("ul.list-unstyled li").Should().BeEmpty();
     }
 
@@ -176,7 +192,7 @@ public class RebuildPanelTests : BunitContext
         {
             StartedWith = since;
             StartedForGroup = groupId;
-            Progress = new RebuildProgress { State = RebuildState.Running, Step = "Starting" };
+            Progress = new RebuildProgress { State = RebuildState.Running, Step = "Starten" };
             return true;
         }
 
@@ -195,7 +211,7 @@ public class ConfigurationRebuildTests : PageTestBase
     {
         var cut = Render<Configuration>();
 
-        cut.Markup.Should().Contain("Download failed").And.Contain("kon niet worden opgehaald");
-        cut.Markup.Should().Contain("Rebuild from Slack").And.Contain("Available when the app is connected to Slack");
+        cut.Markup.Should().Contain("Download mislukt").And.Contain("kon niet worden opgehaald");
+        cut.Markup.Should().Contain("Opnieuw opbouwen uit Slack").And.Contain("Beschikbaar als de app met Slack is verbonden");
     }
 }

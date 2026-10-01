@@ -32,7 +32,7 @@ public class StartupIntegrationTests : IClassFixture<WebApplicationFactory<Progr
     [Fact]
     public async Task LiveWebhookWithoutSigningSecret_ShouldLogErrorAndRejectRequests()
     {
-        var logs = new CapturingLoggerProvider();
+        var logs = new LogCapture();
         await using var app = new TestApp(_factory,
             new Dictionary<string, string?> { ["Scouting:Slack:SimulationMode"] = "false" },
             services => services.AddSingleton<ILoggerProvider>(logs));
@@ -51,31 +51,6 @@ public class StartupIntegrationTests : IClassFixture<WebApplicationFactory<Progr
         using var client = app.CreateClient();
 
         (await client.GetAsync("/alive")).StatusCode.Should().Be(HttpStatusCode.OK);
-    }
-
-    private sealed class CapturingLoggerProvider : ILoggerProvider
-    {
-        public List<string> Messages { get; } = new();
-
-        public ILogger CreateLogger(string categoryName) => new Logger(this);
-
-        public void Dispose()
-        {
-        }
-
-        private sealed class Logger(CapturingLoggerProvider provider) : ILogger
-        {
-            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-            public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Error;
-
-            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
-            {
-                if (IsEnabled(logLevel))
-                {
-                    lock (provider.Messages) provider.Messages.Add(formatter(state, exception));
-                }
-            }
-        }
     }
 }
 

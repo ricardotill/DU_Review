@@ -1,0 +1,103 @@
+@implements IDisposable
+@inject RuntimeSettingsService Runtime
+
+@* The text of one bot message in Slack; admins can change it while the app runs. *@
+@if (editing)
+{
+    <form class="slack-text-editor" @onsubmit="Save">
+        <textarea class="form-control form-control-dark form-control-sm" rows="@Rows" maxlength="@RuntimeSettingsService.MaxSlackTextLength"
+                  aria-label="Tekst van @Label" @bind="draft" @bind:event="oninput" @bind:after="() => DraftChanged.InvokeAsync(draft)"></textarea>
+        @if (!string.IsNullOrWhiteSpace(Placeholders))
+        {
+            <div class="stat-caption mt-1">Plaatshouders: @Placeholders</div>
+        }
+        <div class="stat-caption mt-1">Leeg laten om niets te plaatsen. Slack-opmaak werkt: <code>*vet*</code>, <code>_schuin_</code>, <code>:emoji:</code>.</div>
+        @if (error != null)
+        {
+            <div class="text-danger small mt-1">@error</div>
+        }
+        <div class="d-flex gap-2 mt-2">
+            <button type="submit" class="btn btn-sm btn-scout-secondary save-text"><i class="bi bi-check-lg me-1"></i> Opslaan</button>
+            <button type="button" class="btn btn-sm btn-scout-secondary" @onclick="Cancel">Annuleren</button>
+        </div>
+    </form>
+}
+else
+{
+    var text = Runtime.Text(Kind);
+    <div class="d-flex align-items-start gap-2">
+        <div class="text-white-50 small slack-text flex-grow-1">@(string.IsNullOrWhiteSpace(text) ? EmptyText : text)</div>
+        <AuthorizeView Roles="@KeyAuth.AdminRole">
+            <button type="button" class="btn btn-sm btn-link text-secondary p-0 edit-text" aria-label="Tekst van @Label bewerken" @onclick="StartEdit">
+                <i class="bi bi-pencil"></i>
+            </button>
+        </AuthorizeView>
+    </div>
+    @if (Runtime.IsTextChanged(Kind))
+    {
+        <div class="stat-caption mt-1">
+            <i class="bi bi-pencil-square text-info me-1"></i>Aangepast in de app.
+            <AuthorizeView Roles="@KeyAuth.AdminRole">
+                <button type="button" class="btn btn-sm btn-link text-secondary p-0 align-baseline reset-text" @onclick="() => Runtime.ResetText(Kind)">Terug naar appsettings</button>
+            </AuthorizeView>
+        </div>
+    }
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public SlackText Kind { get; set; }
+
+    /// <summary>What the message is, for screen readers.</summary>
+    [Parameter]
+    public string Label { get; set; } = "het bericht";
+
+    /// <summary>The placeholders this text may use, shown while editing.</summary>
+    [Parameter]
+    public string? Placeholders { get; set; }
+
+    /// <summary>Shown when the text is empty, so nothing is posted.</summary>
+    [Parameter]
+    public string EmptyText { get; set; } = "Geen bericht";
+
+    [Parameter]
+    public int Rows { get; set; } = 3;
+
+    /// <summary>The text while it is being edited, for a live preview elsewhere; null when not editing.</summary>
+    [Parameter]
+    public EventCallback<string?> DraftChanged { get; set; }
+
+    private bool editing;
+    private string? error;
+    private string draft = "";
+
+    protected override void OnInitialized() => Runtime.Changed += OnChanged;
+
+    private void StartEdit()
+    {
+        draft = Runtime.Text(Kind) ?? "";
+        error = null;
+        editing = true;
+        DraftChanged.InvokeAsync(draft);
+    }
+
+    private void Save()
+    {
+        error = Runtime.SetText(Kind, draft);
+        if (error != null) return;
+
+        editing = false;
+        DraftChanged.InvokeAsync(null);
+    }
+
+    private void Cancel()
+    {
+        editing = false;
+        error = null;
+        DraftChanged.InvokeAsync(null);
+    }
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Runtime.Changed -= OnChanged;
+}

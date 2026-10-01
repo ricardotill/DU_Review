@@ -1,0 +1,53 @@
+@implements IDisposable
+@inject NotificationPreferences Preferences
+
+@* The admin and login pages are not interactive: a menu there could not do anything *@
+@if (RendererInfo.IsInteractive)
+{
+    <div class="notification-settings">
+        <button type="button" class="bell-button" aria-expanded="@(open ? "true" : "false")" aria-controls="notification-settings-menu"
+                title="Meldingen voor nieuwe inzendingen" disabled="@(!Preferences.IsLoaded)" @onclick="() => open = !open">
+            <i class="bi @(Preferences.ToastsEnabled || Preferences.SoundEnabled ? "bi-bell-fill" : "bi-bell-slash")"></i>
+            <span class="visually-hidden">Meldingen</span>
+        </button>
+
+        @if (open)
+        {
+            <div class="menu-backdrop" @onclick="() => open = false"></div>
+            <div id="notification-settings-menu" class="menu glass-panel" role="group" aria-label="Meldingen">
+                <div class="menu-title">Nieuwe inzendingen</div>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" role="switch" id="notify-toasts"
+                           checked="@Preferences.ToastsEnabled" @onchange="e => Preferences.SetToastsEnabledAsync((bool)e.Value!)" />
+                    <label class="form-check-label" for="notify-toasts">Meldingen tonen</label>
+                </div>
+                <div class="form-check form-switch" data-du-sound-toggle>
+                    <input class="form-check-input" type="checkbox" role="switch" id="notify-sound"
+                           checked="@Preferences.SoundEnabled" @onchange="e => Preferences.SetSoundEnabledAsync((bool)e.Value!)" />
+                    <label class="form-check-label" for="notify-sound">Geluid afspelen</label>
+                </div>
+                <p class="menu-hint">
+                    Geldt alleen voor deze browser. Na het herladen van de pagina speelt het geluid pas als je één keer ergens op de pagina hebt geklikt.
+                </p>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private bool open;
+
+    protected override void OnInitialized() => Preferences.Changed += OnChanged;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await Preferences.EnsureLoadedAsync();
+        }
+    }
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Preferences.Changed -= OnChanged;
+}

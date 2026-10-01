@@ -1,0 +1,95 @@
+@implements IDisposable
+@inject RuntimeSettingsService Runtime
+@inject IOptions<ScoutingSettings> ScoutingOptions
+
+@* Review rules that admins can change while the app runs: blocking new attempts and the jury reminder. *@
+<div class="glass-panel p-4">
+    <h2 class="panel-title"><i class="bi bi-clipboard-check text-info"></i> Beoordelingsregels</h2>
+
+    <div class="row g-4">
+        <div class="col-lg-6">
+            <div class="fw-semibold text-white small mb-1">Nieuwe poging na goedkeuring</div>
+            <p class="text-secondary small mb-2">
+                Staat dit aan, dan kan een groep een opdracht die al goedgekeurd of awesome is niet opnieuw insturen.
+                De bot reageert dan met <code>:@(ScoutingOptions.Value.SlackFeedback.AlreadyCompleted?.Reaction?.Trim(':') ?? "lock"):</code> en een uitleg, en het bestand wordt niet opgeslagen.
+            </p>
+            <AuthorizeView Roles="@KeyAuth.AdminRole">
+                <Authorized>
+                    <div class="form-check form-switch mb-1">
+                        <input class="form-check-input" type="checkbox" role="switch" id="blockAttempts"
+                               checked="@Runtime.BlockAttemptsAfterApproval" @onchange="OnBlockChanged" />
+                        <label class="form-check-label text-white-50" for="blockAttempts">Nieuwe poging na goedkeuring weigeren</label>
+                    </div>
+                </Authorized>
+                <NotAuthorized>
+                    <div class="small text-white">@(Runtime.BlockAttemptsAfterApproval ? "Aan: een nieuwe poging wordt geweigerd" : "Uit: opnieuw insturen mag altijd, de beste telt")</div>
+                </NotAuthorized>
+            </AuthorizeView>
+            <Origin Changed="Runtime.IsBlockAttemptsChanged" Reset="Runtime.ResetBlockAttemptsAfterApproval"
+                    Configured="@(ScoutingOptions.Value.BlockAttemptsAfterApproval ? "aan" : "uit")" />
+            <div class="stat-caption mt-1">Het startbericht zegt wat er geldt via <code>{retryRule}</code>. Wat al in Slack staat, verandert niet.</div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="fw-semibold text-white small mb-1">Herinnering voor de jury</div>
+            <p class="text-secondary small mb-2">
+                Wacht een inzending langer dan deze tijd op een beoordeling, dan plaatst de bot één bericht in het jurykanaal.
+                Elke inzending krijgt één herinnering.
+            </p>
+            <dl class="config-list mb-2">
+                <dt>Jurykanaal</dt>
+                <dd>
+                    @if (Runtime.ReminderChannelId is { } channel)
+                    {
+                        <span class="badge assignment-badge">#@channel</span>
+                    }
+                    else
+                    {
+                        <span class="text-warning small">niet ingesteld (<code>Scouting:ReviewReminder:ChannelId</code>): er worden geen herinneringen gestuurd</span>
+                    }
+                </dd>
+                <dt>Na</dt>
+                <dd>@(Runtime.ReviewReminderMinutes is { } minutes ? $"{minutes} minuten" : "uit")</dd>
+            </dl>
+            <AuthorizeView Roles="@KeyAuth.AdminRole">
+                <form class="d-flex gap-2 align-items-start reminder-form" @onsubmit="SaveMinutes">
+                    <input type="number" min="1" max="@RuntimeSettingsService.MaxReminderMinutes" class="form-control form-control-dark form-control-sm reminder-minutes"
+                           placeholder="uit" aria-label="Minuten tot herinnering" @bind="minutesDraft" />
+                    <button type="submit" class="btn btn-sm btn-scout-secondary text-nowrap save-reminder"><i class="bi bi-check-lg me-1"></i> Opslaan</button>
+                </form>
+                @if (error != null)
+                {
+                    <div class="text-danger small mt-1">@error</div>
+                }
+            </AuthorizeView>
+            <Origin Changed="Runtime.IsReviewReminderChanged" Reset="ResetMinutes"
+                    Configured="@(ScoutingOptions.Value.ReviewReminder?.AfterMinutes is int configured && configured > 0 ? $"{configured} minuten" : "uit")" />
+        </div>
+    </div>
+</div>
+
+@code {
+    private int? minutesDraft;
+    private string? error;
+
+    protected override void OnInitialized()
+    {
+        minutesDraft = Runtime.ReviewReminderMinutes;
+        Runtime.Changed += OnRuntimeChanged;
+    }
+
+    private void OnBlockChanged(ChangeEventArgs e) => Runtime.SetBlockAttemptsAfterApproval(e.Value is true);
+
+    private void SaveMinutes() => error = Runtime.SetReviewReminderMinutes(minutesDraft);
+
+    private void ResetMinutes()
+    {
+        Runtime.ResetReviewReminder();
+        minutesDraft = Runtime.ReviewReminderMinutes;
+        error = null;
+    }
+
+    private void OnRuntimeChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Runtime.Changed -= OnRuntimeChanged;
+}

@@ -1,0 +1,224 @@
+@implements IAsyncDisposable
+@inject ISubmissionChangeNotifier Notifier
+@inject NotificationPreferences Preferences
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@inject ILogger<ToastHost> Logger
+
+@* Announced by screen readers without interrupting what they are reading *@
+<div class="toast-stack" aria-live="polite" aria-relevant="additions" @onmouseenter="() => SetHovered(true)" @onmouseleave="() => SetHovered(false)">
+    @if (overflow > 0)
+    {
+        <div class="toast-overflow">
+            +@overflow eerdere @(overflow == 1 ? "melding" : "meldingen")
+            <button type="button" class="btn-link" @onclick="CloseAll">Alles sluiten</button>
+        </div>
+    }
+    @foreach (var toast in toasts)
+    {
+        var n = toast.Notification;
+        <div class="submission-toast" @key="toast">
+            <a class="toast-body-link" href="@Link(n)" @onclick="() => Close(toast)">
+                <span class="toast-eyebrow"><i class="bi bi-bell-fill"></i> Nieuwe inzending · @n.PostedAt.ToGameTime().ToString("HH:mm")</span>
+                <span class="toast-group">
+                    @n.GroupName
+                    @if (!string.IsNullOrWhiteSpace(n.GroupAbbreviation))
+                    {
+                        <span class="badge bg-secondary font-monospace">@n.GroupAbbreviation</span>
+                    }
+                </span>
+                <span class="toast-detail">
+                    Opdracht @n.AssignmentNumber · @(n.SubmissionIds.Count == 1 ? "1 bestand" : $"{n.SubmissionIds.Count} bestanden") · door @n.SubmitterName
+                </span>
+            </a>
+            <button type="button" class="toast-close" aria-label="Melding sluiten" @onclick="() => Close(toast)">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </div>
+    }
+</div>
+
+@code {
+    private const int MaxVisible = 4;
+    private static readonly TimeSpan ShowFor = TimeSpan.FromSeconds(8);
+
+    private readonly List<Toast> toasts = new();
+    private int overflow;
+    private bool visible = true;
+    private bool hovered;
+    private DotNetObjectReference<ToastHost>? selfReference;
+    private IJSObjectReference? visibilityWatch;
+    private bool disposed;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Only once interactive: a prerendered copy would subscribe and never be disposed by a circuit
+        if (!firstRender) return;
+
+        Notifier.Created += OnCreated;
+        await Preferences.EnsureLoadedAsync();
+        try
+        {
+            visible = await JS.InvokeAsync<bool>("duNotifications.isVisible");
+            selfReference = DotNetObjectReference.Create(this);
+            visibilityWatch = await JS.InvokeAsync<IJSObjectReference>("duNotifications.watchVisibility", selfReference);
+        }
+        catch (JSDisconnectedException)
+        {
+            // Tab closed during start-up
+        }
+    }
+
+    // The slideshow is projected for everyone: no pop-ups or sound there
+    private bool OnSlideshow => Navigation.ToBaseRelativePath(Navigation.Uri).StartsWith("slideshow", StringComparison.OrdinalIgnoreCase);
+
+    private static string Link(SubmissionCreatedNotification n) => n.SubmissionIds.Count == 1
+        ? $"submissions/{n.SubmissionIds[0]}"
+        : $"submissions?group={n.GroupId}";
+
+    private void OnCreated(SubmissionCreatedNotification notification) => _ = InvokeAsync(async () =>
+    {
+        if (disposed || OnSlideshow) return;
+
+        try
+        {
+            if (Preferences.SoundEnabled)
+            {
+                await Preferences.PlayChimeAsync();
+            }
+        }
+        catch (Exception ex) when (ex is JSDisconnectedException or TaskCanceledException)
+        {
+            return;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Could not play the notification sound");
+        }
+
+        if (!Preferences.ToastsEnabled) return;
+
+        var toast = new Toast(notification);
+        toasts.Add(toast);
+        if (toasts.Count > MaxVisible)
+        {
+            Remove(toasts[0]);
+            overflow++;
+        }
+
+        if (Running) toast.Start(this);
+        StateHasChanged();
+    });
+
+    /// <summary>Timers only run while someone can read the toasts: tab visible and mouse not on them.</summary>
+    private bool Running => visible && !hovered;
+
+    [JSInvokable]
+    public Task OnVisibilityChanged(bool isVisible) => InvokeAsync(() =>
+    {
+        visible = isVisible;
+        UpdateTimers();
+    });
+
+    private void SetHovered(bool isHovered)
+    {
+        hovered = isHovered;
+        UpdateTimers();
+    }
+
+    private void UpdateTimers()
+    {
+        foreach (var toast in toasts)
+        {
+            if (Running) toast.Start(this);
+            else toast.Pause();
+        }
+    }
+
+    private void Close(Toast toast)
+    {
+        Remove(toast);
+        if (toasts.Count == 0) overflow = 0;
+    }
+
+    private void CloseAll()
+    {
+        foreach (var toast in toasts.ToList()) Remove(toast);
+        overflow = 0;
+    }
+
+    private void Remove(Toast toast)
+    {
+        toast.Pause();
+        toasts.Remove(toast);
+    }
+
+    private void Expire(Toast toast) => _ = InvokeAsync(() =>
+    {
+        if (disposed || !toasts.Contains(toast)) return;
+        Close(toast);
+        StateHasChanged();
+    });
+
+    public async ValueTask DisposeAsync()
+    {
+        disposed = true;
+        Notifier.Created -= OnCreated;
+        foreach (var toast in toasts) toast.Pause();
+
+        if (visibilityWatch != null)
+        {
+            try
+            {
+                await visibilityWatch.InvokeVoidAsync("dispose");
+                await visibilityWatch.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+                // The tab is already gone, and the listener with it
+            }
+        }
+
+        selfReference?.Dispose();
+    }
+
+    private sealed class Toast(SubmissionCreatedNotification notification)
+    {
+        private TimeSpan remaining = ShowFor;
+        private DateTimeOffset startedAt;
+        private CancellationTokenSource? timer;
+
+        public SubmissionCreatedNotification Notification { get; } = notification;
+
+        public void Start(ToastHost host)
+        {
+            if (timer != null) return;
+            startedAt = DateTimeOffset.UtcNow;
+            timer = new CancellationTokenSource();
+            _ = ExpireAfterAsync(host, remaining, timer.Token);
+        }
+
+        public void Pause()
+        {
+            if (timer == null) return;
+            timer.Cancel();
+            timer = null;
+            remaining -= DateTimeOffset.UtcNow - startedAt;
+            // Paused right at the end: still give the reader a moment
+            if (remaining < TimeSpan.FromSeconds(2)) remaining = TimeSpan.FromSeconds(2);
+        }
+
+        private async Task ExpireAfterAsync(ToastHost host, TimeSpan delay, CancellationToken token)
+        {
+            try
+            {
+                await Task.Delay(delay, token);
+                host.Expire(this);
+            }
+            catch (OperationCanceledException)
+            {
+                // Paused or closed
+            }
+        }
+    }
+}

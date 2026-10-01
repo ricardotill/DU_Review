@@ -1,0 +1,61 @@
+.queue-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 0.75rem 0.5rem 0.5rem;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    background: rgba(255, 255, 255, 0.02);
+    transition: background 0.15s;
+}
+
+.queue-row:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.queue-row.overdue {
+    border-color: rgba(251, 191, 36, 0.55);
+}
+
+.thumb {
+    position: relative;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 56px;
+    border-radius: 8px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.06);
+    font-size: 1.4rem;
+}
+
+.thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.file-count {
+    position: absolute;
+    right: 3px;
+    bottom: 3px;
+    padding: 0 0.35rem;
+    border-radius: 6px;
+    background: rgba(12, 17, 23, 0.85);
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 700;
+}
+
+.wait {
+    font-size: 0.85rem;
+    font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 576px) {
+    .wait {
+        font-size: 0.75rem;
+    }
+}

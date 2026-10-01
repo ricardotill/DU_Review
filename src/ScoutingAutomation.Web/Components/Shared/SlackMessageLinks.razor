@@ -1,0 +1,30 @@
+@inject SlackLinks Links
+
+@* Opens a submission's Slack message: in the Slack app, or in the browser when the app does not jump to the message. *@
+@if (Links.AppLink(ChannelId, MessageTs) is { } appLink)
+{
+    <a href="@appLink" class="btn btn-sm btn-scout-secondary d-inline-flex align-items-center gap-1 slack-app-link" title="Openen in de Slack-app">
+        <i class="bi bi-slack"></i>
+        @if (!Compact)
+        {
+            <span>Slack</span>
+        }
+    </a>
+    <a href="@Links.WebLink(ChannelId, MessageTs)" target="_blank" rel="noopener" class="btn btn-sm btn-scout-secondary d-inline-flex align-items-center gap-1 slack-web-link" title="Openen in Slack in de browser">
+        <i class="bi bi-box-arrow-up-right"></i>
+        @if (!Compact)
+        {
+            <span>web</span>
+        }
+    </a>
+}
+
+@code {
+    [Parameter, EditorRequired] public string? ChannelId { get; set; }
+    [Parameter, EditorRequired] public string? MessageTs { get; set; }
+
+    /// <summary>Icons only, for rows.</summary>
+    [Parameter] public bool Compact { get; set; }
+
+    protected override Task OnInitializedAsync() => Links.EnsureLoadedAsync();
+}

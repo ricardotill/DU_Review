@@ -125,6 +125,23 @@ public class SlackReactionsResponseDto
     public SlackEventItemDto? Message { get; set; }
 }
 
+/// <summary>Response of auth.test: who the bot is and in which workspace.</summary>
+public class SlackAuthTestResponseDto
+{
+    [JsonPropertyName("ok")]
+    public bool Ok { get; set; }
+
+    [JsonPropertyName("error")]
+    public string? Error { get; set; }
+
+    /// <summary>The workspace's web address, e.g. "https://scouting.slack.com/".</summary>
+    [JsonPropertyName("url")]
+    public string? Url { get; set; }
+
+    [JsonPropertyName("team_id")]
+    public string? TeamId { get; set; }
+}
+
 /// <summary>Response of users.info.</summary>
 public class SlackUserInfoResponseDto
 {

@@ -1,0 +1,20 @@
+@* Where a setting that admins can change in the app comes from, with a way back to appsettings. *@
+<div class="stat-caption mt-1">
+    @if (Changed)
+    {
+        <i class="bi bi-pencil-square text-info me-1"></i><span>Aangepast in de app (appsettings: @Configured).</span>
+        <AuthorizeView Roles="@KeyAuth.AdminRole">
+            <button type="button" class="btn btn-sm btn-link text-secondary p-0 align-baseline reset-setting" @onclick="Reset">Terug naar appsettings</button>
+        </AuthorizeView>
+    }
+    else
+    {
+        <span>Uit appsettings.</span>
+    }
+</div>
+
+@code {
+    [Parameter] public bool Changed { get; set; }
+    [Parameter] public Action Reset { get; set; } = () => { };
+    [Parameter] public string Configured { get; set; } = "";
+}

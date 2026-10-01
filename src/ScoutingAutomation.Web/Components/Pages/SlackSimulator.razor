@@ -2,29 +2,29 @@
 @rendermode InteractiveServer
 @inject IGroupRepository GroupRepository
 @inject ISubmissionRepository SubmissionRepository
-@inject ISubmissionWorkflowService WorkflowService
+@inject ISlackEventDispatcher Dispatcher
 @inject NavigationManager Navigation
 @inject IOptions<ScoutingSettings> ScoutingOptions
 @inject RuntimeSettingsService Runtime
 
-<PageTitle>Slack Event Simulator - Scouting Regional Game</PageTitle>
+<PageTitle>Slack-simulator - DU Review</PageTitle>
 
 @if (!SimulationEnabled)
 {
-    <PageHeader Title="Slack simulator" />
+    <PageHeader Title="Slack-simulator" />
     <div class="glass-panel empty-state">
         <i class="bi bi-slash-circle"></i>
-        The simulator is only available when <code>Scouting:Slack:SimulationMode</code> is on.
+        De simulator is alleen beschikbaar als <code>Scouting:Slack:SimulationMode</code> aan staat.
     </div>
 }
 else
 {
 
-<PageHeader Title="Slack simulator" Subtitle="Send test uploads and reactions as if they came from Slack. Only available in simulation mode.">
+<PageHeader Title="Slack-simulator" Subtitle="Stuur testuploads en reacties alsof ze uit Slack komen. Alleen beschikbaar in simulatiemodus.">
     <Actions>
         <a href="submissions" class="btn btn-scout-secondary d-flex align-items-center gap-2">
             <i class="bi bi-folder2-open"></i>
-            <span>Submissions</span>
+            <span>Inzendingen</span>
         </a>
     </Actions>
 </PageHeader>
@@ -34,14 +34,14 @@ else
     <div class="col-lg-6">
         <div class="glass-panel p-4 h-100">
             <h2 class="panel-title">
-                <i class="bi bi-chat-left-dots-fill text-info"></i> Upload a file
+                <i class="bi bi-chat-left-dots-fill text-info"></i> Bestand uploaden
             </h2>
             <p class="text-secondary small mb-3">
-                A scout posts a file in their group channel.
+                Een scout plaatst een bestand in het kanaal van de groep.
             </p>
 
             <div class="mb-3">
-                <label class="form-label text-secondary small fw-semibold">Group channel</label>
+                <label class="form-label text-secondary small fw-semibold">Groepskanaal</label>
                 <select class="form-select form-select-dark" @bind="selectedChannel">
                     @foreach (var g in groups)
                     {
@@ -52,28 +52,28 @@ else
 
             <div class="mb-3">
                 <label class="form-label text-secondary small fw-semibold">Scout</label>
-                <input type="text" class="form-control form-control-dark" placeholder="e.g. Robin_Leiding" @bind="submitterName" />
+                <input type="text" class="form-control form-control-dark" placeholder="bijv. Robin_Leiding" @bind="submitterName" />
             </div>
 
             <div class="mb-3">
-                <label class="form-label text-secondary small fw-semibold">Message</label>
-                <textarea class="form-control form-control-dark" rows="3" placeholder="e.g. Opdracht 4: Onze patrouille heeft de post bereikt!" @bind="messageText"></textarea>
+                <label class="form-label text-secondary small fw-semibold">Bericht</label>
+                <textarea class="form-control form-control-dark" rows="3" placeholder="bijv. Opdracht 4: Onze patrouille heeft de post bereikt!" @bind="messageText"></textarea>
                 <div class="form-text text-muted">
-                    Include assignment pattern like <code>Opdracht 4</code>, <code>#4</code>, or <code>A4</code>.
+                    Zet het opdrachtnummer erin, zoals <code>Opdracht 4</code>, <code>#4</code> of <code>A4</code>.
                 </div>
             </div>
 
             <div class="mb-4">
-                <label class="form-label text-secondary small fw-semibold">File name</label>
+                <label class="form-label text-secondary small fw-semibold">Bestandsnaam</label>
                 <div class="input-group">
                     <input type="text" class="form-control form-control-dark" placeholder="foto_tent.jpg" @bind="fileName" />
                     <button class="btn btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                        Presets
+                        Voorbeelden
                     </button>
                     <ul class="dropdown-menu dropdown-menu-dark">
-                        <li><a class="dropdown-item" href="javascript:void(0)" @onclick='() => SetPreset("kampvuur.jpg", "Opdracht 1: Ons vuurtje brandt!")'>🔥 Kampvuur Foto (.jpg)</a></li>
+                        <li><a class="dropdown-item" href="javascript:void(0)" @onclick='() => SetPreset("kampvuur.jpg", "Opdracht 1: Ons vuurtje brandt!")'>🔥 Kampvuurfoto (.jpg)</a></li>
                         <li><a class="dropdown-item" href="javascript:void(0)" @onclick='() => SetPreset("vlaggenmast.png", "#2 Vlaggenmast staat fier overeind.")'>🚩 Vlaggenmast (.png)</a></li>
-                        <li><a class="dropdown-item" href="javascript:void(0)" @onclick='() => SetPreset("knopen_demo.mp4", "Opdracht 3: Bekijk de video van de mastworp")'>🎥 Knopen Demo (.mp4)</a></li>
+                        <li><a class="dropdown-item" href="javascript:void(0)" @onclick='() => SetPreset("knopen_demo.mp4", "Opdracht 3: Bekijk de video van de mastworp")'>🎥 Knopendemo (.mp4)</a></li>
                         <li><a class="dropdown-item" href="javascript:void(0)" @onclick='() => SetPreset("verslag_tocht.pdf", "A4 Verslag van de oriëntatietocht")'>📄 Verslag (.pdf)</a></li>
                     </ul>
                 </div>
@@ -83,12 +83,12 @@ else
                 @if (isPosting)
                 {
                     <span class="spinner-border spinner-border-sm" role="status"></span>
-                    <span>Processing…</span>
+                    <span>Verwerken…</span>
                 }
                 else
                 {
                     <i class="bi bi-send-fill"></i>
-                    <span>Post upload</span>
+                    <span>Upload plaatsen</span>
                 }
             </button>
         </div>
@@ -98,28 +98,28 @@ else
     <div class="col-lg-6">
         <div class="glass-panel p-4 h-100">
             <h2 class="panel-title">
-                <i class="bi bi-emoji-smile-fill text-warning"></i> React as a reviewer
+                <i class="bi bi-emoji-smile-fill text-warning"></i> Reageren als jurylid
             </h2>
             <p class="text-secondary small mb-3">
-                A reviewer reacts to a submission. Only users listed under Reviewers count.
+                Een jurylid reageert op een inzending. Alleen gebruikers die als jurylid zijn ingesteld, tellen.
             </p>
 
             <div class="mb-3">
-                <label class="form-label text-secondary small fw-semibold">Submission</label>
+                <label class="form-label text-secondary small fw-semibold">Inzending</label>
                 <select class="form-select form-select-dark" @bind="selectedSubmissionId">
-                    <option value="">Choose a submission</option>
+                    <option value="">Kies een inzending</option>
                     @foreach (var s in pendingSubmissions)
                     {
                         <option value="@s.Id">
-                            @(s.Group?.Name ?? "Group"): #@(s.AssignmentNumber?.ToString() ?? "?") - @s.FileName (@s.Status)
+                            @(s.Group?.Name ?? "Groep"): #@(s.AssignmentNumber?.ToString() ?? "?") - @s.FileName (@s.Status.StatusLabel())
                         </option>
                     }
                 </select>
             </div>
 
             <div class="mb-3">
-                <label class="form-label text-secondary small fw-semibold">Reviewer</label>
-                <input type="text" class="form-control form-control-dark" list="configured-reviewers" placeholder="Slack user" @bind="reviewerName" />
+                <label class="form-label text-secondary small fw-semibold">Jurylid</label>
+                <input type="text" class="form-control form-control-dark" list="configured-reviewers" placeholder="Slack-gebruiker" @bind="reviewerName" />
                 <datalist id="configured-reviewers">
                     @foreach (var reviewer in Runtime.AllReviewers)
                     {
@@ -129,17 +129,17 @@ else
             </div>
 
             <div class="mb-4">
-                <label class="form-label text-secondary small fw-semibold">Reaction</label>
+                <label class="form-label text-secondary small fw-semibold">Emoji</label>
                 <div class="d-grid gap-2">
                     <div class="d-flex gap-2">
                         <button class="btn btn-outline-success flex-fill py-2 text-start @(selectedEmoji == "thumbsup" ? "active" : "")" @onclick='() => selectedEmoji = "thumbsup"'>
-                            👍 <strong>thumbsup</strong> <span class="small text-muted d-block">Approve (+1)</span>
+                            👍 <strong>thumbsup</strong> <span class="small text-muted d-block">Goedkeuren (+1)</span>
                         </button>
                         <button class="btn btn-outline-primary flex-fill py-2 text-start @(selectedEmoji == "heart" ? "active" : "")" @onclick='() => selectedEmoji = "heart"'>
                             💖 <strong>heart</strong> <span class="small text-muted d-block">Awesome</span>
                         </button>
                         <button class="btn btn-outline-danger flex-fill py-2 text-start @(selectedEmoji == "x" ? "active" : "")" @onclick='() => selectedEmoji = "x"'>
-                            ❌ <strong>x</strong> <span class="small text-muted d-block">Reject</span>
+                            ❌ <strong>x</strong> <span class="small text-muted d-block">Afkeuren</span>
                         </button>
                     </div>
                 </div>
@@ -149,12 +149,12 @@ else
                 @if (isReacting)
                 {
                     <span class="spinner-border spinner-border-sm" role="status"></span>
-                    <span>Processing…</span>
+                    <span>Verwerken…</span>
                 }
                 else
                 {
                     <i class="bi bi-hand-thumbs-up"></i>
-                    <span>Add reaction :@selectedEmoji:</span>
+                    <span>Emoji :@selectedEmoji: plaatsen</span>
                 }
             </button>
         </div>
@@ -167,13 +167,13 @@ else
         <h2 class="h5 fw-bold text-white mb-0 d-flex align-items-center gap-2">
             <i class="bi bi-terminal-fill text-success"></i> Log
         </h2>
-        <button class="btn btn-sm btn-outline-secondary" @onclick="() => logs.Clear()">Clear</button>
+        <button class="btn btn-sm btn-outline-secondary" @onclick="() => logs.Clear()">Wissen</button>
     </div>
 
     <div class="p-3 rounded-3 font-monospace small" style="background: rgba(0,0,0,0.5); min-height: 180px; max-height: 350px; overflow-y: auto; border: 1px solid var(--border-color);">
         @if (logs.Count == 0)
         {
-            <div class="text-muted">Nothing yet. Post an upload or add a reaction above.</div>
+            <div class="text-muted">Nog niets. Plaats hierboven een upload of een emoji.</div>
         }
         @foreach (var entry in logs)
         {
@@ -263,16 +263,16 @@ else
             }
         };
 
-        AddLog("INFO", $"Dispatched message event: channel={selectedChannel}, submitter={submitterName}, file={fileName}", "text-info");
+        AddLog("INFO", $"Bericht verstuurd: kanaal={selectedChannel}, scout={submitterName}, bestand={fileName}", "text-info");
 
-        var result = await WorkflowService.ProcessSlackMessageAsync(payload);
-        if (result.Success)
+        var result = (ProcessSlackMessageResult?)await Dispatcher.DispatchAsync(Envelope(payload));
+        if (result is { Success: true })
         {
-            AddLog("SUCCESS", $"Workflow completed: Stored initial file in the group folder, created submission ID(s): {string.Join(", ", result.CreatedSubmissionIds)}", "text-success");
+            AddLog("OK", $"Verwerkt: bestand opgeslagen in de groepsmap, inzending-ID(s): {string.Join(", ", result.CreatedSubmissionIds)}", "text-success");
         }
         else
         {
-            AddLog("WARNING", $"Workflow message: {result.Message}", "text-warning");
+            AddLog("LET OP", $"Resultaat: {result?.Message}", "text-warning");
         }
 
         await RefreshPendingSubmissionsAsync();
@@ -288,7 +288,7 @@ else
         var sub = await SubmissionRepository.GetByIdAsync(subId);
         if (sub == null)
         {
-            AddLog("ERROR", $"Submission {subId} not found", "text-danger");
+            AddLog("FOUT", $"Inzending {subId} niet gevonden", "text-danger");
             isReacting = false;
             return;
         }
@@ -306,21 +306,24 @@ else
             }
         };
 
-        AddLog("INFO", $"Dispatched reaction ':{selectedEmoji}:' by {reviewerName} on message {sub.SlackMessageId}", "text-info");
+        AddLog("INFO", $"Emoji ':{selectedEmoji}:' van {reviewerName} verstuurd op bericht {sub.SlackMessageId}", "text-info");
 
-        var result = await WorkflowService.ProcessSlackReactionAsync(payload);
-        if (result.Success)
+        var result = (ProcessSlackReactionResult?)await Dispatcher.DispatchAsync(Envelope(payload));
+        if (result is { Success: true })
         {
-            AddLog("SUCCESS", $"Reaction processed! Status updated to {result.NewStatus}. File moved in storage system.", "text-success");
+            AddLog("OK", $"Emoji verwerkt. Status is nu {result.NewStatus?.StatusLabel()}. Het bestand is verplaatst.", "text-success");
         }
         else
         {
-            AddLog("WARNING", $"Reaction outcome: {result.Message}", "text-warning");
+            AddLog("LET OP", $"Resultaat: {result?.Message}", "text-warning");
         }
 
         await RefreshPendingSubmissionsAsync();
         isReacting = false;
     }
+
+    // Through the dispatcher, like real Slack events, so they also appear on the events page
+    private static SlackEventEnvelopeDto Envelope(SlackEventItemDto ev) => new() { Type = "event_callback", Event = ev };
 
     private void AddLog(string level, string message, string cssClass)
     {

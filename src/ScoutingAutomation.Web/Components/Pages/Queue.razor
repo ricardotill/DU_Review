@@ -1,0 +1,182 @@
+@page "/queue"
+@rendermode InteractiveServer
+@inherits LiveComponentBase
+@inject RuntimeSettingsService Runtime
+@inject SlackLinks Links
+@inject TimeProvider Time
+
+<PageTitle>Te beoordelen - DU Review</PageTitle>
+
+<PageHeader Title="Te beoordelen" Subtitle="Open inzendingen, de langst wachtende eerst. Klik op een inzending om het bericht in Slack te openen en daar een emoji te plaatsen." />
+
+<div class="glass-panel p-3 mb-4">
+    <div class="row g-2 align-items-end">
+        <div class="col-md-4 col-6">
+            <label class="form-label text-secondary small fw-semibold mb-1" for="queueGroup">Groep</label>
+            <select class="form-select form-select-dark" id="queueGroup" @bind="selectedGroupId">
+                <option value="">Alle groepen</option>
+                @foreach (var g in groups)
+                {
+                    <option value="@g.Id">@g.Name</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-4 col-6">
+            <label class="form-label text-secondary small fw-semibold mb-1" for="queueAssignment">Opdracht</label>
+            <select class="form-select form-select-dark" id="queueAssignment" @bind="selectedAssignmentNumber">
+                <option value="">Alle opdrachten</option>
+                @foreach (var number in queue.Select(i => i.AssignmentNumber).OfType<int>().Distinct().Order())
+                {
+                    <option value="@number">#@number</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-4 text-md-end small text-secondary">
+            @if (Runtime.ReviewReminderMinutes is { } minutes)
+            {
+                <span><i class="bi bi-hourglass-split me-1"></i>Herinnering aan de jury na @minutes min</span>
+            }
+        </div>
+    </div>
+</div>
+
+<div class="glass-panel p-4">
+    <h2 class="h6 fw-bold text-white mb-3">
+        @ToReview.Count @(ToReview.Count == 1 ? "bericht" : "berichten") te beoordelen
+        <span class="text-secondary fw-normal small ms-1">oudste eerst</span>
+    </h2>
+
+    @if (!loaded)
+    {
+        <div class="empty-state"><div class="spinner-border text-success" role="status"></div></div>
+    }
+    else if (ToReview.Count == 0)
+    {
+        <div class="empty-state">
+            <i class="bi bi-check2-circle"></i>
+            Alles is beoordeeld.
+        </div>
+    }
+    else
+    {
+        <div class="d-flex flex-column gap-2">
+            @foreach (var item in ToReview)
+            {
+                @Row(item)
+            }
+        </div>
+    }
+</div>
+
+@if (NoLongerCounting.Count > 0)
+{
+    <details class="glass-panel p-4 mt-4 no-longer-counting">
+        <summary class="text-secondary small fw-semibold">
+            @NoLongerCounting.Count @(NoLongerCounting.Count == 1 ? "bericht telt" : "berichten tellen") niet meer
+        </summary>
+        <p class="text-muted small mt-2">De groep heeft deze opdracht al goedgekeurd of awesome in een ander bericht. Een beoordeling levert geen punten meer op.</p>
+        <div class="d-flex flex-column gap-2">
+            @foreach (var item in NoLongerCounting)
+            {
+                @Row(item)
+            }
+        </div>
+    </details>
+}
+
+@code {
+    private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(30);
+
+    private IReadOnlyList<ReviewQueueItem> queue = new List<ReviewQueueItem>();
+    private IReadOnlyList<Group> groups = new List<Group>();
+    private bool loaded;
+    private string? selectedGroupId;
+    private string? selectedAssignmentNumber;
+    private Timer? refresh;
+
+    private IEnumerable<ReviewQueueItem> Filtered => queue
+        .Where(i => !Guid.TryParse(selectedGroupId, out var groupId) || i.Group?.Id == groupId)
+        .Where(i => !int.TryParse(selectedAssignmentNumber, out var number) || i.AssignmentNumber == number);
+
+    private List<ReviewQueueItem> ToReview => Filtered.Where(i => !i.AlreadyCompleted).ToList();
+
+    private List<ReviewQueueItem> NoLongerCounting => Filtered.Where(i => i.AlreadyCompleted).ToList();
+
+    private RenderFragment Row(ReviewQueueItem item) => __builder =>
+    {
+        var wait = item.WaitingFor(Time.GetUtcNow());
+        var overdue = Runtime.ReviewReminderMinutes is { } minutes && wait >= TimeSpan.FromMinutes(minutes);
+        var href = Links.AppLink(item.ChannelId, item.MessageTs) ?? $"submissions/{item.First.Id}";
+        <div class="d-flex align-items-center gap-2 queue-item">
+            <a href="@href" class="queue-row flex-grow-1 min-w-0 text-decoration-none @(overdue ? "overdue" : "")"
+               title="@(href.StartsWith("slack:") ? "Openen in de Slack-app" : "Details bekijken")">
+                <div class="thumb">
+                    @if (item.First.ContentType.StartsWith("image/"))
+                    {
+                        <img src="/api/files/@item.First.Id" alt="" loading="lazy" onerror="this.remove()" />
+                    }
+                    else
+                    {
+                        <FileIcon ContentType="@item.First.ContentType" />
+                    }
+                    @if (item.Submissions.Count > 1)
+                    {
+                        <span class="file-count">@item.Submissions.Count</span>
+                    }
+                </div>
+                <div class="flex-grow-1 min-w-0">
+                    <div class="fw-semibold text-white text-truncate">
+                        @(item.Group?.Name ?? "Onbekende groep")
+                        <span class="badge assignment-badge ms-1">#@(item.AssignmentNumber?.ToString() ?? "?")</span>
+                    </div>
+                    <div class="text-muted small text-truncate">
+                        @item.First.SubmitterDisplayName · @item.PostedAt.ToGameTime().ToString("HH:mm")
+                        @if (!string.IsNullOrWhiteSpace(item.First.MessageText))
+                        {
+                            <span> · @item.First.MessageText</span>
+                        }
+                    </div>
+                </div>
+                <div class="wait text-nowrap @(overdue ? "text-warning" : "text-white-50")" title="Wacht sinds @item.PostedAt.ToGameTime().ToString("HH:mm:ss")">
+                    <i class="bi bi-hourglass-split me-1"></i>@ReviewQueue.FormatWait(wait)
+                </div>
+            </a>
+            <SlackMessageLinks ChannelId="@item.ChannelId" MessageTs="@item.MessageTs" Compact="true" />
+            <a href="submissions/@item.First.Id" class="btn btn-sm btn-scout-secondary" title="Details bekijken" aria-label="Details bekijken">
+                <i class="bi bi-chevron-right"></i>
+            </a>
+        </div>
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        Runtime.Changed += OnRuntimeChanged;
+        await Links.EnsureLoadedAsync();
+        await ReloadAsync();
+
+        // The waiting times keep counting, also when nothing changes
+        refresh = new Timer(_ => InvokeAsync(StateHasChanged), null, RefreshInterval, RefreshInterval);
+    }
+
+    protected override async Task LoadAsync(IServiceProvider services)
+    {
+        if (groups.Count == 0)
+        {
+            groups = await services.GetRequiredService<IGroupRepository>().GetAllAsync();
+        }
+
+        queue = await ReviewQueue.LoadAsync(services.GetRequiredService<ISubmissionRepository>());
+        loaded = true;
+    }
+
+    private void OnRuntimeChanged() => InvokeAsync(StateHasChanged);
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            Runtime.Changed -= OnRuntimeChanged;
+            refresh?.Dispose();
+        }
+    }
+}

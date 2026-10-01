@@ -3,20 +3,20 @@
 @inherits LiveComponentBase
 @inject NavigationManager Navigation
 
-<PageTitle>Assignments - Scouting Regional Game</PageTitle>
+<PageTitle>Opdrachten - DU Review</PageTitle>
 
-<PageHeader Title="Assignments" Subtitle="Open an assignment to compare the submissions of all groups." />
+<PageHeader Title="Opdrachten" Subtitle="Open een opdracht om de inzendingen van alle groepen te vergelijken." />
 
 <div class="glass-panel p-4">
     <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
         <div class="search-box number-search">
             <i class="bi bi-search"></i>
-            <input type="number" min="1" class="form-control form-control-dark" placeholder="Assignment number"
+            <input type="number" min="1" class="form-control form-control-dark" placeholder="Opdrachtnummer"
                    @bind="numberSearch" @bind:event="oninput" />
         </div>
         <div class="form-check form-switch mb-0">
             <input class="form-check-input" type="checkbox" id="onlySubmitted" @bind="onlyWithSubmissions" />
-            <label class="form-check-label text-secondary small" for="onlySubmitted">Only assignments with submissions</label>
+            <label class="form-check-label text-secondary small" for="onlySubmitted">Alleen opdrachten met inzendingen</label>
         </div>
     </div>
 
@@ -30,7 +30,7 @@
     {
         <div class="empty-state">
             <i class="bi bi-inbox"></i>
-            No assignments match.
+            Geen opdrachten gevonden.
         </div>
     }
     else
@@ -39,13 +39,13 @@
             <table class="custom-table">
                 <thead>
                     <tr>
-                        <th>Assignment</th>
-                        <th class="text-center">Points</th>
-                        <th class="text-center">Groups</th>
-                        <th class="text-center">Pending</th>
-                        <th class="text-center">Approved</th>
+                        <th>Opdracht</th>
+                        <th class="text-center">Punten</th>
+                        <th class="text-center">Groepen</th>
+                        <th class="text-center">Open</th>
+                        <th class="text-center">Goedgekeurd</th>
                         <th class="text-center">Awesome</th>
-                        <th class="text-center">Rejected</th>
+                        <th class="text-center">Afgekeurd</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -70,7 +70,7 @@
                 </tbody>
             </table>
         </div>
-        <div class="text-muted small mt-2">Points: standard / awesome. Counts are per group; resubmissions are merged.</div>
+        <div class="text-muted small mt-2">Punten: standaard / awesome. Aantallen zijn per groep; herinzendingen tellen één keer.</div>
     }
 </div>
 

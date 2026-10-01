@@ -1,0 +1,63 @@
+@implements IDisposable
+@inject RuntimeSettingsService Runtime
+@inject TimeProvider Time
+
+@* Time left until the event ends, or that it ended. Shows nothing without an end time. *@
+@if (Runtime.EventEnd is { } end)
+{
+    var left = end - Time.GetUtcNow();
+    <div class="game-countdown @(left <= TimeSpan.Zero ? "ended" : left <= TimeSpan.FromMinutes(10) ? "soon" : "")" role="timer" aria-live="off">
+        <i class="bi bi-stopwatch-fill"></i>
+        @if (left <= TimeSpan.Zero)
+        {
+            <span>Spel afgelopen</span>
+        }
+        else
+        {
+            <span>Nog @Format(left)</span>
+        }
+    </div>
+}
+
+@code {
+    private ITimer? timer;
+
+    protected override void OnInitialized()
+    {
+        Runtime.Changed += OnRuntimeChanged;
+        Schedule();
+    }
+
+    // Ticks only while there is an end time; nothing to update without one
+    private void Schedule()
+    {
+        if (Runtime.EventEnd == null)
+        {
+            timer?.Dispose();
+            timer = null;
+        }
+        else
+        {
+            timer ??= Time.CreateTimer(_ => InvokeAsync(StateHasChanged), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+        }
+    }
+
+    // Rounded up, so "0:00:00" never shows while the game still runs
+    public static string Format(TimeSpan left)
+    {
+        var seconds = (long)Math.Ceiling(left.TotalSeconds);
+        return $"{seconds / 3600}:{seconds / 60 % 60:00}:{seconds % 60:00}";
+    }
+
+    private void OnRuntimeChanged() => InvokeAsync(() =>
+    {
+        Schedule();
+        StateHasChanged();
+    });
+
+    public void Dispose()
+    {
+        Runtime.Changed -= OnRuntimeChanged;
+        timer?.Dispose();
+    }
+}

@@ -71,7 +71,7 @@ public class SubmissionWorkflowServiceTests
 
         // Assert
         result.Success.Should().BeFalse();
-        result.Message.Should().Contain("not mapped to any configured scouting group");
+        result.Message.Should().Contain("hoort bij geen enkele groep");
         _subRepoMock.Verify(r => r.AddAsync(It.IsAny<Submission>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 

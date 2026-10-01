@@ -36,9 +36,9 @@ public class ReviewerNameFetcher
 
         return lookup.Error switch
         {
-            "user_not_found" => $"Slack does not know {userId}. Check the member ID.",
-            "missing_scope" => "The Slack app lacks the users:read permission. Add it and reinstall the app.",
-            _ => $"Could not fetch the name of {userId}: {lookup.Error}"
+            "user_not_found" => $"Slack kent {userId} niet. Controleer het member-ID.",
+            "missing_scope" => "De Slack-app mist het recht users:read. Voeg het toe en installeer de app opnieuw.",
+            _ => $"De naam van {userId} kon niet worden opgehaald: {lookup.Error}"
         };
     }
 

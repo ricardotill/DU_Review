@@ -3,7 +3,7 @@
 @inherits LiveComponentBase
 @inject RuntimeSettingsService Runtime
 
-<PageTitle>Submission - Scouting Regional Game</PageTitle>
+<PageTitle>Inzending - DU Review</PageTitle>
 
 @if (!loaded)
 {
@@ -13,24 +13,24 @@
 }
 else if (submission == null)
 {
-    <PageHeader Title="Submission not found" BackHref="submissions" BackText="Submissions" />
+    <PageHeader Title="Inzending niet gevonden" BackHref="submissions" BackText="Inzendingen" />
 }
 else
 {
     var fileUrl = $"/api/files/{submission.Id}";
 
-    <PageHeader Title="@StoredFileName" BackHref="submissions" BackText="Submissions">
+    <PageHeader Title="@StoredFileName" BackHref="submissions" BackText="Inzendingen">
         <Details>
             <div class="d-flex align-items-center gap-2 flex-wrap mt-2">
                 <StatusBadge Status="@submission.Status" />
-                <a href="groups/@submission.GroupId" class="badge bg-secondary text-decoration-none">@(submission.Group?.Name ?? "Unknown group")</a>
+                <a href="groups/@submission.GroupId" class="badge bg-secondary text-decoration-none">@(submission.Group?.Name ?? "Onbekende groep")</a>
                 @if (submission.AssignmentNumber.HasValue)
                 {
-                    <a href="assignments/@submission.AssignmentNumber" class="badge assignment-badge text-decoration-none">Assignment #@submission.AssignmentNumber</a>
+                    <a href="assignments/@submission.AssignmentNumber" class="badge assignment-badge text-decoration-none">Opdracht @submission.AssignmentNumber</a>
                 }
                 else
                 {
-                    <span class="badge bg-danger">Unresolved</span>
+                    <span class="badge bg-danger">Onopgelost</span>
                 }
             </div>
         </Details>
@@ -47,7 +47,7 @@ else
     {
         <div class="alert alert-warning small d-flex align-items-center gap-2 mb-4">
             <i class="bi bi-exclamation-triangle-fill"></i>
-            <span><strong>Not linked to an assignment:</strong> @submission.UnresolvedReason</span>
+            <span><strong>Niet gekoppeld aan een opdracht:</strong> @submission.UnresolvedReason</span>
         </div>
     }
 
@@ -72,9 +72,9 @@ else
                     {
                         <div class="text-center">
                             <div class="fs-1 mb-2"><FileIcon ContentType="@submission.ContentType" /></div>
-                            <div class="text-secondary small mb-3">No preview for this file type</div>
+                            <div class="text-secondary small mb-3">Geen voorbeeld voor dit bestandstype</div>
                             <a href="@fileUrl" target="_blank" class="btn btn-scout-secondary btn-sm">
-                                <i class="bi bi-box-arrow-up-right me-1"></i> Open file
+                                <i class="bi bi-box-arrow-up-right me-1"></i> Bestand openen
                             </a>
                         </div>
                     }
@@ -83,14 +83,17 @@ else
 
             <!-- Slack message -->
             <div class="glass-panel p-4">
-                <h2 class="panel-title"><i class="bi bi-slack" style="color: #e01e5a;"></i> Slack message</h2>
+                <div class="d-flex justify-content-between align-items-start gap-2">
+                    <h2 class="panel-title"><i class="bi bi-slack" style="color: #e01e5a;"></i> Slack-bericht</h2>
+                    <div class="d-flex gap-1"><SlackMessageLinks ChannelId="@submission.SlackChannelId" MessageTs="@submission.SlackMessageId" /></div>
+                </div>
                 <div class="slack-message">
                     <div class="d-flex justify-content-between flex-wrap gap-2 mb-2 small">
                         <span class="fw-bold text-white" title="@submission.Submitter">@submission.SubmitterDisplayName</span>
                         <span class="text-muted">@submission.CreatedAt.ToGameTime().ToString("f")</span>
                     </div>
                     <div class="text-white-50 text-break">
-                        @(string.IsNullOrWhiteSpace(submission.MessageText) ? "(no text)" : submission.MessageText)
+                        @(string.IsNullOrWhiteSpace(submission.MessageText) ? "(geen tekst)" : submission.MessageText)
                     </div>
                 </div>
             </div>
@@ -101,26 +104,26 @@ else
             <div class="glass-panel p-4">
                 <h2 class="panel-title"><i class="bi bi-info-circle text-info"></i> Details</h2>
                 <dl class="detail-list mb-0">
-                    <dt>Original name</dt>
+                    <dt>Oorspronkelijke naam</dt>
                     <dd class="text-break">@submission.FileName</dd>
                     <dt>Type</dt>
                     <dd>@submission.ContentType · @FormatFileSize(submission.FileSizeBytes)</dd>
-                    <dt>Channel</dt>
+                    <dt>Kanaal</dt>
                     <dd>#@submission.SlackChannelId</dd>
-                    <dt>Message ID</dt>
+                    <dt>Bericht-ID</dt>
                     <dd class="font-monospace small">@submission.SlackMessageId</dd>
-                    <dt>Stored at</dt>
+                    <dt>Opgeslagen in</dt>
                     <dd class="font-monospace small text-info text-break">@submission.StoragePath</dd>
                 </dl>
             </div>
 
             <!-- Review timeline -->
             <div class="glass-panel p-4">
-                <h2 class="panel-title"><i class="bi bi-clock-history text-secondary"></i> Review history</h2>
+                <h2 class="panel-title"><i class="bi bi-clock-history text-secondary"></i> Beoordelingen</h2>
 
                 @if (submission.Reviews.Count == 0)
                 {
-                    <div class="text-muted small">No reviews yet. Waiting for a reaction in Slack.</div>
+                    <div class="text-muted small">Nog geen beoordeling. Wacht op een reactie in Slack.</div>
                 }
                 else
                 {
@@ -152,44 +155,44 @@ else
             <AuthorizeView Roles="@KeyAuth.AdminRole">
                 <!-- Emergency status override, hidden by default: reviews belong in Slack -->
                 <details class="override-panel">
-                    <summary class="text-secondary small">Manual status override…</summary>
+                    <summary class="text-secondary small">Status handmatig aanpassen…</summary>
 
                     <div class="glass-panel p-4 mt-2 override-body">
                         <div class="alert alert-warning small mb-3" role="alert">
-                            <div class="fw-bold mb-1"><i class="bi bi-exclamation-triangle-fill me-1"></i> Only use this to fix problems</div>
+                            <div class="fw-bold mb-1"><i class="bi bi-exclamation-triangle-fill me-1"></i> Gebruik dit alleen om problemen op te lossen</div>
                             <ul class="mb-0 ps-3">
-                                <li>Reviews belong in Slack. Jury members should react there.</li>
-                                <li>Slack is not updated: no reaction appears on the message.</li>
-                                <li>A later reviewer reaction in Slack overwrites this status.</li>
-                                <li>The override is saved in the review timeline with your reason.</li>
+                                <li>Beoordelen gebeurt in Slack. Juryleden reageren daar.</li>
+                                <li>Slack verandert niet: er komt geen reactie op het bericht.</li>
+                                <li>Een latere reactie van een jurylid in Slack overschrijft deze status.</li>
+                                <li>De aanpassing komt met je reden bij de beoordelingen te staan.</li>
                             </ul>
                         </div>
 
                         <div class="mb-2">
-                            <label class="form-label text-secondary small fw-semibold mb-1">New status</label>
+                            <label class="form-label text-secondary small fw-semibold mb-1">Nieuwe status</label>
                             <select class="form-select form-select-dark" @bind="overrideStatus">
                                 @foreach (var status in OverrideStatuses)
                                 {
-                                    <option value="@status" disabled="@(status == submission.Status)">@status@(status == submission.Status ? " (current)" : "")</option>
+                                    <option value="@status" disabled="@(status == submission.Status)">@status.StatusLabel()@(status == submission.Status ? " (huidig)" : "")</option>
                                 }
                             </select>
                         </div>
 
                         <div class="mb-2">
-                            <label class="form-label text-secondary small fw-semibold mb-1">Reason (required)</label>
-                            <textarea class="form-control form-control-dark" rows="2" placeholder="Why is this changed outside Slack?"
+                            <label class="form-label text-secondary small fw-semibold mb-1">Reden (verplicht)</label>
+                            <textarea class="form-control form-control-dark" rows="2" placeholder="Waarom wordt dit buiten Slack aangepast?"
                                       @bind="overrideReason" @bind:event="oninput"></textarea>
                         </div>
 
                         <div class="form-check mb-3">
                             <input class="form-check-input" type="checkbox" id="overrideConfirm" @bind="overrideConfirmed" />
                             <label class="form-check-label text-white-50 small" for="overrideConfirm">
-                                I understand this bypasses the Slack review
+                                Ik begrijp dat dit de beoordeling in Slack omzeilt
                             </label>
                         </div>
 
                         <button class="btn btn-outline-warning btn-sm" disabled="@(!CanOverride)" @onclick="OverrideStatusAsync">
-                            <i class="bi bi-exclamation-triangle me-1"></i> Override status
+                            <i class="bi bi-exclamation-triangle me-1"></i> Status aanpassen
                         </button>
 
                         @if (overrideError != null)
@@ -261,7 +264,7 @@ else
         }
         catch (Exception ex)
         {
-            overrideError = $"Override failed: {ex.Message}";
+            overrideError = $"Aanpassen mislukt: {ex.Message}";
         }
     }
 

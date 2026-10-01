@@ -1,189 +1,86 @@
-using System.Text;
 using FluentAssertions;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
-using ScoutingAutomation.Contracts.Configuration;
-using ScoutingAutomation.Contracts.Slack;
-using ScoutingAutomation.Domain.Entities;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
 using ScoutingAutomation.Domain.Enums;
+using ScoutingAutomation.Domain.Interfaces;
 using ScoutingAutomation.Domain.Models;
-using ScoutingAutomation.Infrastructure.Data;
-using ScoutingAutomation.Infrastructure.Repositories;
 using ScoutingAutomation.Infrastructure.Services;
 using Xunit;
 
 namespace ScoutingAutomation.IntegrationTests.Workflow;
 
-public class WorkflowEndToEndIntegrationTests : IDisposable
+/// <summary>
+/// A submission's whole life in the running app: upload, review, override and deletion, seen on the pages and the scoreboard.
+/// </summary>
+public class WorkflowEndToEndIntegrationTests : IClassFixture<WebApplicationFactory<Program>>, IAsyncLifetime
 {
-    private readonly string _testStorageDir;
-    private readonly ScoutingDbContext _dbContext;
-    private readonly LocalFileStorageService _fileStorage;
-    private readonly SubmissionRepository _submissionRepo;
-    private readonly GroupRepository _groupRepo;
-    private readonly AssignmentRepository _assignmentRepo;
-    private readonly SubmissionWorkflowService _workflowService;
+    private const string Channel = "C01ZEEARENDEN";
+    private readonly FakeSlackApi _slack = new();
+    private readonly TestApp _app;
+    private HttpClient _slackClient = default!;
+    private HttpClient _browser = default!;
 
-    public WorkflowEndToEndIntegrationTests()
+    public WorkflowEndToEndIntegrationTests(WebApplicationFactory<Program> factory)
     {
-        _testStorageDir = Path.Combine(Path.GetTempPath(), $"ScoutingIntegration_{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_testStorageDir);
-
-        var dbOptions = new DbContextOptionsBuilder<ScoutingDbContext>()
-            .UseInMemoryDatabase(databaseName: $"ScoutingDb_{Guid.NewGuid():N}")
-            .Options;
-
-        _dbContext = new ScoutingDbContext(dbOptions);
-        _submissionRepo = new SubmissionRepository(_dbContext);
-        _groupRepo = new GroupRepository(_dbContext);
-        _assignmentRepo = new AssignmentRepository(_dbContext);
-
-        var scoutingOptions = Options.Create(new ScoutingSettings
-        {
-            StorageRoot = _testStorageDir,
-            SupportedExtensions = new List<string> { ".jpg", ".png", ".pdf", ".mp4" },
-            Reviewers = new List<string> { "Sara_Jury" },
-            ReviewStatusReactions = new ReviewStatusReactionsConfig
-            {
-                Approved = new List<string> { "thumbsup", "+1" },
-                Rejected = new List<string> { "x", "-1" },
-                Awesome = new List<string> { "heart", "star" }
-            },
-            Slack = new SlackSettings { SimulationMode = true }
-        });
-
-        _fileStorage = new LocalFileStorageService(scoutingOptions, NullLogger<LocalFileStorageService>.Instance);
-        var assignmentParser = new AssignmentParser(NullLogger<AssignmentParser>.Instance);
-        var slackClient = new SlackClient(new HttpClient(), scoutingOptions, NullLogger<SlackClient>.Instance);
-
-        _workflowService = new SubmissionWorkflowService(
-            _submissionRepo,
-            _groupRepo,
-            _assignmentRepo,
-            assignmentParser,
-            _fileStorage,
-            slackClient,
-            new SubmissionChangeNotifier(NullLogger<SubmissionChangeNotifier>.Instance),
-            new RuntimeSettingsService(scoutingOptions, NullLogger<RuntimeSettingsService>.Instance),
-            scoutingOptions,
-            NullLogger<SubmissionWorkflowService>.Instance
-        );
+        _app = TestApp.Live(factory, _slack);
     }
+
+    public async Task InitializeAsync()
+    {
+        _slackClient = _app.CreateClient();
+        _browser = await _app.CreateLoggedInClientAsync();
+    }
+
+    private async Task<GroupStatistic> ZeearendenAsync() =>
+        (await _app.GetAsync(sp => sp.GetRequiredService<ISubmissionRepository>().GetStatisticsAsync()))
+        .GroupStatistics.Single(g => g.GroupName == "De Zeearenden");
 
     [Fact]
-    public async Task CompleteWorkflow_FromSlackUploadToEmojiReviewAndReporting_ShouldSucceedEndToEnd()
+    public async Task Submission_FromUploadThroughReviewOverrideAndDeletion()
     {
-        // 1. Seed Group & Assignment
-        var group = new Group
-        {
-            Id = Guid.NewGuid(),
-            Name = "De Zeearenden",
-            SlackChannelId = "C01TESTING"
-        };
-        await _groupRepo.UpsertAsync(group);
+        // 1. A scout uploads in Slack
+        var ts = SlackEvents.Ts();
+        var upload = await _app.SendEventAsync(_slackClient, SlackEvents.Message(Channel, ts, "Opdracht 5: onze houten lepel!", SlackEvents.File("lepel.jpg")));
+        var id = Guid.Parse(upload.GetProperty("createdSubmissionIds")[0].GetString()!);
+        var submission = (await _app.GetAsync(sp => sp.GetRequiredService<ISubmissionRepository>().GetByIdAsync(id)))!;
+        var storedName = Path.GetFileName(submission.StoragePath);
 
-        var assignment = new Assignment
-        {
-            Number = 5,
-            StandardPoints = 2,
-            AwesomePoints = 4
-        };
-        await _assignmentRepo.UpsertAsync(assignment);
+        submission.Status.Should().Be(SubmissionStatus.Pending);
+        Path.GetDirectoryName(submission.StoragePath).Should().Be(Path.Combine(_app.StorageRoot, "de-zeearenden"));
+        (await _browser.GetStringAsync("/queue")).Should().Contain($"submissions/{id}", "it waits for the jury");
+        (await _browser.GetStringAsync("/submissions")).Should().Contain(storedName);
+        (await _browser.GetByteArrayAsync($"/api/files/{id}")).Should().Equal(FakeSlackApi.FileContent);
+        (await ZeearendenAsync()).Score.Should().Be(0);
 
-        // 2. Incoming Slack Message with File
-        const string messageTs = "1720000000.1234";
-        var messageEvent = new SlackEventItemDto
-        {
-            Type = "message",
-            Channel = group.SlackChannelId,
-            User = "Ruben_Scout",
-            Text = "Opdracht 5: Hier is onze houten lepel!",
-            Ts = messageTs,
-            Files = new List<SlackFileItemDto>
-            {
-                new()
-                {
-                    Id = "F123",
-                    Name = "lepel.jpg",
-                    Size = 2048,
-                    Mimetype = "image/jpeg",
-                    UrlPrivateDownload = "sim://lepel.jpg"
-                }
-            }
-        };
+        // 2. The jury approves it with an emoji
+        await _app.SendEventAsync(_slackClient, SlackEvents.Reaction(Channel, ts, "thumbsup"));
 
-        var postResult = await _workflowService.ProcessSlackMessageAsync(messageEvent);
+        var approved = (await _app.GetAsync(sp => sp.GetRequiredService<ISubmissionRepository>().GetByIdAsync(id)))!;
+        approved.Status.Should().Be(SubmissionStatus.Approved);
+        approved.StoragePath.Should().Contain(Path.Combine("de-zeearenden", "approved"));
+        (await ZeearendenAsync()).Score.Should().Be(2, "assignment 5 is worth 2 points");
+        (await _browser.GetStringAsync($"/groups/{approved.GroupId}")).Should().Contain($"submissions/{id}");
 
-        // Assert Step 2
-        postResult.Success.Should().BeTrue();
-        postResult.CreatedSubmissionIds.Should().HaveCount(1);
-        var subId = postResult.CreatedSubmissionIds[0];
+        // 3. Slack has problems, so the jury makes it awesome on the dashboard
+        await _app.GetAsync(sp => sp.GetRequiredService<ISubmissionWorkflowService>().OverrideStatusAsync(id, SubmissionStatus.Awesome, "Slack lag eruit"));
 
-        var createdSub = await _submissionRepo.GetByIdAsync(subId);
-        createdSub.Should().NotBeNull();
-        createdSub!.Status.Should().Be(SubmissionStatus.Pending);
-        createdSub.AssignmentNumber.Should().Be(5);
-        createdSub.FileName.Should().Be("lepel.jpg");
-        File.Exists(createdSub.StoragePath).Should().BeTrue();
-        Path.GetDirectoryName(createdSub.StoragePath).Should().Be(Path.Combine(_testStorageDir, "de-zeearenden"));
+        (await ZeearendenAsync()).Score.Should().Be(4);
+        (await _browser.GetStringAsync("/assignments/5")).Should().Contain($"submissions/{id}");
 
-        // 3. Incoming Review Reaction: thumbsup (Approved)
-        var reactionEvent = new SlackEventItemDto
-        {
-            Type = "reaction_added",
-            Reaction = "thumbsup",
-            User = "Sara_Jury",
-            Item = new SlackReactionTargetDto
-            {
-                Channel = group.SlackChannelId,
-                Ts = messageTs
-            }
-        };
+        // 4. The scout deletes the message: it no longer counts
+        await _app.SendEventAsync(_slackClient, SlackEvents.Deleted(Channel, ts, "Opdracht 5: onze houten lepel!"));
 
-        var reactionResult = await _workflowService.ProcessSlackReactionAsync(reactionEvent);
-
-        // Assert Step 3
-        reactionResult.Success.Should().BeTrue();
-        reactionResult.NewStatus.Should().Be(SubmissionStatus.Approved);
-
-        var reviewedSub = await _submissionRepo.GetByIdAsync(subId);
-        reviewedSub!.Status.Should().Be(SubmissionStatus.Approved);
-        File.Exists(reviewedSub.StoragePath).Should().BeTrue();
-        reviewedSub.StoragePath.Should().Contain(Path.Combine("de-zeearenden", "approved"));
-        reviewedSub.Reviews.Should().ContainSingle(r => r.Reviewer == "Sara_Jury" && r.Status == SubmissionStatus.Approved);
-
-        // 4. Verify Dashboard Statistics Reporting (FR-009)
-        var stats = await _submissionRepo.GetStatisticsAsync();
-        stats.TotalSubmissions.Should().Be(1);
-        stats.ApprovedCount.Should().Be(1);
-        stats.PendingCount.Should().Be(0);
-        stats.OverallApprovalRate.Should().Be(100.0);
-
-        var groupStat = stats.GroupStatistics.FirstOrDefault(g => g.GroupId == group.Id);
-        groupStat.Should().NotBeNull();
-        groupStat!.ApprovedCount.Should().Be(1);
-        groupStat.ApprovalRate.Should().Be(100.0);
-        groupStat.Score.Should().Be(2);
-
-        var assignStat = stats.AssignmentStatistics.FirstOrDefault(a => a.AssignmentNumber == 5);
-        assignStat.Should().NotBeNull();
-        assignStat!.ApprovedCount.Should().Be(1);
+        (await ZeearendenAsync()).Score.Should().Be(0);
+        (await _app.GetAsync(sp => sp.GetRequiredService<ISubmissionRepository>().SearchSubmissionsAsync(new SubmissionFilter()))).Should().BeEmpty();
+        (await _browser.GetStringAsync("/submissions")).Should().NotContain(storedName);
+        File.Exists(Path.Combine(_app.StorageRoot, LocalFileStorageService.DeletedFolderName, "de-zeearenden", storedName)).Should().BeTrue();
+        (await _browser.GetAsync($"/api/files/{id}")).StatusCode.Should().Be(System.Net.HttpStatusCode.NotFound);
     }
 
-    public void Dispose()
+    public async Task DisposeAsync()
     {
-        _dbContext.Dispose();
-        try
-        {
-            if (Directory.Exists(_testStorageDir))
-            {
-                Directory.Delete(_testStorageDir, recursive: true);
-            }
-        }
-        catch
-        {
-            // Ignore temp cleanup errors
-        }
+        _slackClient.Dispose();
+        _browser.Dispose();
+        await _app.DisposeAsync();
     }
 }

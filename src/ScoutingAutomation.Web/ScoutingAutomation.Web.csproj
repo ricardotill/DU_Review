@@ -15,6 +15,11 @@
   <ItemGroup>
     <Content Remove="access-keys.json;access-keys.json.tmp;runtime-settings.json;runtime-settings.json.tmp" />
   </ItemGroup>
+  <ItemGroup>
+    <_ContentIncludedByDefault Remove="scouting_storage\_backup\20260930-175206\submissions.json" />
+    <_ContentIncludedByDefault Remove="scouting_storage\_backup\20260930-180108\submissions.json" />
+    <_ContentIncludedByDefault Remove="scouting_storage\_backup\20261001-112219\submissions.json" />
+  </ItemGroup>
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>

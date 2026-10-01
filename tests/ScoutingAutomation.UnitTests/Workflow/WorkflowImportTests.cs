@@ -215,7 +215,7 @@ public class WorkflowImportTests
     {
         var result = await Create().ProcessSlackReactionRemovedAsync(Removed("thumbsup", channel: channel, ts: ts));
 
-        result.Message.Should().Contain("missing target");
+        result.Message.Should().Contain("zonder kanaal of tijdstempel");
     }
 
     [Fact]
@@ -223,7 +223,7 @@ public class WorkflowImportTests
     {
         var result = await Create().ProcessSlackReactionRemovedAsync(Removed("thumbsup"));
 
-        result.Message.Should().StartWith("No submission");
+        result.Message.Should().StartWith("Geen inzending");
         _slack.Verify(s => s.GetReactionsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -236,7 +236,7 @@ public class WorkflowImportTests
         var result = await Create().ProcessSlackReactionRemovedAsync(Removed("thumbsup"));
 
         result.Success.Should().BeFalse();
-        result.Message.Should().Contain("status unchanged");
+        result.Message.Should().Contain("status ongewijzigd");
         submission.Status.Should().Be(SubmissionStatus.Approved);
         _submissions.Verify(s => s.UpdateAsync(It.IsAny<Submission>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -257,7 +257,7 @@ public class WorkflowImportTests
         var review = submission.Reviews.OrderBy(r => r.CreatedAt).Last();
         review.Reviewer.Should().Be("U_JURY");
         review.ReactionEmoji.Should().Be("thumbsup");
-        review.Notes.Should().Be("Review emoji removed");
+        review.Notes.Should().Be("Beoordelingsemoji weggehaald");
         _notifier.Verify(n => n.NotifyChanged(), Times.Once);
     }
 
@@ -284,7 +284,7 @@ public class WorkflowImportTests
 
         var result = await Create().ProcessSlackReactionRemovedAsync(Removed("thumbsup"));
 
-        result.Message.Should().Be("Status stays Approved");
+        result.Message.Should().Be("Status blijft Goedgekeurd");
         submission.Reviews.Should().ContainSingle();
         _submissions.Verify(s => s.UpdateAsync(It.IsAny<Submission>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -297,7 +297,7 @@ public class WorkflowImportTests
         var result = await Create().ProcessSlackMessageAsync(Message("Opdracht 4", "IMG_1.jpg"));
 
         result.Success.Should().BeTrue();
-        result.Message.Should().Be("Manual mode: saved 1 file(s)");
+        result.Message.Should().Be("Handmatige modus: 1 bestand(en) opgeslagen");
         var storedName = $"DWO 4 {SlackTimestamp.ToDateTimeOffset("1727704800.500000")!.Value.ToLocalTime():HH-mm-ss}.jpg";
         result.StoredFiles.Should().Equal(storedName);
         result.CreatedSubmissionIds.Should().BeEmpty();
@@ -357,7 +357,7 @@ public class WorkflowImportTests
 
         var result = await Create().ProcessSlackMessageAsync(message);
 
-        result.Message.Should().Contain("is a reviewer");
+        result.Message.Should().Contain("is jurylid");
         _slack.Verify(s => s.DownloadFileAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -374,8 +374,8 @@ public class WorkflowImportTests
         });
         var removed = await service.ProcessSlackReactionRemovedAsync(Removed("thumbsup"));
 
-        added.Message.Should().Be("Manual mode: reactions are not processed");
-        removed.Message.Should().Be("Manual mode: reactions are not processed");
+        added.Message.Should().Be("Handmatige modus: reacties worden niet verwerkt");
+        removed.Message.Should().Be("Handmatige modus: reacties worden niet verwerkt");
         submission.Status.Should().Be(SubmissionStatus.Approved);
         _slack.Verify(s => s.GetReactionsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }

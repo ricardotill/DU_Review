@@ -40,8 +40,8 @@ public class ReviewerManagerTests : PageTestBase
         rows[0].TextContent.Should().Contain("U_JURY");
         rows[0].QuerySelector(".bi-lock-fill").Should().NotBeNull();
         rows[0].QuerySelector(".remove-reviewer").Should().BeNull("reviewers from appsettings cannot be removed here");
-        rows[1].QuerySelector(".reviewer-name")!.TextContent.Should().Be("no name");
-        rows[1].QuerySelector(".remove-reviewer")!.GetAttribute("aria-label").Should().Be("Remove U_ADDED");
+        rows[1].QuerySelector(".reviewer-name")!.TextContent.Should().Be("geen naam");
+        rows[1].QuerySelector(".remove-reviewer")!.GetAttribute("aria-label").Should().Be("U_ADDED verwijderen");
     }
 
     [Fact]
@@ -51,12 +51,12 @@ public class ReviewerManagerTests : PageTestBase
         cut.Find("button.add-reviewer").HasAttribute("disabled").Should().BeTrue();
         cut.FindAll("button.fetch-names").Should().BeEmpty("names cannot be fetched without Slack");
 
-        cut.Find("input[aria-label='Slack member ID']").Input("U04ABC123");
+        cut.Find("input[aria-label='Slack-member-ID']").Input("U04ABC123");
         cut.Find("form").Submit();
 
         Runtime.IsReviewer("U04ABC123").Should().BeTrue();
-        cut.Find("input[aria-label='Slack member ID']").GetAttribute("value").Should().BeEmpty();
-        cut.Find(".reviewer-status .text-success").TextContent.Should().Be("U04ABC123 is now a reviewer.");
+        cut.Find("input[aria-label='Slack-member-ID']").GetAttribute("value").Should().BeEmpty();
+        cut.Find(".reviewer-status .text-success").TextContent.Should().Be("U04ABC123 is nu jurylid.");
     }
 
     [Fact]
@@ -66,10 +66,10 @@ public class ReviewerManagerTests : PageTestBase
         _slack.Setup(s => s.GetUserNameAsync("U04ABC123", It.IsAny<CancellationToken>())).ReturnsAsync(SlackUserLookup.Found("Piet"));
         var cut = Render<ReviewerManager>();
 
-        cut.Find("input[aria-label='Slack member ID']").Input("U04ABC123");
+        cut.Find("input[aria-label='Slack-member-ID']").Input("U04ABC123");
         cut.Find("form").Submit();
 
-        cut.WaitForAssertion(() => cut.Find(".reviewer-status .text-success").TextContent.Should().Be("Piet is now a reviewer."));
+        cut.WaitForAssertion(() => cut.Find(".reviewer-status .text-success").TextContent.Should().Be("Piet is nu jurylid."));
         Runtime.NameOf("U04ABC123").Should().Be("Piet");
     }
 
@@ -79,10 +79,10 @@ public class ReviewerManagerTests : PageTestBase
         ConnectSlack();
         var cut = Render<ReviewerManager>();
 
-        cut.Find("input[aria-label='Slack member ID']").Input("U_TYPO");
+        cut.Find("input[aria-label='Slack-member-ID']").Input("U_TYPO");
         cut.Find("form").Submit();
 
-        cut.WaitForAssertion(() => cut.Find(".reviewer-status .text-danger").TextContent.Should().Contain("Slack does not know U_TYPO"));
+        cut.WaitForAssertion(() => cut.Find(".reviewer-status .text-danger").TextContent.Should().Contain("Slack kent U_TYPO niet"));
         Runtime.IsReviewer("U_TYPO").Should().BeTrue("the reviewer is still added; the warning points out a possible typo");
     }
 
@@ -91,10 +91,10 @@ public class ReviewerManagerTests : PageTestBase
     {
         var cut = Render<ReviewerManager>();
 
-        cut.Find("input[aria-label='Slack member ID']").Input("niet geldig");
+        cut.Find("input[aria-label='Slack-member-ID']").Input("niet geldig");
         cut.Find("form").Submit();
 
-        cut.Find(".reviewer-status .text-danger").TextContent.Should().Contain("Slack member ID");
+        cut.Find(".reviewer-status .text-danger").TextContent.Should().Contain("Slack-member-ID");
     }
 
     [Fact]
@@ -103,19 +103,19 @@ public class ReviewerManagerTests : PageTestBase
         var cut = Render<ReviewerManager>();
 
         cut.Find("button.edit-name").Click();
-        cut.Find("input[aria-label='Name of U_JURY']").Input(new string('x', RuntimeSettingsService.MaxNameLength + 5));
+        cut.Find("input[aria-label='Naam van U_JURY']").Input(new string('x', RuntimeSettingsService.MaxNameLength + 5));
         cut.Find("li.reviewer form").Submit();
-        cut.Find(".reviewer-status .text-danger").TextContent.Should().Contain("at most");
+        cut.Find(".reviewer-status .text-danger").TextContent.Should().Contain("maximaal");
 
-        cut.Find("input[aria-label='Name of U_JURY']").Input("Eva");
+        cut.Find("input[aria-label='Naam van U_JURY']").Input("Eva");
         cut.Find("li.reviewer form").Submit();
         Runtime.NameOf("U_JURY").Should().Be("Eva");
         cut.Find(".reviewer-name").TextContent.Should().Be("Eva");
-        cut.Find(".reviewer-status").TextContent.Should().Contain("never replaced by one from Slack");
+        cut.Find(".reviewer-status").TextContent.Should().Contain("nooit vervangen door een naam uit Slack");
 
         cut.Find("button.edit-name").Click();
-        cut.Find("input[aria-label='Name of U_JURY']").GetAttribute("value").Should().Be("Eva");
-        cut.Find("button[aria-label='Cancel']").Click();
+        cut.Find("input[aria-label='Naam van U_JURY']").GetAttribute("value").Should().Be("Eva");
+        cut.Find("button[aria-label='Annuleren']").Click();
         cut.FindAll("li.reviewer form").Should().BeEmpty();
     }
 
@@ -132,7 +132,7 @@ public class ReviewerManagerTests : PageTestBase
         cut.Find("button.fetch-names").Click();
 
         cut.WaitForAssertion(() => cut.Find(".reviewer-status .text-danger").TextContent
-            .Should().Contain("1 name(s) fetched from Slack, 1 kept as entered.").And.Contain("Slack does not know U_PIET"));
+            .Should().Contain("1 naam/namen opgehaald uit Slack, 1 zoals ingevuld gehouden.").And.Contain("Slack kent U_PIET niet"));
         Runtime.NameOf("U_JURY").Should().Be("Eva");
     }
 
@@ -145,7 +145,7 @@ public class ReviewerManagerTests : PageTestBase
 
         cut.Find("button.fetch-names").Click();
 
-        cut.WaitForAssertion(() => cut.Find(".reviewer-status .text-success").TextContent.Should().Be("1 name(s) fetched from Slack."));
+        cut.WaitForAssertion(() => cut.Find(".reviewer-status .text-success").TextContent.Should().Be("1 naam/namen opgehaald uit Slack."));
     }
 
     [Fact]
@@ -165,7 +165,7 @@ public class ReviewerManagerTests : PageTestBase
     {
         Settings.Reviewers = new List<string>();
 
-        Render<ReviewerManager>().Markup.Should().Contain("No reviewers: all reactions are ignored.");
+        Render<ReviewerManager>().Markup.Should().Contain("Geen juryleden: alle reacties worden genegeerd.");
     }
 
     [Fact]
@@ -180,7 +180,7 @@ public class ReviewerManagerTests : PageTestBase
         Rows(cut).Should().HaveCount(2);
         cut.FindAll("button").Should().BeEmpty();
         cut.FindAll("input").Should().BeEmpty();
-        cut.Markup.Should().Contain("Only admins can add reviewers");
+        cut.Markup.Should().Contain("Alleen beheerders kunnen juryleden toevoegen");
     }
 
     [Fact]

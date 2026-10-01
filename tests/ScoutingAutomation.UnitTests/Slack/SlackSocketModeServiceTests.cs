@@ -45,7 +45,7 @@ public class SlackSocketModeServiceTests
         await service.ExecuteTask!;
 
         _status.State.Should().Be(SlackConnectionState.Error);
-        _status.Detail.Should().Be("App token not set");
+        _status.Detail.Should().Be("App-token niet ingesteld");
     }
 
     [Fact]

@@ -27,7 +27,7 @@ public class AccessKeyIntegrationTests : IClassFixture<WebApplicationFactory<Pro
 
     private static async Task<bool> IsLoggedIn(HttpClient client) => (await client.GetAsync("/")).StatusCode == HttpStatusCode.OK;
 
-    private static async Task<bool> IsAdmin(HttpClient client) => (await client.GetStringAsync("/admin")).Contains("Regenerate access key");
+    private static async Task<bool> IsAdmin(HttpClient client) => (await client.GetStringAsync("/admin")).Contains("Nieuwe toegangssleutel maken");
 
     [Fact]
     public async Task WithoutLogin_PagesAndFilesRedirectButSlackWebhookStaysOpen()
@@ -81,11 +81,11 @@ public class AccessKeyIntegrationTests : IClassFixture<WebApplicationFactory<Pro
         for (var i = 0; i < LoginAttemptLimiter.MaxFailures; i++)
         {
             var wrong = await LogIn(client, "WRONG");
-            (await wrong.Content.ReadAsStringAsync()).Should().Contain("That key is not correct.");
+            (await wrong.Content.ReadAsStringAsync()).Should().Contain("Deze sleutel klopt niet.");
         }
 
         var blocked = await LogIn(client, TestApp.AccessKey);
-        (await blocked.Content.ReadAsStringAsync()).Should().Contain("Too many wrong keys");
+        (await blocked.Content.ReadAsStringAsync()).Should().Contain("Te veel verkeerde sleutels");
         (await IsLoggedIn(client)).Should().BeFalse();
     }
 
@@ -97,11 +97,11 @@ public class AccessKeyIntegrationTests : IClassFixture<WebApplicationFactory<Pro
         for (var i = 0; i < LoginAttemptLimiter.MaxFailures; i++)
         {
             var wrong = await TestApp.PostFormAsync(client, "/admin", "enter-admin", new() { ["EnterInput.Key"] = "WRONG" });
-            (await wrong.Content.ReadAsStringAsync()).Should().Contain("That is not the admin key.");
+            (await wrong.Content.ReadAsStringAsync()).Should().Contain("Dit is niet de beheerderssleutel.");
         }
 
         var blocked = await TestApp.PostFormAsync(client, "/admin", "enter-admin", new() { ["EnterInput.Key"] = TestApp.AdminKey });
-        (await blocked.Content.ReadAsStringAsync()).Should().Contain("Too many wrong keys");
+        (await blocked.Content.ReadAsStringAsync()).Should().Contain("Te veel verkeerde sleutels");
         (await IsAdmin(client)).Should().BeFalse();
     }
 
@@ -109,17 +109,17 @@ public class AccessKeyIntegrationTests : IClassFixture<WebApplicationFactory<Pro
     public async Task AdminMode_ShouldBeEnteredWithTheAdminKeyAndLeftAgain()
     {
         using var client = await _app.CreateLoggedInClientAsync();
-        (await client.GetStringAsync("/configuration")).Should().Contain("Only admins can rebuild");
+        (await client.GetStringAsync("/configuration")).Should().Contain("Alleen beheerders kunnen opnieuw opbouwen");
 
         var enter = await TestApp.PostFormAsync(client, "/admin", "enter-admin", new() { ["EnterInput.Key"] = TestApp.AdminKey });
         enter.Headers.Location!.OriginalString.Should().EndWith("/admin");
 
         var admin = await client.GetStringAsync("/admin");
         admin.Should().Contain(TestApp.AccessKey).And.NotContain(TestApp.AdminKey);
-        (await client.GetStringAsync("/configuration")).Should().NotContain("Only admins can rebuild");
+        (await client.GetStringAsync("/configuration")).Should().NotContain("Alleen beheerders kunnen opnieuw opbouwen");
 
         var left = await TestApp.PostFormAsync(client, "/admin", "leave-admin", new());
-        (await left.Content.ReadAsStringAsync()).Should().Contain("You left admin mode.").And.Contain("Switch to admin mode");
+        (await left.Content.ReadAsStringAsync()).Should().Contain("Je hebt de beheermodus verlaten.").And.Contain("Naar beheermodus");
         (await IsAdmin(client)).Should().BeFalse();
         (await IsLoggedIn(client)).Should().BeTrue();
     }
@@ -131,13 +131,13 @@ public class AccessKeyIntegrationTests : IClassFixture<WebApplicationFactory<Pro
         using var admin = await _app.CreateLoggedInClientAsync(admin: true);
 
         var withoutConfirm = await TestApp.PostFormAsync(admin, "/admin", "regenerate-access", new());
-        (await withoutConfirm.Content.ReadAsStringAsync()).Should().Contain("Tick the box to confirm.");
+        (await withoutConfirm.Content.ReadAsStringAsync()).Should().Contain("Vink het vakje aan om te bevestigen.");
         (await IsLoggedIn(jury)).Should().BeTrue();
 
         var response = await TestApp.PostFormAsync(admin, "/admin", "regenerate-access", new() { ["RegenerateAccess.Confirm"] = "true" });
         var html = await response.Content.ReadAsStringAsync();
 
-        html.Should().Contain("Everyone else has been logged out");
+        html.Should().Contain("Iedereen anders is uitgelogd");
         var newKey = _app.Factory.Services.GetRequiredService<AccessKeyService>().AccessKey;
         newKey.Should().NotBe(TestApp.AccessKey);
         html.Should().Contain(newKey);
@@ -157,10 +157,10 @@ public class AccessKeyIntegrationTests : IClassFixture<WebApplicationFactory<Pro
         using var otherAdmin = await _app.CreateLoggedInClientAsync(admin: true);
 
         var withoutConfirm = await TestApp.PostFormAsync(admin, "/admin", "regenerate-admin", new());
-        (await withoutConfirm.Content.ReadAsStringAsync()).Should().Contain("Tick the box to confirm.");
+        (await withoutConfirm.Content.ReadAsStringAsync()).Should().Contain("Vink het vakje aan om te bevestigen.");
 
         var response = await TestApp.PostFormAsync(admin, "/admin", "regenerate-admin", new() { ["RegenerateAdmin.Confirm"] = "true" });
-        var newKey = Regex.Match(await response.Content.ReadAsStringAsync(), "shown only now: <code[^>]*>([A-Z0-9-]+)</code>").Groups[1].Value;
+        var newKey = Regex.Match(await response.Content.ReadAsStringAsync(), "alleen nu zichtbaar: <code[^>]*>([A-Z0-9-]+)</code>").Groups[1].Value;
 
         newKey.Should().MatchRegex("^[A-Z0-9]{4}(-[A-Z0-9]{4}){3}$");
         (await admin.GetStringAsync("/admin")).Should().NotContain(newKey, "the admin key is shown only once");

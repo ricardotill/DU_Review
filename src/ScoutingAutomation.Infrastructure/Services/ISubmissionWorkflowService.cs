@@ -20,12 +20,15 @@ public record ProcessSlackMessageResult(bool Success, string Message, IReadOnlyL
 
 public record ProcessSlackReactionResult(bool Success, string Message, Guid? SubmissionId = null, SubmissionStatus? NewStatus = null)
 {
+    /// <summary>True when the event could not be handled, as opposed to a reaction that is deliberately ignored.</summary>
+    public bool IsFailure { get; init; }
+
     public static ProcessSlackReactionResult Succeeded(Guid submissionId, SubmissionStatus newStatus, string msg = "Reaction applied successfully") =>
         new(true, msg, submissionId, newStatus);
     public static ProcessSlackReactionResult Ignored(string reason) =>
         new(false, reason);
     public static ProcessSlackReactionResult Failed(string reason) =>
-        new(false, reason);
+        new(false, reason) { IsFailure = true };
 }
 
 /// <param name="Status">The status applied, or null when no reviewer reacted with a review emoji.</param>

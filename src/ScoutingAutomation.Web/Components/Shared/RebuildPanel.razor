@@ -1,50 +1,51 @@
 @implements IDisposable
 @inject ISlackRebuildService RebuildService
+@inject RuntimeSettingsService Runtime
 
 <div class="glass-panel p-4">
-    <h2 class="panel-title"><i class="bi bi-arrow-repeat text-warning"></i> Rebuild from Slack</h2>
+    <h2 class="panel-title"><i class="bi bi-arrow-repeat text-warning"></i> Opnieuw opbouwen uit Slack</h2>
 
     @if (!RebuildService.IsAvailable && progress.State == RebuildState.Idle)
     {
         <p class="text-secondary small mb-0">
-            Available when the app is connected to Slack: <code>SimulationMode</code> off and a bot token set.
+            Beschikbaar als de app met Slack is verbonden: <code>SimulationMode</code> uit en een bot-token ingesteld.
         </p>
     }
     else
     {
         <details class="rebuild-panel" open="@(progress.State != RebuildState.Idle)">
-            <summary class="text-secondary small">@(Group == null ? "Rebuild all submissions from the Slack messages…" : $"Rebuild the submissions of {Group.Name} from its Slack channel…")</summary>
+            <summary class="text-secondary small">@(Group == null ? "Alle inzendingen opnieuw opbouwen uit de Slack-berichten…" : $"De inzendingen van {Group.Name} opnieuw opbouwen uit het Slack-kanaal…")</summary>
 
             <div class="mt-3">
                 <div class="alert alert-warning small" role="alert">
-                    <div class="fw-bold mb-1"><i class="bi bi-exclamation-triangle-fill me-1"></i> @(Group == null ? "This replaces all submissions" : $"This replaces all submissions of {Group.Name}")</div>
+                    <div class="fw-bold mb-1"><i class="bi bi-exclamation-triangle-fill me-1"></i> @(Group == null ? "Dit vervangt alle inzendingen" : $"Dit vervangt alle inzendingen van {Group.Name}")</div>
                     <ul class="mb-0 ps-3">
                         @if (Group == null)
                         {
-                            <li>All group folders are moved to a backup folder, and all submissions and reviews are deleted.</li>
+                            <li>Alle groepsmappen gaan naar een back-upmap, en alle inzendingen en beoordelingen worden verwijderd.</li>
                         }
                         else
                         {
-                            <li>The folder of @Group.Name is moved to a backup folder, and its submissions and reviews are deleted. Other groups are not touched.</li>
+                            <li>De map van @Group.Name gaat naar een back-upmap, en de inzendingen en beoordelingen van deze groep worden verwijderd. Andere groepen blijven ongemoeid.</li>
                         }
-                        <li>Every message with a file since the start time is processed again, and reviews are taken from the reactions now in Slack. When reviewers disagree, the best status wins.</li>
-                        <li>Dashboard overrides are lost; they are kept in the backup's <code>submissions.json</code>.</li>
-                        <li>Nothing is posted to Slack. Live events wait until the rebuild is done.</li>
+                        <li>Elk bericht met een bestand sinds de gekozen tijd wordt opnieuw verwerkt (nooit van vóór de starttijd van het spel), en beoordelingen komen uit de emoji's die nu in Slack staan. Zijn juryleden het oneens, dan telt de beste status.</li>
+                        <li>Handmatige aanpassingen gaan verloren; ze blijven bewaard in <code>submissions.json</code> in de back-up.</li>
+                        <li>Er wordt niets in Slack geplaatst. Nieuwe gebeurtenissen wachten tot het opbouwen klaar is.</li>
                     </ul>
                 </div>
 
                 <div class="row g-2 align-items-end mb-2">
                     <div class="col-md-5">
-                        <label class="form-label text-secondary small fw-semibold mb-1">Messages since</label>
-                        <input type="datetime-local" class="form-control form-control-dark" @bind="since" @bind:format="yyyy-MM-ddTHH:mm" disabled="@IsRunning" />
+                        <label class="form-label text-secondary small fw-semibold mb-1">Berichten vanaf</label>
+                        <input type="datetime-local" class="form-control form-control-dark" @bind="since" disabled="@IsRunning" />
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label text-secondary small fw-semibold mb-1">Type REBUILD to confirm</label>
+                        <label class="form-label text-secondary small fw-semibold mb-1">Typ OPBOUWEN om te bevestigen</label>
                         <input type="text" class="form-control form-control-dark" @bind="confirmation" @bind:event="oninput" disabled="@IsRunning" />
                     </div>
                     <div class="col-md-3">
                         <button class="btn btn-outline-warning w-100" disabled="@(!CanStart)" @onclick="Start">
-                            <i class="bi bi-arrow-repeat me-1"></i> Rebuild
+                            <i class="bi bi-arrow-repeat me-1"></i> Opbouwen
                         </button>
                     </div>
                 </div>
@@ -61,30 +62,30 @@
                                     break;
                                 case RebuildState.Completed:
                                     <i class="bi bi-check-circle-fill text-success"></i>
-                                    <span class="fw-semibold text-white">Rebuild finished</span>
+                                    <span class="fw-semibold text-white">Opnieuw opbouwen klaar</span>
                                     break;
                                 default:
                                     <i class="bi bi-x-circle-fill text-danger"></i>
-                                    <span class="fw-semibold text-danger">Rebuild failed: @progress.Error</span>
+                                    <span class="fw-semibold text-danger">Opnieuw opbouwen mislukt: @progress.Error</span>
                                     break;
                             }
                         </div>
 
                         <dl class="rebuild-stats mb-0">
-                            <dt>Groups</dt><dd>@(progress.GroupName ?? "All groups")</dd>
-                            <dt>Channels read</dt><dd>@progress.ChannelsRead / @progress.ChannelsTotal</dd>
-                            <dt>Messages</dt><dd>@progress.MessagesProcessed / @progress.MessagesFound</dd>
-                            <dt>Submissions imported</dt><dd>@progress.SubmissionsImported</dd>
-                            <dt>Reviews applied</dt><dd>@progress.ReviewsApplied</dd>
+                            <dt>Groepen</dt><dd>@(progress.GroupName ?? "Alle groepen")</dd>
+                            <dt>Kanalen gelezen</dt><dd>@progress.ChannelsRead / @progress.ChannelsTotal</dd>
+                            <dt>Berichten</dt><dd>@progress.MessagesProcessed / @progress.MessagesFound</dd>
+                            <dt>Inzendingen geïmporteerd</dt><dd>@progress.SubmissionsImported</dd>
+                            <dt>Beoordelingen verwerkt</dt><dd>@progress.ReviewsApplied</dd>
                             @if (progress.BackupFolder != null)
                             {
-                                <dt>Backup</dt><dd class="font-monospace text-break">@progress.BackupFolder</dd>
+                                <dt>Back-up</dt><dd class="font-monospace text-break">@progress.BackupFolder</dd>
                             }
                         </dl>
 
                         @if (progress.ChannelProblems.Count > 0)
                         {
-                            <div class="fw-semibold text-danger mt-3 mb-1">Channels that could not be read (@progress.ChannelProblems.Count)</div>
+                            <div class="fw-semibold text-danger mt-3 mb-1">Kanalen die niet gelezen konden worden (@progress.ChannelProblems.Count)</div>
                             <ul class="list-unstyled mb-0 d-flex flex-column gap-2 channel-problems">
                                 @foreach (var problem in progress.ChannelProblems)
                                 {
@@ -100,13 +101,13 @@
 
                         @if (progress.Conflicts.Count > 0)
                         {
-                            <div class="fw-semibold text-warning mt-3 mb-1">Reviewers disagreed (@progress.Conflicts.Count)</div>
+                            <div class="fw-semibold text-warning mt-3 mb-1">Juryleden waren het oneens (@progress.Conflicts.Count)</div>
                             <IssueList Issues="progress.Conflicts" />
                         }
 
                         @if (progress.Skipped.Count > 0)
                         {
-                            <div class="fw-semibold text-white mt-3 mb-1">Not imported (@progress.Skipped.Count)</div>
+                            <div class="fw-semibold text-white mt-3 mb-1">Niet geïmporteerd (@progress.Skipped.Count)</div>
                             <IssueList Issues="progress.Skipped" />
                         }
                     </div>
@@ -122,15 +123,17 @@
     public Group? Group { get; set; }
 
     private RebuildProgress progress = new();
-    private DateTime since = DateTimeOffset.UtcNow.ToGameTime().Date;
+    private DateTime since;
     private string confirmation = "";
 
     private bool IsRunning => progress.State == RebuildState.Running;
 
-    private bool CanStart => RebuildService.IsAvailable && !IsRunning && confirmation.Trim() == "REBUILD";
+    private bool CanStart => RebuildService.IsAvailable && !IsRunning && confirmation.Trim() == "OPBOUWEN";
 
     protected override void OnInitialized()
     {
+        // From midnight, or from the event start when that is later: earlier messages never count
+        since = Runtime.NotBeforeEventStart(GameTime.FromGameTime(DateTimeOffset.UtcNow.ToGameTime().Date)).ToGameTime().DateTime;
         progress = RebuildService.Progress;
         RebuildService.Changed += OnProgressChanged;
     }

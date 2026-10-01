@@ -24,6 +24,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IAssignmentParser, AssignmentParser>();
         services.AddSingleton<IFileStorageService, LocalFileStorageService>();
         services.AddSingleton<ISubmissionChangeNotifier, SubmissionChangeNotifier>();
+        services.AddSingleton<SlackEventLog>();
         services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<ISlackRequestVerifier, SlackRequestVerifier>();
         services.AddScoped<ISlackEventDispatcher, SlackEventDispatcher>();
@@ -33,6 +34,13 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<SlackCatchUpService>();
         services.AddSingleton<ISlackCatchUpService>(sp => sp.GetRequiredService<SlackCatchUpService>());
         services.AddHostedService(sp => sp.GetRequiredService<SlackCatchUpService>());
+        services.AddSingleton<SlackLinks>();
+        services.AddSingleton<GameStartAnnouncer>();
+        services.AddHostedService(sp => sp.GetRequiredService<GameStartAnnouncer>());
+        services.AddSingleton<GameEndAnnouncer>();
+        services.AddHostedService(sp => sp.GetRequiredService<GameEndAnnouncer>());
+        services.AddSingleton<ReviewReminderService>();
+        services.AddHostedService(sp => sp.GetRequiredService<ReviewReminderService>());
 
         // Not the app-wide resilience handler: its 10 s attempt timeout breaks large video downloads,
         // and its retries could post a thread reply twice. SlackClient retries downloads itself.

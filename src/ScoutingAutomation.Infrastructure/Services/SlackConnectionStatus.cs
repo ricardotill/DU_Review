@@ -9,6 +9,18 @@ public enum SlackConnectionState
     Error
 }
 
+public static class SlackConnectionStateExtensions
+{
+    /// <summary>The Dutch name shown in the app.</summary>
+    public static string Label(this SlackConnectionState state) => state switch
+    {
+        SlackConnectionState.Connecting => "verbinden",
+        SlackConnectionState.Connected => "verbonden",
+        SlackConnectionState.Error => "fout",
+        _ => "uit"
+    };
+}
+
 /// <summary>
 /// Current state of the Socket Mode connection, for display in the app.
 /// </summary>

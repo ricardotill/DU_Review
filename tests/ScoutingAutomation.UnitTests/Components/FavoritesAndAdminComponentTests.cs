@@ -52,7 +52,7 @@ public class FavoriteComponentTests : PageTestBase
         cut.Find("button").Click();
 
         cut.Find("button").ClassList.Should().Contain("is-full");
-        cut.Find("button").GetAttribute("title").Should().Contain("Favorites are full");
+        cut.Find("button").GetAttribute("title").Should().Contain("Favorieten zijn vol");
     }
 
     [Fact]
@@ -84,11 +84,11 @@ public class FavoriteComponentTests : PageTestBase
         cut.Find("#favoritesOnly").Change(true);
 
         cut.FindAll("tbody tr").Should().ContainSingle().Which.TextContent.Should().Contain("DBU 1.pdf");
-        cut.Find("button.btn-scout-secondary").TextContent.Should().Contain("Clear filters");
+        cut.Find("button.btn-scout-secondary").TextContent.Should().Contain("Filters wissen");
 
         // Unstarring the last favorite empties the filtered list right away
         cut.Find("tbody tr .favorite-star").Click();
-        cut.WaitForAssertion(() => cut.Markup.Should().Contain("No submissions match these filters."));
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Geen inzendingen met deze filters."));
 
         cut.Find("button.btn-scout-secondary").Click();
         cut.FindAll("tbody tr").Should().HaveCount(5);
@@ -120,7 +120,7 @@ public class AdminOnlyComponentTests : PageTestBase
         var cut = Render<Home>();
 
         cut.FindAll("#manualMode").Should().BeEmpty();
-        cut.Find("span.badge-pending").TextContent.Should().Be("Manual mode");
+        cut.Find("span.badge-pending").TextContent.Should().Be("Handmatige modus");
     }
 
     [Fact]
@@ -131,7 +131,7 @@ public class AdminOnlyComponentTests : PageTestBase
         var cut = Render<Home>();
 
         cut.FindAll("#manualMode").Should().BeEmpty();
-        cut.Markup.Should().NotContain("Manual mode");
+        cut.Markup.Should().NotContain("Handmatige modus");
     }
 
     [Fact]
@@ -141,8 +141,8 @@ public class AdminOnlyComponentTests : PageTestBase
 
         var cut = Render<Configuration>();
 
-        cut.Markup.Should().Contain("Only admins can rebuild");
-        cut.Find("a[href=admin]").TextContent.Should().Be("Switch to admin mode");
+        cut.Markup.Should().Contain("Alleen beheerders kunnen opnieuw opbouwen");
+        cut.Find("a[href=admin]").TextContent.Should().Be("Naar beheermodus");
         cut.FindAll(".rebuild-panel").Should().BeEmpty();
     }
 
@@ -169,7 +169,7 @@ public class AdminOnlyComponentTests : PageTestBase
     {
         if (!admin) LogInAsJury();
 
-        var cut = Render<MainLayout>(p => p.Add(l => l.Body, (RenderFragment)(b => b.AddContent(0, "x"))));
+        var cut = RenderLayout("x");
 
         cut.FindAll(".top-row a[href=admin]").Any().Should().Be(admin);
         cut.FindAll("nav a[href=admin]").Should().ContainSingle();

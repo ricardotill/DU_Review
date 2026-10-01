@@ -17,8 +17,8 @@ public class GroupsPageTests : PageTestBase
 
         cut.WaitForAssertion(() => cut.FindAll("a.group-card").Should().HaveCount(3));
         var cards = cut.FindAll("a.group-card");
-        cards[0].TextContent.Should().Contain("De Wolven").And.Contain("#1").And.Contain("5").And.Contain("2 assignments submitted");
-        cards[1].TextContent.Should().Contain("De Bosuilen").And.Contain("1 assignment submitted");
+        cards[0].TextContent.Should().Contain("De Wolven").And.Contain("#1").And.Contain("5").And.Contain("2 opdrachten ingezonden");
+        cards[1].TextContent.Should().Contain("De Bosuilen").And.Contain("1 opdracht ingezonden");
         cards[2].GetAttribute("href").Should().Be($"groups/{Foxes.Id}");
         cards[2].QuerySelector(".font-monospace").Should().BeNull();
     }
@@ -28,7 +28,7 @@ public class GroupsPageTests : PageTestBase
     {
         var cut = Render<Groups>();
 
-        cut.WaitForAssertion(() => cut.Markup.Should().Contain("No groups configured."));
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Geen groepen ingesteld."));
     }
 }
 
@@ -46,10 +46,10 @@ public class GroupDetailPageTests : PageTestBase
     {
         Seed();
 
-        RenderGroup(Wolves.Id).Markup.Should().Contain("Rebuild from Slack");
+        RenderGroup(Wolves.Id).Markup.Should().Contain("Opnieuw opbouwen uit Slack");
 
         LogInAsJury();
-        RenderGroup(Wolves.Id).Markup.Should().NotContain("Rebuild from Slack");
+        RenderGroup(Wolves.Id).Markup.Should().NotContain("Opnieuw opbouwen uit Slack");
     }
 
     [Fact]
@@ -60,13 +60,13 @@ public class GroupDetailPageTests : PageTestBase
         var cut = RenderGroup(Wolves.Id);
 
         cut.Find("h1").TextContent.Should().Be("De Wolven");
-        cut.Markup.Should().Contain("Welpen horde").And.Contain("DWO").And.Contain("#C1").And.Contain("Rank #1 of 3").And.Contain("of 3 assignments");
+        cut.Markup.Should().Contain("Welpen horde").And.Contain("DWO").And.Contain("#C1").And.Contain("Plaats 1 van 3").And.Contain("van 3 opdrachten");
         cut.Find("a[href^='submissions?group=']").GetAttribute("href").Should().Be($"submissions?group={Wolves.Id}");
         cut.FindAll(".unresolved-panel").Should().BeEmpty();
 
         var rows = cut.FindAll("tbody tr");
         rows.Should().HaveCount(2);
-        rows[0].TextContent.Should().Contain("#1").And.Contain("+1").And.Contain("Approved");
+        rows[0].TextContent.Should().Contain("#1").And.Contain("+1").And.Contain("Goedgekeurd");
         rows[0].QuerySelectorAll("td")[3].TextContent.Should().Be("2");
         rows[0].QuerySelector("a.btn")!.GetAttribute("href").Should().Be($"submissions/{seeded.Approved.Id}");
         rows[1].TextContent.Should().Contain("+4");
@@ -79,7 +79,7 @@ public class GroupDetailPageTests : PageTestBase
 
         var cut = RenderGroup(Owls.Id);
 
-        cut.Find(".unresolved-panel").TextContent.Should().Contain("Uploads without assignment (1)").And.Contain("raadsel.m4a");
+        cut.Find(".unresolved-panel").TextContent.Should().Contain("Uploads zonder opdracht (1)").And.Contain("raadsel.m4a");
         cut.Find(".unresolved-panel a").GetAttribute("href").Should().Be($"submissions/{seeded.Unresolved.Id}");
         cut.Find("tbody tr td:nth-child(3)").TextContent.Trim().Should().Be("0");
     }
@@ -109,7 +109,7 @@ public class GroupDetailPageTests : PageTestBase
 
         var cut = RenderGroup(Foxes.Id);
 
-        cut.Markup.Should().Contain("This group has not submitted anything yet.");
+        cut.Markup.Should().Contain("Deze groep heeft nog niets ingezonden.");
         cut.FindAll("h1 + p").Should().BeEmpty("the Foxes have no description");
     }
 
@@ -119,7 +119,7 @@ public class GroupDetailPageTests : PageTestBase
         // A group only in the database, not yet part of the statistics run
         var cut = RenderGroup(Guid.NewGuid());
 
-        cut.Find("h1").TextContent.Should().Be("Group not found");
+        cut.Find("h1").TextContent.Should().Be("Groep niet gevonden");
     }
 
     [Fact]

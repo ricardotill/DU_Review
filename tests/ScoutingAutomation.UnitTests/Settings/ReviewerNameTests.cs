@@ -46,8 +46,8 @@ public class ReviewerNameTests : IDisposable
         var changes = 0;
         runtime.Changed += () => changes++;
 
-        runtime.SetReviewerName("U_ONBEKEND", "X").Should().Contain("not a reviewer");
-        runtime.SetReviewerName("U_PIET", new string('x', RuntimeSettingsService.MaxNameLength + 1)).Should().Contain("at most");
+        runtime.SetReviewerName("U_ONBEKEND", "X").Should().Contain("geen jurylid");
+        runtime.SetReviewerName("U_PIET", new string('x', RuntimeSettingsService.MaxNameLength + 1)).Should().Contain("maximaal");
         runtime.SetReviewerName("U_PIET", "Piet").Should().BeNull();
         runtime.SetReviewerName("U_PIET", "").Should().BeNull();
 
@@ -145,7 +145,7 @@ public class ReviewerNameFetcherTests : IDisposable
 
         result.Updated.Should().Be(1);
         result.KeptManual.Should().Be(1);
-        result.Problems.Should().ContainSingle().Which.Should().Contain("Slack does not know U_WEG");
+        result.Problems.Should().ContainSingle().Which.Should().Contain("Slack kent U_WEG niet");
         _runtime.NameOf("U_EVA").Should().Be("Eva");
         _runtime.NameOf("U_PIET").Should().Be("Pietje");
         _slack.Verify(s => s.GetUserNameAsync("U_PIET", It.IsAny<CancellationToken>()), Times.Never);
@@ -153,7 +153,7 @@ public class ReviewerNameFetcherTests : IDisposable
 
     [Theory]
     [InlineData("missing_scope", "users:read")]
-    [InlineData("ratelimited", "Could not fetch the name of U_EVA: ratelimited")]
+    [InlineData("ratelimited", "De naam van U_EVA kon niet worden opgehaald: ratelimited")]
     public async Task FetchAsync_Problems_ShouldExplain(string error, string expected)
     {
         _slack.Setup(s => s.GetUserNameAsync("U_EVA", It.IsAny<CancellationToken>())).ReturnsAsync(SlackUserLookup.Failed(error));

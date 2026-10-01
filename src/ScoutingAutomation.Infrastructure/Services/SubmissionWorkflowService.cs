@@ -6,6 +6,7 @@ using ScoutingAutomation.Domain.Entities;
 using ScoutingAutomation.Domain.Enums;
 using ScoutingAutomation.Domain.Exceptions;
 using ScoutingAutomation.Domain.Interfaces;
+using ScoutingAutomation.Domain.Models;
 
 namespace ScoutingAutomation.Infrastructure.Services;
 
@@ -49,8 +50,20 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
     public Task<ProcessSlackMessageResult> ProcessSlackMessageAsync(SlackEventItemDto messageEvent, CancellationToken ct = default) =>
         ProcessMessageAsync(messageEvent, silent: false, manual: _runtime.ManualMode, ct);
 
-    public Task<ProcessSlackMessageResult> ImportSlackMessageAsync(SlackEventItemDto message, CancellationToken ct = default) =>
-        ProcessMessageAsync(message, silent: true, manual: false, ct);
+    public Task<ProcessSlackMessageResult> ImportSlackMessageAsync(SlackEventItemDto message, CancellationToken ct = default)
+    {
+        // The bot blocked this attempt live, and nothing was stored then. A rebuild applies reviews only after
+        // importing every message, so it cannot see that the assignment was already done: the bot's emoji tells.
+        var blocked = _options.Value.SlackFeedback?.AlreadyCompleted?.Reaction?.Trim(':');
+        if (!string.IsNullOrWhiteSpace(blocked)
+            && (message.Reactions ?? new List<SlackMessageReactionDto>()).Any(r => string.Equals(r.Name?.Trim(':'), blocked, StringComparison.OrdinalIgnoreCase)))
+        {
+            _logger.LogInformation("Skipped message {Ts} in {Channel}: it was blocked live as a new attempt after approval", message.Ts, message.Channel);
+            return Task.FromResult(ProcessSlackMessageResult.Ignored("Nieuwe poging na goedkeuring; was al geweigerd"));
+        }
+
+        return ProcessMessageAsync(message, silent: true, manual: false, ct);
+    }
 
     /// <param name="silent">True when importing history: Slack already saw this message, so no feedback is posted again.</param>
     /// <param name="manual">Manual mode: only download and name the files; no submissions, reviews or Slack feedback.</param>
@@ -62,7 +75,14 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         if (string.IsNullOrWhiteSpace(channelId))
         {
             _logger.LogWarning("Incoming message missing channel ID");
-            return ProcessSlackMessageResult.Ignored("Message missing channel ID");
+            return ProcessSlackMessageResult.Ignored("Bericht zonder kanaal-ID");
+        }
+
+        // Messages from before the event never count; no feedback either, the game had not started
+        if (_runtime.IsBeforeEventStart(messageEvent.Ts))
+        {
+            _logger.LogDebug("Ignored message {Ts} in {ChannelId}: posted before the event start", messageEvent.Ts, channelId);
+            return ProcessSlackMessageResult.Ignored("Bericht van vóór de starttijd");
         }
 
         // FR-001: Ignore unknown channels
@@ -70,14 +90,14 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         if (group == null)
         {
             _logger.LogInformation("Ignored message from unknown channel {ChannelId}", channelId);
-            return ProcessSlackMessageResult.Ignored($"Channel {channelId} is not mapped to any configured scouting group");
+            return ProcessSlackMessageResult.Ignored($"Kanaal {channelId} hoort bij geen enkele groep");
         }
 
         // Reviewers post in group channels too, but their messages are never submissions
         if (_runtime.IsReviewer(messageEvent.User))
         {
             _logger.LogDebug("Ignored message from reviewer {User} in {ChannelId}", messageEvent.User, channelId);
-            return ProcessSlackMessageResult.Ignored($"User '{messageEvent.User}' is a reviewer");
+            return ProcessSlackMessageResult.Ignored($"Gebruiker '{messageEvent.User}' is jurylid");
         }
 
         // Check attachments
@@ -85,19 +105,30 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         if (files == null || files.Count == 0)
         {
             _logger.LogDebug("Message in {ChannelId} has no attached files, ignoring", channelId);
-            return ProcessSlackMessageResult.Ignored("No files attached to message");
+            return ProcessSlackMessageResult.Ignored("Geen bestanden in het bericht");
+        }
+
+        // Texts can be changed in the app while it runs
+        var feedback = _runtime.Feedback;
+
+        // A submission posted after the event ended never counts; the message's own time decides,
+        // so an edit or a catch-up after the end does not drop a submission that was on time
+        if (_runtime.IsAfterEventEnd(messageEvent.Ts))
+        {
+            _logger.LogInformation("Skipped message {Ts} in {Channel}: posted after the event end", messageEvent.Ts, channelId);
+            await SendFeedbackAsync(silent, feedback.TooLate, channelId, messageEvent.Ts, "{end}", _runtime.EventEnd?.ToGameTime().ToString("HH:mm"), ct);
+            return ProcessSlackMessageResult.Ignored("Bericht van na de eindtijd");
         }
 
         // FR-002: Parse assignment number
         // Without a clear assignment number nothing is stored: the scout is asked to post again
-        var feedback = _options.Value.SlackFeedback ?? new SlackFeedbackConfig();
         var parseResult = _assignmentParser.Parse(messageEvent.Text);
         if (!parseResult.Success || !parseResult.AssignmentNumber.HasValue)
         {
             _logger.LogWarning("Skipped message '{Text}' in channel {Channel}: {Reason}",
                 messageEvent.Text, channelId, parseResult.ErrorMessage);
             await SendFeedbackAsync(silent, feedback.MissingAssignmentNumber, channelId, messageEvent.Ts, null, null, ct);
-            return ProcessSlackMessageResult.Ignored(parseResult.ErrorMessage ?? "No assignment number found");
+            return ProcessSlackMessageResult.Ignored(parseResult.ErrorMessage ?? "Geen opdrachtnummer gevonden");
         }
 
         var assignmentNumber = parseResult.AssignmentNumber.Value;
@@ -105,7 +136,16 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         {
             _logger.LogWarning("Skipped message in {Channel}: unknown assignment {Number}", channelId, assignmentNumber);
             await SendFeedbackAsync(silent, feedback.UnknownAssignmentNumber, channelId, messageEvent.Ts, "{number}", assignmentNumber.ToString(), ct);
-            return ProcessSlackMessageResult.Ignored($"Assignment {assignmentNumber} does not exist");
+            return ProcessSlackMessageResult.Ignored($"Opdracht {assignmentNumber} bestaat niet");
+        }
+
+        // A group that already has this assignment approved or awesome may not try again for more points
+        if (!manual && await IsCompletedElsewhereAsync(group.Id, assignmentNumber, channelId, messageEvent.Ts, ct))
+        {
+            _logger.LogInformation("Skipped message {Ts} in {Channel}: group {Group} already completed assignment {Number}",
+                messageEvent.Ts, channelId, group.Name, assignmentNumber);
+            await SendFeedbackAsync(silent, feedback.AlreadyCompleted, channelId, messageEvent.Ts, "{number}", assignmentNumber.ToString(), ct);
+            return ProcessSlackMessageResult.Ignored($"Opdracht {assignmentNumber} is al goedgekeurd voor deze groep");
         }
 
         var createdIds = new List<Guid>();
@@ -215,6 +255,19 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         if (createdIds.Count > 0)
         {
             _changeNotifier.NotifyChanged();
+
+            // A rebuild imports old messages: those are not news
+            if (!silent)
+            {
+                _changeNotifier.NotifyCreated(new SubmissionCreatedNotification(
+                    group.Id,
+                    group.Name,
+                    group.Abbreviation,
+                    assignmentNumber,
+                    string.IsNullOrWhiteSpace(submitterName) ? messageEvent.User ?? "Onbekend" : submitterName,
+                    createdIds,
+                    postedAt));
+            }
         }
 
         if (unsupportedFileNames.Count > 0)
@@ -228,8 +281,8 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         }
 
         var summary = manual
-            ? $"Manual mode: saved {storedFileNames.Count} file(s)"
-            : $"Successfully registered {createdIds.Count} submission(s)";
+            ? $"Handmatige modus: {storedFileNames.Count} bestand(en) opgeslagen"
+            : $"{createdIds.Count} inzending(en) geregistreerd";
         return ProcessSlackMessageResult.Succeeded(createdIds, summary) with
         {
             UnsupportedFiles = unsupportedFileNames,
@@ -264,12 +317,12 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         var edited = changeEvent.Message;
         if (string.IsNullOrWhiteSpace(channelId) || string.IsNullOrWhiteSpace(edited?.Ts))
         {
-            return ProcessSlackMessageResult.Ignored("Edit event without channel or message");
+            return ProcessSlackMessageResult.Ignored("Bewerking zonder kanaal of bericht");
         }
 
         if (edited.BotId != null)
         {
-            return ProcessSlackMessageResult.Ignored("Edited message is from a bot");
+            return ProcessSlackMessageResult.Ignored("Bewerkt bericht is van een bot");
         }
 
         var files = edited.Files ?? new List<SlackFileItemDto>();
@@ -285,14 +338,14 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
             existing = existing.Except(removed).ToList();
             if (existing.Count == 0)
             {
-                return ProcessSlackMessageResult.Succeeded(Array.Empty<Guid>(), $"Removed {removed.Count} submission(s) of deleted files");
+                return ProcessSlackMessageResult.Succeeded(Array.Empty<Guid>(), $"{removed.Count} inzending(en) van verwijderde bestanden weggehaald");
             }
         }
 
         // Slack also sends an edit when a thread reply is added or a link preview appears: only text changes matter
         if (removed.Count == 0 && previous != null && edited.Text == previous.Text)
         {
-            return ProcessSlackMessageResult.Ignored("Message text did not change");
+            return ProcessSlackMessageResult.Ignored("Tekst van het bericht is niet veranderd");
         }
 
         // Ask the original message's question again; channel and time come from the event, not from the edit
@@ -331,13 +384,21 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
             // Keep the number that was valid; a typo in an edit must not lose a registered submission
             _logger.LogInformation("Edit of message {Ts} has no valid assignment number; submissions keep #{Number}",
                 message.Ts, submissions[0].AssignmentNumber);
-            return ProcessSlackMessageResult.Ignored("Edited text has no valid assignment number; nothing changed");
+            return ProcessSlackMessageResult.Ignored("Bewerkte tekst heeft geen geldig opdrachtnummer; er is niets veranderd");
         }
 
         var number = parsed.AssignmentNumber.Value;
         if (submissions.All(s => s.AssignmentNumber == number))
         {
-            return ProcessSlackMessageResult.Ignored($"Assignment #{number} did not change");
+            return ProcessSlackMessageResult.Ignored($"Opdracht {number} is niet veranderd");
+        }
+
+        // Moving to an assignment the group already completed would be a new attempt after approval
+        if (await IsCompletedElsewhereAsync(submissions[0].GroupId, number, submissions[0].SlackChannelId, message.Ts, ct))
+        {
+            _logger.LogInformation("Edit of message {Ts} not applied: the group already completed assignment {Number}", message.Ts, number);
+            await SendFeedbackAsync(silent: false, _runtime.Feedback.AlreadyCompleted, submissions[0].SlackChannelId, message.Ts, "{number}", number.ToString(), ct);
+            return ProcessSlackMessageResult.Ignored($"Opdracht {number} is al goedgekeurd voor deze groep; er is niets veranderd");
         }
 
         var supportedFiles = SupportedFiles(message.Files ?? new List<SlackFileItemDto>());
@@ -360,7 +421,20 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         }
 
         _changeNotifier.NotifyChanged();
-        return ProcessSlackMessageResult.Succeeded(Array.Empty<Guid>(), $"Moved {submissions.Count} submission(s) to assignment #{number}");
+        return ProcessSlackMessageResult.Succeeded(Array.Empty<Guid>(), $"{submissions.Count} inzending(en) verplaatst naar opdracht {number}");
+    }
+
+    /// <summary>
+    /// Whether blocking is on and the group has the assignment approved or awesome in another message.
+    /// Submissions of the message itself do not count, so an event delivered twice is not blocked by itself.
+    /// </summary>
+    private async Task<bool> IsCompletedElsewhereAsync(Guid groupId, int assignmentNumber, string channelId, string? messageTs, CancellationToken ct)
+    {
+        if (!_runtime.BlockAttemptsAfterApproval) return false;
+
+        var existing = await _submissionRepository.SearchSubmissionsAsync(new SubmissionFilter { GroupId = groupId, AssignmentNumber = assignmentNumber }, ct);
+        return existing.Any(s => s.Status is SubmissionStatus.Approved or SubmissionStatus.Awesome
+                                 && !(s.SlackChannelId == channelId && s.SlackMessageId == messageTs));
     }
 
     /// <summary>The scout fixed the number: the bot's question mark no longer applies.</summary>
@@ -382,17 +456,17 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         var messageTs = deleteEvent.DeletedTs ?? deleteEvent.PreviousMessage?.Ts;
         if (string.IsNullOrWhiteSpace(channelId) || string.IsNullOrWhiteSpace(messageTs))
         {
-            return ProcessSlackMessageResult.Ignored("Delete event without channel or message");
+            return ProcessSlackMessageResult.Ignored("Verwijdering zonder kanaal of bericht");
         }
 
         var submissions = await _submissionRepository.GetBySlackMessageIdAsync(channelId, messageTs, ct);
         if (submissions.Count == 0)
         {
-            return ProcessSlackMessageResult.Ignored($"No submission for channel {channelId}, ts {messageTs}");
+            return ProcessSlackMessageResult.Ignored($"Geen inzending voor kanaal {channelId}, ts {messageTs}");
         }
 
         await RemoveSubmissionsAsync(submissions, ct);
-        return ProcessSlackMessageResult.Succeeded(Array.Empty<Guid>(), $"Removed {submissions.Count} submission(s) of a deleted message");
+        return ProcessSlackMessageResult.Succeeded(Array.Empty<Guid>(), $"{submissions.Count} inzending(en) van een verwijderd bericht weggehaald");
     }
 
     /// <summary>Removes submissions whose message or file was deleted in Slack. Their files move to "_deleted".</summary>
@@ -415,12 +489,12 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         var reaction = reactionEvent.Reaction?.Trim(':').ToLowerInvariant();
         if (string.IsNullOrWhiteSpace(reaction))
         {
-            return ProcessSlackReactionResult.Ignored("Empty reaction emoji");
+            return ProcessSlackReactionResult.Ignored("Lege emoji");
         }
 
         if (_runtime.ManualMode)
         {
-            return ProcessSlackReactionResult.Ignored("Manual mode: reactions are not processed");
+            return ProcessSlackReactionResult.Ignored("Handmatige modus: reacties worden niet verwerkt");
         }
 
         // Only reactions from configured reviewers may change a submission's status
@@ -428,7 +502,7 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         if (!_runtime.IsReviewer(reviewer))
         {
             _logger.LogInformation("Ignored reaction '{Reaction}' from non-reviewer {User}", reaction, reviewer);
-            return ProcessSlackReactionResult.Ignored($"User '{reviewer}' is not a configured reviewer");
+            return ProcessSlackReactionResult.Ignored($"Gebruiker '{reviewer}' is geen jurylid");
         }
 
         var targetChannel = reactionEvent.Item?.Channel;
@@ -436,7 +510,7 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
 
         if (string.IsNullOrWhiteSpace(targetChannel) || string.IsNullOrWhiteSpace(targetTs))
         {
-            return ProcessSlackReactionResult.Failed("Reaction event missing target channel or timestamp");
+            return ProcessSlackReactionResult.Failed("Reactie zonder kanaal of tijdstempel van het bericht");
         }
 
         // FR-007: Review status reactions mapping
@@ -444,7 +518,7 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         if (!targetStatus.HasValue)
         {
             _logger.LogDebug("Reaction '{Reaction}' is not mapped to any review status", reaction);
-            return ProcessSlackReactionResult.Ignored($"Reaction '{reaction}' has no review mapping configured");
+            return ProcessSlackReactionResult.Ignored($"Emoji '{reaction}' is geen beoordeling");
         }
 
         // A message can carry several files: the reaction reviews all of them
@@ -452,7 +526,7 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         if (submissions.Count == 0)
         {
             _logger.LogWarning("No submission found matching Slack channel {Channel} and message ts {Ts}", targetChannel, targetTs);
-            return ProcessSlackReactionResult.Failed($"Submission not found for channel {targetChannel}, ts {targetTs}");
+            return ProcessSlackReactionResult.Failed($"Geen inzending voor kanaal {targetChannel}, ts {targetTs}");
         }
 
         // Same rule as removing an emoji and rebuilding: when reviewers disagree, the best review counts,
@@ -523,7 +597,7 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
             .ToList();
         if (takenBack.Count == 0) return false;
 
-        await ApplyStatusAsync(takenBack, SubmissionStatus.Pending, CatchUpReviewer, emoji: null, ct, notes: "Review emoji removed");
+        await ApplyStatusAsync(takenBack, SubmissionStatus.Pending, CatchUpReviewer, emoji: null, ct, notes: "Beoordelingsemoji weggehaald");
         return true;
     }
 
@@ -535,24 +609,24 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
 
         if (_runtime.ManualMode)
         {
-            return ProcessSlackReactionResult.Ignored("Manual mode: reactions are not processed");
+            return ProcessSlackReactionResult.Ignored("Handmatige modus: reacties worden niet verwerkt");
         }
 
         // Only a reviewer taking back a review emoji can change a status
         if (!_runtime.IsReviewer(reactionEvent.User) || ReviewPolicy.StatusFor(_options.Value, reaction) == null)
         {
-            return ProcessSlackReactionResult.Ignored($"Removing '{reaction}' by '{reactionEvent.User}' does not affect reviews");
+            return ProcessSlackReactionResult.Ignored($"Weghalen van '{reaction}' door '{reactionEvent.User}' verandert geen beoordeling");
         }
 
         if (string.IsNullOrWhiteSpace(channel) || string.IsNullOrWhiteSpace(messageTs))
         {
-            return ProcessSlackReactionResult.Failed("Reaction event missing target channel or timestamp");
+            return ProcessSlackReactionResult.Failed("Reactie zonder kanaal of tijdstempel van het bericht");
         }
 
         var submissions = await _submissionRepository.GetBySlackMessageIdAsync(channel, messageTs, ct);
         if (submissions.Count == 0)
         {
-            return ProcessSlackReactionResult.Ignored($"No submission for channel {channel}, ts {messageTs}");
+            return ProcessSlackReactionResult.Ignored($"Geen inzending voor kanaal {channel}, ts {messageTs}");
         }
 
         // Other reviewers may still have reacted: what counts is what is on the message now
@@ -560,19 +634,19 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         if (remaining == null)
         {
             _logger.LogWarning("Could not read reactions on message {Ts} in {Channel}; status left unchanged", messageTs, channel);
-            return ProcessSlackReactionResult.Failed("Current reactions could not be read from Slack; status unchanged");
+            return ProcessSlackReactionResult.Failed("Reacties konden niet uit Slack worden gelezen; status ongewijzigd");
         }
 
         var review = ChooseReview(remaining);
         var newStatus = review?.Status ?? SubmissionStatus.Pending;
         if (submissions.All(s => s.Status == newStatus))
         {
-            return ProcessSlackReactionResult.Ignored($"Status stays {newStatus}");
+            return ProcessSlackReactionResult.Ignored($"Status blijft {newStatus.StatusLabel()}");
         }
 
         if (review == null)
         {
-            await ApplyStatusAsync(submissions, SubmissionStatus.Pending, reactionEvent.User!, reaction, ct, notes: "Review emoji removed");
+            await ApplyStatusAsync(submissions, SubmissionStatus.Pending, reactionEvent.User!, reaction, ct, notes: "Beoordelingsemoji weggehaald");
         }
         else
         {

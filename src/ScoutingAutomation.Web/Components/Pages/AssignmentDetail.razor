@@ -1,29 +1,39 @@
 @page "/assignments/{Number:int}"
 @rendermode InteractiveServer
 @inherits LiveComponentBase
+@inject NavigationManager Navigation
 
-<PageTitle>Assignment #@Number - Scouting Regional Game</PageTitle>
+<PageTitle>Opdracht @Number - DU Review</PageTitle>
 
-<PageHeader Title="@($"Assignment #{Number}")" BackHref="assignments" BackText="Assignments">
+<PageHeader Title="@($"Opdracht {Number}")" BackHref="assignments" BackText="Opdrachten">
     <Details>
         <div class="d-flex gap-2 flex-wrap mt-2">
             @if (assignment != null)
             {
-                <span class="badge badge-approved">@assignment.StandardPoints pts approved</span>
-                <span class="badge badge-awesome">@assignment.AwesomePoints pts awesome</span>
-                <span class="badge bg-secondary">@submittedGroups.Count / @groupResults.Count groups submitted</span>
+                <span class="badge badge-approved">@assignment.StandardPoints pnt goedgekeurd</span>
+                <span class="badge badge-awesome">@assignment.AwesomePoints pnt awesome</span>
+                <span class="badge bg-secondary">@submittedGroups.Count / @groupResults.Count groepen ingezonden</span>
             }
             else if (loaded)
             {
-                <span class="badge bg-danger">Not in the assignment list</span>
+                <span class="badge bg-danger">Staat niet in de opdrachtenlijst</span>
             }
         </div>
     </Details>
     <Actions>
-        <a href="assignments/@previousNumber" class="btn btn-scout-secondary @(previousNumber == null ? "disabled" : "")" title="Previous assignment" aria-label="Previous assignment">
+        <a href="slideshow?assignment=@Number" class="btn btn-scout-secondary d-flex align-items-center gap-1" title="Diavoorstelling van deze opdracht">
+            <i class="bi bi-play-btn"></i>
+            <span class="d-none d-md-inline">Diavoorstelling</span>
+        </a>
+        <a href="@AssignmentHref(nextOpenNumber)" data-hotkey="n" class="btn btn-scout-secondary d-flex align-items-center gap-1 next-open @(nextOpenNumber == null ? "disabled" : "")"
+           title="Volgende opdracht met open inzendingen (N)">
+            <i class="bi bi-inbox"></i>
+            <span class="d-none d-md-inline">Volgende met open</span>
+        </a>
+        <a href="@AssignmentHref(previousNumber)" data-hotkey="ArrowLeft" class="btn btn-scout-secondary @(previousNumber == null ? "disabled" : "")" title="Vorige opdracht (←)" aria-label="Vorige opdracht">
             <i class="bi bi-chevron-left"></i>
         </a>
-        <a href="assignments/@nextNumber" class="btn btn-scout-secondary @(nextNumber == null ? "disabled" : "")" title="Next assignment" aria-label="Next assignment">
+        <a href="@AssignmentHref(nextNumber)" data-hotkey="ArrowRight" class="btn btn-scout-secondary @(nextNumber == null ? "disabled" : "")" title="Volgende opdracht (→)" aria-label="Volgende opdracht">
             <i class="bi bi-chevron-right"></i>
         </a>
     </Actions>
@@ -37,11 +47,17 @@
 }
 else
 {
+    <div class="form-check form-switch mb-3">
+        <input class="form-check-input" type="checkbox" role="switch" id="openOnly" checked="@OpenOnly" @onchange="OnOpenOnlyChanged" />
+        <label class="form-check-label text-white-50" for="openOnly">Alleen open inzendingen</label>
+        <span class="text-muted small ms-2 d-none d-md-inline">Sneltoetsen: ← → vorige en volgende opdracht, N volgende met open</span>
+    </div>
+
     @if (submittedGroups.Count == 0)
     {
         <div class="glass-panel empty-state mb-4">
             <i class="bi bi-inbox"></i>
-            No group has submitted this assignment yet.
+            @(OpenOnly ? "Geen open inzendingen voor deze opdracht." : "Nog geen groep heeft deze opdracht ingezonden.")
         </div>
     }
 
@@ -90,10 +106,14 @@ else
                                     <StatusBadge Status="@sub.Status" />
                                     @if (counts && result.Submissions.Count > 1)
                                     {
-                                        <span class="text-success small">counts</span>
+                                        <span class="text-success small">telt</span>
                                     }
                                 </div>
                             </a>
+                            @if (sub.Status is SubmissionStatus.Pending or SubmissionStatus.Received && IsFirstOfMessage(result, sub))
+                            {
+                                <SlackMessageLinks ChannelId="@sub.SlackChannelId" MessageTs="@sub.SlackMessageId" Compact="true" />
+                            }
                             <FavoriteStar Submission="sub" />
                             </div>
                         }
@@ -103,10 +123,10 @@ else
         }
     </div>
 
-    @if (missingGroups.Count > 0)
+    @if (missingGroups.Count > 0 && !OpenOnly)
     {
         <div class="glass-panel p-3 mt-4">
-            <span class="text-secondary small fw-semibold me-2">Not submitted:</span>
+            <span class="text-secondary small fw-semibold me-2">Niet ingezonden:</span>
             @foreach (var result in missingGroups)
             {
                 <a href="groups/@result.Group.Id" class="badge bg-secondary text-decoration-none me-1">@result.Group.Name</a>
@@ -119,6 +139,10 @@ else
     [Parameter]
     public int Number { get; set; }
 
+    /// <summary>Only groups with open submissions, and only those submissions: for reviewing one assignment in one pass.</summary>
+    [SupplyParameterFromQuery(Name = "open")]
+    public bool OpenOnly { get; set; }
+
     private sealed record GroupResult(Group Group, List<Submission> Submissions, SubmissionStatus? BestStatus, Guid? CountingSubmissionId);
 
     private bool loaded;
@@ -128,6 +152,7 @@ else
     private List<GroupResult> missingGroups = new();
     private int? previousNumber;
     private int? nextNumber;
+    private int? nextOpenNumber;
 
     private int? loadedNumber;
 
@@ -150,8 +175,15 @@ else
         previousNumber = assignments.Where(a => a.Number < Number).Select(a => (int?)a.Number).LastOrDefault();
         nextNumber = assignments.Where(a => a.Number > Number).Select(a => (int?)a.Number).FirstOrDefault();
 
+        var repository = services.GetRequiredService<ISubmissionRepository>();
         var groups = await services.GetRequiredService<IGroupRepository>().GetAllAsync();
-        var submissions = await services.GetRequiredService<ISubmissionRepository>().SearchSubmissionsAsync(new SubmissionFilter { AssignmentNumber = Number });
+        var submissions = await repository.SearchSubmissionsAsync(new SubmissionFilter { AssignmentNumber = Number });
+
+        // The next assignment with something to review, starting again at the first one after the last
+        var openNumbers = (await repository.SearchSubmissionsAsync(new SubmissionFilter { Status = SubmissionStatus.Pending }))
+            .Select(s => s.AssignmentNumber).OfType<int>().Where(n => n != Number).Distinct().Order().ToList();
+        nextOpenNumber = openNumbers.Where(n => n > Number).Select(n => (int?)n).FirstOrDefault()
+                         ?? openNumbers.Select(n => (int?)n).FirstOrDefault();
 
         groupResults = groups
             .Select(g =>
@@ -170,8 +202,25 @@ else
             .OrderBy(r => r.Group.Name)
             .ToList();
 
-        submittedGroups = groupResults.Where(r => r.Submissions.Count > 0).ToList();
+        submittedGroups = OpenOnly
+            ? groupResults
+                .Select(r => r with { Submissions = r.Submissions.Where(IsOpen).ToList() })
+                .Where(r => r.Submissions.Count > 0)
+                .ToList()
+            : groupResults.Where(r => r.Submissions.Count > 0).ToList();
         missingGroups = groupResults.Where(r => r.Submissions.Count == 0).ToList();
         loaded = true;
     }
+
+    private static bool IsOpen(Submission s) => s.Status is SubmissionStatus.Pending or SubmissionStatus.Received;
+
+    /// <summary>One emoji reviews a whole message, so only its first file gets the Slack link.</summary>
+    private static bool IsFirstOfMessage(GroupResult result, Submission sub) =>
+        result.Submissions.First(s => s.SlackChannelId == sub.SlackChannelId && s.SlackMessageId == sub.SlackMessageId).Id == sub.Id;
+
+    /// <summary>Another assignment's page, keeping the open-only choice.</summary>
+    private string AssignmentHref(int? number) => number == null ? "" : OpenOnly ? $"assignments/{number}?open=true" : $"assignments/{number}";
+
+    private void OnOpenOnlyChanged(ChangeEventArgs e) =>
+        Navigation.NavigateTo(Navigation.GetUriWithQueryParameter("open", e.Value is true ? true : null));
 }

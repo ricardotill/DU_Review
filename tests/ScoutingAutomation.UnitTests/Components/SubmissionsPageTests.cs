@@ -33,9 +33,9 @@ public class SubmissionsPageTests : PageTestBase
         var cut = RenderList();
 
         cut.WaitForAssertion(() => FileNames(cut).Should().Equal("raadsel.m4a", "DBU 1.pdf", "DWO 1.jpg", "DWO 2.mp4", "DWO 1.jpg"));
-        cut.Find("h2").TextContent.Should().Contain("5 submissions");
+        cut.Find("h2").TextContent.Should().Contain("5 inzendingen");
         var rows = cut.FindAll("tbody tr");
-        rows[0].TextContent.Should().Contain("Unresolved").And.Contain("No valid assignment number");
+        rows[0].TextContent.Should().Contain("Onopgelost").And.Contain("No valid assignment number");
         rows[0].TextContent.Should().Contain("100 B");
         // Sizes follow the current culture (2.0 or 2,0)
         rows[1].TextContent.Should().MatchRegex(@"2[.,]0 KB");
@@ -52,7 +52,7 @@ public class SubmissionsPageTests : PageTestBase
         Seed();
         var cut = RenderList();
         cut.FindAll("tbody tr").Should().HaveCount(5);
-        cut.FindAll("button").Should().NotContain(b => b.TextContent.Contains("Clear filters"));
+        cut.FindAll("button").Should().NotContain(b => b.TextContent.Contains("Filters wissen"));
 
         var selects = cut.FindAll("select");
         selects[0].Change(Wolves.Id.ToString());
@@ -101,8 +101,8 @@ public class SubmissionsPageTests : PageTestBase
 
         cut.FindAll("input[type=text]")[0].Input("bestaat-niet");
 
-        cut.WaitForAssertion(() => cut.Markup.Should().Contain("No submissions match these filters."));
-        cut.Find("h2").TextContent.Should().Contain("0 submissions");
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Geen inzendingen met deze filters."));
+        cut.Find("h2").TextContent.Should().Contain("0 inzendingen");
     }
 
     [Fact]
@@ -120,7 +120,7 @@ public class SubmissionsPageTests : PageTestBase
 
         var cut = RenderList();
 
-        cut.WaitForAssertion(() => cut.Find("h2").TextContent.Should().Contain("1 submission").And.NotContain("1 submissions"));
+        cut.WaitForAssertion(() => cut.Find("h2").TextContent.Should().Contain("1 inzending").And.NotContain("1 inzendingen"));
         FileNames(cut).Should().Equal("a.jpg");
     }
 }

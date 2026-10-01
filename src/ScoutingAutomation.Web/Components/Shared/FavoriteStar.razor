@@ -15,8 +15,8 @@
     private bool full;
 
     private string Label => full
-        ? $"Favorites are full ({FavoritesService.MaxFavorites}); remove one first"
-        : isFavorite ? "Remove from favorites" : "Add to favorites";
+        ? $"Favorieten zijn vol ({FavoritesService.MaxFavorites}); haal er eerst een weg"
+        : isFavorite ? "Uit favorieten halen" : "Aan favorieten toevoegen";
 
     protected override void OnInitialized() => Favorites.Changed += OnChanged;
 

@@ -20,12 +20,12 @@ public class ManualModeComponentTests : PageTestBase
         var cut = Render<Home>();
         cut.WaitForAssertion(() => cut.FindAll(".spinner-border").Should().BeEmpty());
         cut.Find("#manualMode").HasAttribute("checked").Should().BeFalse();
-        cut.Markup.Should().NotContain("Manual mode is on");
+        cut.Markup.Should().NotContain("Handmatige modus staat aan");
 
         cut.Find("#manualMode").Change(true);
 
         Runtime.ManualMode.Should().BeTrue();
-        cut.Markup.Should().Contain("Manual mode is on");
+        cut.Markup.Should().Contain("Handmatige modus staat aan");
         cut.Find("#manualMode").HasAttribute("checked").Should().BeTrue();
 
         cut.Find("#manualMode").Change(false);
@@ -39,7 +39,7 @@ public class ManualModeComponentTests : PageTestBase
 
         Runtime.SetManualMode(true);
 
-        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Manual mode is on"));
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Handmatige modus staat aan"));
     }
 
     [Fact]
@@ -49,7 +49,7 @@ public class ManualModeComponentTests : PageTestBase
 
         var cut = Render<Home>();
 
-        cut.Markup.Should().Contain("Manual mode is on");
+        cut.Markup.Should().Contain("Handmatige modus staat aan");
     }
 
     [Fact]
@@ -70,9 +70,9 @@ public class ManualModeComponentTests : PageTestBase
     {
         Runtime.SetManualMode(manual);
 
-        var cut = Render<MainLayout>(p => p.Add(l => l.Body, (RenderFragment)(b => b.AddContent(0, "x"))));
+        var cut = RenderLayout("x");
 
-        cut.Markup.Contains("Manual mode").Should().Be(manual);
+        cut.Markup.Contains("Handmatige modus").Should().Be(manual);
     }
 
     [Fact]
@@ -82,7 +82,7 @@ public class ManualModeComponentTests : PageTestBase
 
         var cut = Render<Configuration>();
 
-        cut.FindAll("dt").Single(d => d.TextContent == "Manual mode").NextElementSibling!.TextContent
-            .Should().Contain("On").And.Contain("default off");
+        cut.FindAll("dt").Single(d => d.TextContent == "Handmatige modus").NextElementSibling!.TextContent
+            .Should().Contain("Aan").And.Contain("standaard uit");
     }
 }

@@ -1,0 +1,9 @@
+.announcement-panel summary {
+    cursor: pointer;
+    user-select: none;
+}
+
+.announcement-preview {
+    white-space: pre-wrap;
+    font-family: inherit;
+}

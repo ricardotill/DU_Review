@@ -1,6 +1,3 @@
-using System.Net;
-using System.Text;
-using System.Text.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
@@ -17,85 +14,63 @@ namespace ScoutingAutomation.IntegrationTests.Workflow;
 /// </summary>
 public class ReactionRemovedIntegrationTests : IClassFixture<WebApplicationFactory<Program>>, IAsyncLifetime
 {
-    private const string Secret = "removal-secret";
-    private readonly FakeSlack _slack = new();
+    private const string Channel = "C03WOLVEN";
+    private readonly FakeSlackApi _slack = new();
     private readonly TestApp _app;
 
     public ReactionRemovedIntegrationTests(WebApplicationFactory<Program> factory)
     {
-        _app = new TestApp(factory,
-            new Dictionary<string, string?>
-            {
-                ["Scouting:Slack:SimulationMode"] = "false",
-                ["Scouting:Slack:SigningSecret"] = Secret,
-                ["Scouting:Slack:BotToken"] = "xoxb-test",
-                ["Scouting:Reviewers:0"] = "U_JURY"
-            },
-            services => services.AddHttpClient<ISlackClient, SlackClient>().ConfigurePrimaryHttpMessageHandler(() => _slack));
+        _app = TestApp.Live(factory, _slack);
     }
 
     public Task InitializeAsync() => Task.CompletedTask;
-
-    private static string Event(object ev) => JsonSerializer.Serialize(new { type = "event_callback", @event = ev });
 
     [Fact]
     public async Task RemovingTheOnlyReview_ShouldMakeSubmissionPendingAgain()
     {
         using var client = _app.CreateClient();
-        var ts = $"{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}.000200";
-        var item = new { type = "message", channel = "C03WOLVEN", ts };
+        var ts = SlackEvents.Ts();
 
-        (await client.SendAsync(TestApp.SignedSlackRequest(Secret, Event(new
-        {
-            type = "message", channel = "C03WOLVEN", user = "U_SCOUT", text = "Opdracht 9", ts,
-            files = new[] { new { name = "foto.jpg", mimetype = "image/jpeg", size = 3, url_private = "https://files.slack.com/foto.jpg" } }
-        })))).StatusCode.Should().Be(HttpStatusCode.OK);
-        (await client.SendAsync(TestApp.SignedSlackRequest(Secret, Event(new { type = "reaction_added", user = "U_JURY", reaction = "thumbsup", item })))).EnsureSuccessStatusCode();
+        await _app.SendEventAsync(client, SlackEvents.Message(Channel, ts, "Opdracht 9", SlackEvents.File("foto.jpg")));
+        await _app.SendEventAsync(client, SlackEvents.Reaction(Channel, ts, "thumbsup"));
 
         var approved = await Single(ts);
         approved.Status.Should().Be(SubmissionStatus.Approved);
         approved.StoragePath.Should().Contain(Path.Combine("de-wolven", "approved"));
 
         // Slack now shows no reviewer reactions on the message
-        _slack.RemainingReactions = """[{"name":"eyes","users":["U_SCOUT"],"count":1}]""";
-        (await client.SendAsync(TestApp.SignedSlackRequest(Secret, Event(new { type = "reaction_removed", user = "U_JURY", reaction = "thumbsup", item })))).EnsureSuccessStatusCode();
+        _slack.Reactions[FakeSlackApi.Key(Channel, ts)] = new[] { SlackEvents.Reacted("eyes", SlackEvents.Scout) };
+        await _app.SendEventAsync(client, SlackEvents.ReactionRemoved(Channel, ts, "thumbsup"));
 
         var pending = await Single(ts);
         pending.Status.Should().Be(SubmissionStatus.Pending);
         Path.GetDirectoryName(pending.StoragePath).Should().Be(Path.Combine(_app.StorageRoot, "de-wolven"));
         File.Exists(pending.StoragePath).Should().BeTrue();
-        pending.Reviews.First().Notes.Should().Be("Review emoji removed");
-        _slack.ReactionReads.Should().Be(2, "both adding and removing a review read what is on the message");
+        pending.Reviews.First().Notes.Should().Be("Beoordelingsemoji weggehaald");
+        _slack.Calls("reactions.get").Should().HaveCount(2, "both adding and removing a review read what is on the message");
+    }
+
+    [Fact]
+    public async Task UnreadableReactions_ShouldLeaveTheStatusAlone()
+    {
+        using var client = _app.CreateClient();
+        var ts = SlackEvents.Ts();
+        await _app.SendEventAsync(client, SlackEvents.Message(Channel, ts, "Opdracht 10", SlackEvents.File("foto.jpg")));
+        await _app.SendEventAsync(client, SlackEvents.Reaction(Channel, ts, "heart"));
+        _slack.Errors["reactions.get"] = "ratelimited";
+
+        var result = await _app.SendEventAsync(client, SlackEvents.ReactionRemoved(Channel, ts, "heart"));
+
+        result.GetProperty("isFailure").GetBoolean().Should().BeTrue();
+        (await Single(ts)).Status.Should().Be(SubmissionStatus.Awesome);
+        using var browser = await _app.CreateLoggedInClientAsync();
+        (await browser.GetStringAsync("/events")).Should().Contain("Reacties konden niet uit Slack worden gelezen");
     }
 
     private async Task<Domain.Entities.Submission> Single(string ts) =>
-        (await _app.GetAsync(sp => sp.GetRequiredService<ISubmissionRepository>().GetBySlackMessageIdAsync("C03WOLVEN", ts))).Single();
+        (await _app.GetAsync(sp => sp.GetRequiredService<ISubmissionRepository>().GetBySlackMessageIdAsync(Channel, ts))).Single();
 
     public async Task DisposeAsync() => await _app.DisposeAsync();
-
-    private sealed class FakeSlack : HttpMessageHandler
-    {
-        public string RemainingReactions { get; set; } = "[]";
-        public int ReactionReads { get; private set; }
-
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
-        {
-            var url = request.RequestUri!.ToString();
-            if (url.StartsWith("https://files.slack.com/"))
-            {
-                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(new byte[] { 1, 2, 3 }) });
-            }
-
-            var body = "{\"ok\":true}";
-            if (url.Contains("reactions.get"))
-            {
-                ReactionReads++;
-                body = "{\"ok\":true,\"type\":\"message\",\"message\":{\"reactions\":" + RemainingReactions + "}}";
-            }
-
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") });
-        }
-    }
 }
 
 /// <summary>

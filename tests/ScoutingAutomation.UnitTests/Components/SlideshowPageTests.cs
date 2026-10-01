@@ -27,7 +27,7 @@ public class SlideshowPageTests : PageTestBase
     }
 
     private static void Start(IRenderedComponent<Slideshow> cut) =>
-        cut.FindAll("button").First(b => b.TextContent.Contains("Start slideshow")).Click();
+        cut.FindAll("button").First(b => b.TextContent.Contains("Diavoorstelling starten")).Click();
 
     private static string Caption(IRenderedComponent<Slideshow> cut) => cut.Find(".caption").TextContent;
 
@@ -51,16 +51,16 @@ public class SlideshowPageTests : PageTestBase
         Start(cut);
 
         cut.Find(".media video").GetAttribute("src").Should().Be($"/api/files/{seeded.Awesome.Id}");
-        Caption(cut).Should().Contain("Assignment #2").And.Contain("De Wolven");
+        Caption(cut).Should().Contain("Opdracht 2").And.Contain("De Wolven");
         cut.Find(".position").TextContent.Should().Be("1 / 3");
 
-        cut.Find("button[aria-label=Next]").Click();
+        cut.Find("button[aria-label=Volgende]").Click();
         cut.Find(".media img").GetAttribute("src").Should().Be($"/api/files/{seeded.Approved.Id}");
-        Caption(cut).Should().Contain("Assignment #1");
+        Caption(cut).Should().Contain("Opdracht 1");
 
-        cut.Find("button[aria-label=Next]").Click();
+        cut.Find("button[aria-label=Volgende]").Click();
         cut.Find(".media audio").GetAttribute("src").Should().Be($"/api/files/{seeded.Unresolved.Id}");
-        cut.Find(".audio-card").TextContent.Should().Contain("De Bosuilen").And.Contain("Unknown assignment");
+        cut.Find(".audio-card").TextContent.Should().Contain("De Bosuilen").And.Contain("Onbekende opdracht");
     }
 
     [Fact]
@@ -70,14 +70,14 @@ public class SlideshowPageTests : PageTestBase
         var cut = RenderSlideshow();
         Start(cut);
 
-        cut.Find("button[aria-label=Previous]").Click();
+        cut.Find("button[aria-label=Vorige]").Click();
         cut.Find(".position").TextContent.Should().Be("3 / 3");
-        cut.Find("button[aria-label=Next]").Click();
+        cut.Find("button[aria-label=Volgende]").Click();
         cut.Find(".media video").GetAttribute("src").Should().Be($"/api/files/{seeded.Awesome.Id}");
 
         cut.Find(".loop-toggle input").Change(false);
 
-        cut.Find("button[aria-label=Previous]").HasAttribute("disabled").Should().BeTrue();
+        cut.Find("button[aria-label=Vorige]").HasAttribute("disabled").Should().BeTrue();
     }
 
     [Fact]
@@ -106,7 +106,7 @@ public class SlideshowPageTests : PageTestBase
         cut.Find(".position").TextContent.Should().Be("1 / 3");
 
         cut.Find(".stage").KeyDown(key: " ");
-        cut.Find("button[aria-label=Play]").Should().NotBeNull();
+        cut.Find("button[aria-label=Afspelen]").Should().NotBeNull();
 
         cut.Find(".stage").KeyDown(key: "Escape");
         cut.FindAll(".stage").Should().BeEmpty();
@@ -135,8 +135,8 @@ public class SlideshowPageTests : PageTestBase
 
         var cut = RenderSlideshow("favorites=true");
 
-        cut.Markup.Should().Contain("No favorite photos, videos or audio yet.");
-        cut.FindAll("button").First(b => b.TextContent.Contains("Start slideshow")).HasAttribute("disabled").Should().BeTrue();
+        cut.Markup.Should().Contain("Nog geen favoriete foto's, video's of geluidsopnames met deze keuzes.");
+        cut.FindAll("button").First(b => b.TextContent.Contains("Diavoorstelling starten")).HasAttribute("disabled").Should().BeTrue();
     }
 
     [Fact]

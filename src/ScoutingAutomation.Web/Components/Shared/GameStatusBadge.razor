@@ -1,0 +1,79 @@
+@implements IDisposable
+@inject RuntimeSettingsService Runtime
+@inject TimeProvider Time
+
+@* The state of the game in the top bar: waiting for the start, busy, or ended. Changes by itself at the start and end times. *@
+@switch (State)
+{
+    case GameState.Waiting:
+        <a href="configuration" class="top-tag badge-pending game-status game-waiting" title="Inzendingen van voor de start tellen niet mee">
+            <i class="bi bi-hourglass-split"></i> Wacht op start · @Runtime.EventStart!.Value.ToGameTime().ToString("HH:mm")
+        </a>
+        break;
+    case GameState.Busy:
+        <a href="configuration" class="top-tag badge-approved game-status game-busy" title="Het spel loopt">
+            <i class="bi bi-play-fill"></i> Spel bezig@(Runtime.EventEnd is { } end ? $" · tot {end.ToGameTime():HH:mm}" : "")
+        </a>
+        break;
+    case GameState.Ended:
+        <a href="configuration" class="top-tag badge-rejected game-status game-ended" title="Inzendingen tellen niet meer mee">
+            <i class="bi bi-stopwatch-fill"></i> Spel afgelopen om @Runtime.EventEnd!.Value.ToGameTime().ToString("HH:mm")
+        </a>
+        break;
+}
+
+@code {
+    private enum GameState { None, Waiting, Busy, Ended }
+
+    private ITimer? timer;
+
+    // Without a start or end time there is no game to show
+    private GameState State
+    {
+        get
+        {
+            var now = Time.GetUtcNow();
+            if (Runtime.EventStart is null && Runtime.EventEnd is null) return GameState.None;
+            if (Runtime.EventEnd is { } end && now >= end) return GameState.Ended;
+            if (Runtime.EventStart is { } start && now < start) return GameState.Waiting;
+            return GameState.Busy;
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        Runtime.Changed += OnRuntimeChanged;
+        Schedule();
+    }
+
+    // One timer for the next start or end; set again when it fires or the times change
+    private void Schedule()
+    {
+        timer?.Dispose();
+        timer = null;
+        var now = Time.GetUtcNow();
+        var next = new[] { Runtime.EventStart, Runtime.EventEnd }.Where(t => t > now).Min();
+        if (next is { } at)
+        {
+            // Just after the moment, so the checks above see it passed
+            var due = at - now + TimeSpan.FromMilliseconds(50);
+            timer = Time.CreateTimer(_ => InvokeAsync(() =>
+            {
+                Schedule();
+                StateHasChanged();
+            }), null, due, Timeout.InfiniteTimeSpan);
+        }
+    }
+
+    private void OnRuntimeChanged() => InvokeAsync(() =>
+    {
+        Schedule();
+        StateHasChanged();
+    });
+
+    public void Dispose()
+    {
+        Runtime.Changed -= OnRuntimeChanged;
+        timer?.Dispose();
+    }
+}

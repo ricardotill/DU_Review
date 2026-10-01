@@ -11,7 +11,7 @@ public class SlackSimulatorPageTests : PageTestBase
     private IRenderedComponent<SlackSimulator> RenderSimulator()
     {
         var cut = Render<SlackSimulator>();
-        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Upload a file"));
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Bestand uploaden"));
         return cut;
     }
 
@@ -25,7 +25,7 @@ public class SlackSimulatorPageTests : PageTestBase
 
         var cut = Render<SlackSimulator>();
 
-        cut.Markup.Should().Contain("only available when");
+        cut.Markup.Should().Contain("alleen beschikbaar als");
         cut.FindAll("button").Should().BeEmpty();
     }
 
@@ -39,7 +39,7 @@ public class SlackSimulatorPageTests : PageTestBase
 
         cut.Find("button.btn-scout-primary").Click();
 
-        cut.WaitForAssertion(() => Log(cut).Should().Contain(l => l.Contains("SUCCESS")));
+        cut.WaitForAssertion(() => Log(cut).Should().Contain(l => l.Contains("OK")));
         WithDb(db => db.Submissions.Count(s => s.GroupId == Foxes.Id)).Should().Be(1);
         cut.FindAll("select")[1].QuerySelectorAll("option").Should().Contain(o => o.TextContent.Contains("De Vossen"));
     }
@@ -69,7 +69,7 @@ public class SlackSimulatorPageTests : PageTestBase
 
         cut.Find("button.btn-scout-primary").Click();
 
-        cut.WaitForAssertion(() => Log(cut).Should().Contain(l => l.Contains("WARNING")));
+        cut.WaitForAssertion(() => Log(cut).Should().Contain(l => l.Contains("LET OP")));
     }
 
     [Fact]
@@ -80,9 +80,9 @@ public class SlackSimulatorPageTests : PageTestBase
         cut.FindAll("select")[1].Change(seeded.Pending.Id.ToString());
         cut.Find("input[list=configured-reviewers]").Change("U_JURY");
 
-        cut.FindAll("button").Single(b => b.TextContent.Contains("Add reaction")).Click();
+        cut.FindAll("button").Single(b => b.TextContent.Contains("Emoji :")).Click();
 
-        cut.WaitForAssertion(() => Log(cut).Should().Contain(l => l.Contains("Status updated to Approved")));
+        cut.WaitForAssertion(() => Log(cut).Should().Contain(l => l.Contains("Status is nu Goedgekeurd")));
         WithDb(db => db.Submissions.Single(s => s.Id == seeded.Pending.Id).Status).Should().Be(SubmissionStatus.Approved);
     }
 
@@ -97,9 +97,9 @@ public class SlackSimulatorPageTests : PageTestBase
         cut.Find("button.btn-outline-success").Click();
         cut.Find("button.btn-outline-success").ClassList.Should().Contain("active");
         cut.Find("button.btn-outline-danger").Click();
-        cut.FindAll("button").Single(b => b.TextContent.Contains("Add reaction")).Click();
+        cut.FindAll("button").Single(b => b.TextContent.Contains("Emoji :")).Click();
 
-        cut.WaitForAssertion(() => Log(cut).Should().Contain(l => l.Contains("not a configured reviewer")));
+        cut.WaitForAssertion(() => Log(cut).Should().Contain(l => l.Contains("geen jurylid")));
     }
 
     [Fact]
@@ -110,9 +110,9 @@ public class SlackSimulatorPageTests : PageTestBase
         cut.FindAll("select")[1].Change(seeded.Pending.Id.ToString());
         WithDb(db => { db.Submissions.Remove(db.Submissions.Single(s => s.Id == seeded.Pending.Id)); db.SaveChanges(); });
 
-        cut.FindAll("button").Single(b => b.TextContent.Contains("Add reaction")).Click();
+        cut.FindAll("button").Single(b => b.TextContent.Contains("Emoji :")).Click();
 
-        cut.WaitForAssertion(() => Log(cut).Should().Contain(l => l.Contains("ERROR")));
+        cut.WaitForAssertion(() => Log(cut).Should().Contain(l => l.Contains("FOUT")));
     }
 
     [Fact]
@@ -123,12 +123,12 @@ public class SlackSimulatorPageTests : PageTestBase
         cut.Find("button.btn-scout-primary").Click();
         cut.WaitForAssertion(() => Log(cut).Should().NotBeEmpty());
         // Wait until the upload is done, or its result lands in the log after clearing
-        cut.WaitForAssertion(() => cut.Find("button.btn-scout-primary").TextContent.Should().Contain("Post upload"));
+        cut.WaitForAssertion(() => cut.Find("button.btn-scout-primary").TextContent.Should().Contain("Upload plaatsen"));
 
-        cut.FindAll("button").Single(b => b.TextContent.Trim() == "Clear").Click();
+        cut.FindAll("button").Single(b => b.TextContent.Trim() == "Wissen").Click();
 
         Log(cut).Should().BeEmpty();
-        cut.Markup.Should().Contain("Nothing yet.");
+        cut.Markup.Should().Contain("Nog niets.");
     }
 
     [Fact]
@@ -137,6 +137,6 @@ public class SlackSimulatorPageTests : PageTestBase
         var cut = RenderSimulator();
 
         cut.FindAll("select")[0].QuerySelectorAll("option").Should().BeEmpty();
-        cut.FindAll("button").Single(b => b.TextContent.Contains("Add reaction")).HasAttribute("disabled").Should().BeTrue();
+        cut.FindAll("button").Single(b => b.TextContent.Contains("Emoji :")).HasAttribute("disabled").Should().BeTrue();
     }
 }

@@ -86,7 +86,7 @@ public class RuntimeSettingsServiceTests : IDisposable
     {
         var runtime = Create();
 
-        runtime.AddReviewer(id).Should().Contain("Slack member ID");
+        runtime.AddReviewer(id).Should().Contain("Slack-member-ID");
         runtime.AddedReviewers.Should().BeEmpty();
         File.Exists(File_).Should().BeFalse();
     }
@@ -96,7 +96,7 @@ public class RuntimeSettingsServiceTests : IDisposable
     [InlineData("u_config")]
     public void AddReviewer_AlreadyThere_ShouldExplain(string id)
     {
-        Create().AddReviewer(id).Should().Contain("already a reviewer");
+        Create().AddReviewer(id).Should().Contain("is al jurylid");
     }
 
     [Fact]
@@ -105,7 +105,7 @@ public class RuntimeSettingsServiceTests : IDisposable
         var runtime = Create();
         runtime.AddReviewer("U1234");
 
-        runtime.AddReviewer("u1234").Should().Contain("already a reviewer");
+        runtime.AddReviewer("u1234").Should().Contain("is al jurylid");
         runtime.AddedReviewers.Should().ContainSingle();
     }
 

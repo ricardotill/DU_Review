@@ -223,8 +223,9 @@ public class SlackSocketConnectorTests
 public class SlackEventDispatcherTests
 {
     private readonly Mock<ISubmissionWorkflowService> _workflow = new();
+    private readonly SlackEventLog _log = new(NullLogger<SlackEventLog>.Instance);
 
-    private SlackEventDispatcher Create() => new(_workflow.Object, new SlackProcessingGate(), NullLogger<SlackEventDispatcher>.Instance);
+    private SlackEventDispatcher Create() => new(_workflow.Object, new SlackProcessingGate(), _log, TimeProvider.System, NullLogger<SlackEventDispatcher>.Instance);
 
     [Theory]
     [InlineData(null)]
@@ -334,5 +335,80 @@ public class SlackEventDispatcherTests
 
         result.Should().BeNull();
         _workflow.VerifyNoOtherCalls();
+        _log.Recent().Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task DispatchAsync_Message_ShouldRecordEventWithOutcome()
+    {
+        var id = Guid.NewGuid();
+        _workflow.Setup(w => w.ProcessSlackMessageAsync(It.IsAny<SlackEventItemDto>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ProcessSlackMessageResult.Succeeded(new[] { id }, "1 bestand opgeslagen"));
+
+        await Create().DispatchAsync(new SlackEventEnvelopeDto
+        {
+            Type = "event_callback",
+            Event = new SlackEventItemDto
+            {
+                Type = "message", Subtype = "file_share", Channel = "C1", User = "U1", Text = "Opdracht 3",
+                Files = new List<SlackFileItemDto> { new() { Name = "a.jpg" } }
+            }
+        });
+
+        var entry = _log.Recent().Should().ContainSingle().Subject;
+        entry.Kind.Should().Be(SlackEventKind.Message);
+        entry.Outcome.Should().Be(SlackEventOutcome.Processed);
+        entry.Channel.Should().Be("C1");
+        entry.User.Should().Be("U1");
+        entry.Text.Should().Be("Opdracht 3");
+        entry.FileCount.Should().Be(1);
+        entry.Detail.Should().Be("1 bestand opgeslagen");
+        entry.SubmissionIds.Should().Equal(id);
+    }
+
+    [Fact]
+    public async Task DispatchAsync_IgnoredAndFailedReactions_ShouldBeRecordedApart()
+    {
+        _workflow.Setup(w => w.ProcessSlackReactionAsync(It.IsAny<SlackEventItemDto>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ProcessSlackReactionResult.Ignored("geen jurylid"));
+        _workflow.Setup(w => w.ProcessSlackReactionRemovedAsync(It.IsAny<SlackEventItemDto>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ProcessSlackReactionResult.Failed("niet gevonden"));
+
+        await Create().DispatchAsync(new SlackEventEnvelopeDto
+        {
+            Type = "event_callback",
+            Event = new SlackEventItemDto { Type = "reaction_added", Reaction = "thumbsup", Item = new SlackReactionTargetDto { Channel = "C2" } }
+        });
+        await Create().DispatchAsync(new SlackEventEnvelopeDto
+        {
+            Type = "event_callback",
+            Event = new SlackEventItemDto { Type = "reaction_removed", Reaction = "x" }
+        });
+
+        var entries = _log.Recent();
+        entries.Select(e => (e.Kind, e.Outcome)).Should().Equal(
+            (SlackEventKind.ReactionRemoved, SlackEventOutcome.Failed),
+            (SlackEventKind.ReactionAdded, SlackEventOutcome.Ignored));
+        entries[1].Channel.Should().Be("C2");
+        entries[1].Reaction.Should().Be("thumbsup");
+    }
+
+    [Fact]
+    public async Task DispatchAsync_WorkflowThrows_ShouldRecordFailureAndRethrow()
+    {
+        _workflow.Setup(w => w.ProcessSlackMessageDeletedAsync(It.IsAny<SlackEventItemDto>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("boom"));
+
+        var act = () => Create().DispatchAsync(new SlackEventEnvelopeDto
+        {
+            Type = "event_callback",
+            Event = new SlackEventItemDto { Type = "message", Subtype = "message_deleted", Channel = "C1" }
+        });
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+        var entry = _log.Recent().Should().ContainSingle().Subject;
+        entry.Kind.Should().Be(SlackEventKind.Deleted);
+        entry.Outcome.Should().Be(SlackEventOutcome.Failed);
+        entry.Detail.Should().Contain("boom");
     }
 }

@@ -63,7 +63,7 @@ public class WorkflowEdgeCaseTests
 
         var result = await Create().ProcessSlackMessageAsync(new SlackEventItemDto { Channel = "C1", User = "U_SCOUT", Text = "Opdracht 1", Files = new List<SlackFileItemDto>() });
 
-        result.Message.Should().Contain("No files");
+        result.Message.Should().Contain("Geen bestanden");
         _parser.VerifyNoOtherCalls();
         _slack.VerifyNoOtherCalls();
     }
@@ -248,7 +248,7 @@ public class WorkflowEdgeCaseTests
             User = "U_JURY", Reaction = "thumbsup", Item = new SlackReactionTargetDto { Channel = "C1", Ts = "1.0" }
         });
 
-        result.Message.Should().Contain("no review mapping");
+        result.Message.Should().Contain("is geen beoordeling");
     }
 
     [Fact]

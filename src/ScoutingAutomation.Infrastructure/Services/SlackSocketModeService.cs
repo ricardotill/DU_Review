@@ -54,7 +54,7 @@ public class SlackSocketModeService : BackgroundService
         if (string.IsNullOrWhiteSpace(slack.AppToken))
         {
             _logger.LogError("Scouting:Slack:SocketMode is on but Scouting:Slack:AppToken is not set: no Slack events will be received");
-            _status.Set(SlackConnectionState.Error, "App token not set");
+            _status.Set(SlackConnectionState.Error, "App-token niet ingesteld");
             return;
         }
 

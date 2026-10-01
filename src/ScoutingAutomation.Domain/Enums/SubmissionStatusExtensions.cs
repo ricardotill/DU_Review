@@ -17,4 +17,14 @@ public static class SubmissionStatusExtensions
     /// </summary>
     public static SubmissionStatus Best(this IEnumerable<SubmissionStatus> statuses) =>
         statuses.MaxBy(Rank);
+
+    /// <summary>The Dutch name shown in the app.</summary>
+    public static string StatusLabel(this SubmissionStatus status) => status switch
+    {
+        SubmissionStatus.Pending => "Open",
+        SubmissionStatus.Approved => "Goedgekeurd",
+        SubmissionStatus.Awesome => "Awesome",
+        SubmissionStatus.Rejected => "Afgekeurd",
+        _ => "Ontvangen"
+    };
 }

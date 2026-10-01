@@ -1,0 +1,62 @@
+.notification-settings {
+    position: relative;
+}
+
+.bell-button {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-secondary);
+    width: 2.25rem;
+    height: 2.25rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+    .bell-button:hover:not(:disabled), .bell-button[aria-expanded="true"] {
+        color: var(--text-primary);
+        border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .bell-button:disabled {
+        opacity: 0.5;
+    }
+
+.menu-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1040;
+}
+
+.menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 0.5rem);
+    width: 18rem;
+    padding: 1rem;
+    z-index: 1041;
+    background: rgba(22, 27, 34, 0.98);
+}
+
+.menu-title {
+    font-family: 'Outfit', sans-serif;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+}
+
+.form-check {
+    margin-bottom: 0.5rem;
+}
+
+.form-check-input:checked {
+    background-color: var(--accent-scout);
+    border-color: var(--accent-scout);
+}
+
+.menu-hint {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin: 0.5rem 0 0;
+}

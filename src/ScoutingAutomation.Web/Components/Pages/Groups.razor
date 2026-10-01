@@ -2,9 +2,9 @@
 @rendermode InteractiveServer
 @inherits LiveComponentBase
 
-<PageTitle>Groups - Scouting Regional Game</PageTitle>
+<PageTitle>Groepen - DU Review</PageTitle>
 
-<PageHeader Title="Groups" Subtitle="Open a group to see all its assignments and uploads." />
+<PageHeader Title="Groepen" Subtitle="Open een groep om alle opdrachten en uploads te zien." />
 
 @if (stats == null)
 {
@@ -16,7 +16,7 @@ else if (stats.GroupStatistics.Count == 0)
 {
     <div class="glass-panel empty-state">
         <i class="bi bi-people"></i>
-        No groups configured.
+        Geen groepen ingesteld.
     </div>
 }
 else
@@ -35,17 +35,17 @@ else
                                 <span class="badge bg-secondary font-monospace">@group.Abbreviation</span>
                             }
                         </div>
-                        <span class="rank-badge" title="Leaderboard position">#@g.Rank</span>
+                        <span class="rank-badge" title="Plaats op het scorebord">#@g.Rank</span>
                     </div>
 
-                    <div class="stat-value text-white">@g.Score <span class="fs-6 text-secondary fw-normal">points</span></div>
-                    <div class="stat-caption mb-3">@g.TotalSubmissions @(g.TotalSubmissions == 1 ? "assignment" : "assignments") submitted</div>
+                    <div class="stat-value text-white">@g.Score <span class="fs-6 text-secondary fw-normal">punten</span></div>
+                    <div class="stat-caption mb-3">@g.TotalSubmissions @(g.TotalSubmissions == 1 ? "opdracht" : "opdrachten") ingezonden</div>
 
                     <div class="d-flex gap-3 small">
-                        <span class="text-warning" title="Pending"><i class="bi bi-hourglass-split"></i> @g.PendingCount</span>
-                        <span class="text-success" title="Approved"><i class="bi bi-check2"></i> @g.ApprovedCount</span>
+                        <span class="text-warning" title="Open"><i class="bi bi-hourglass-split"></i> @g.PendingCount</span>
+                        <span class="text-success" title="Goedgekeurd"><i class="bi bi-check2"></i> @g.ApprovedCount</span>
                         <span class="text-awesome" title="Awesome"><i class="bi bi-star-fill"></i> @g.AwesomeCount</span>
-                        <span class="text-danger" title="Rejected"><i class="bi bi-x-circle"></i> @g.RejectedCount</span>
+                        <span class="text-danger" title="Afgekeurd"><i class="bi bi-x-circle"></i> @g.RejectedCount</span>
                     </div>
                 </a>
             </div>

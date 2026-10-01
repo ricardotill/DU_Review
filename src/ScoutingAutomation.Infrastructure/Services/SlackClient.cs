@@ -165,6 +165,17 @@ public class SlackClient : ISlackClient
         await CallSlackApiAsync("chat.postMessage", new { channel, thread_ts = threadTs, text }, ct);
     }
 
+    public async Task<string?> PostMessageAsync(string channel, string text, CancellationToken ct = default)
+    {
+        if (IsSimulated)
+        {
+            _logger.LogInformation("Simulated message in {Channel}: {Text}", channel, text);
+            return "simulation_mode";
+        }
+
+        return await CallSlackApiAsync("chat.postMessage", new { channel, text }, ct);
+    }
+
     public async Task<IReadOnlyList<SlackMessageReactionDto>?> GetReactionsAsync(string channel, string messageTs, CancellationToken ct = default)
     {
         if (IsSimulated)
@@ -230,6 +241,34 @@ public class SlackClient : ISlackClient
         {
             _logger.LogWarning(ex, "Slack API users.info call failed");
             return SlackUserLookup.Failed("request_failed");
+        }
+    }
+
+    public async Task<SlackWorkspace?> GetWorkspaceAsync(CancellationToken ct = default)
+    {
+        if (IsSimulated) return null;
+
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, "https://slack.com/api/auth.test");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.Value.Slack.BotToken);
+
+            using var response = await _httpClient.SendAsync(request, ct);
+            response.EnsureSuccessStatusCode();
+
+            var body = await response.Content.ReadFromJsonAsync<SlackAuthTestResponseDto>(ct);
+            if (body is not { Ok: true } || string.IsNullOrWhiteSpace(body.TeamId) || string.IsNullOrWhiteSpace(body.Url))
+            {
+                _logger.LogWarning("Slack API auth.test failed: {Error}", body?.Error ?? "no team or url");
+                return null;
+            }
+
+            return new SlackWorkspace(body.TeamId, body.Url.EndsWith('/') ? body.Url : body.Url + "/");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "Slack API auth.test call failed");
+            return null;
         }
     }
 

@@ -4,26 +4,26 @@
 @inject RuntimeSettingsService Runtime
 @inject FavoritesService Favorites
 
-<PageTitle>Submissions - Scouting Regional Game</PageTitle>
+<PageTitle>Inzendingen - DU Review</PageTitle>
 
-<PageHeader Title="Submissions" Subtitle="Search and filter all uploads. Reviewing happens in Slack." />
+<PageHeader Title="Inzendingen" Subtitle="Zoek en filter alle uploads. Beoordelen gebeurt in Slack." />
 
 <!-- Filters -->
 <div class="glass-panel p-3 mb-4">
     <div class="row g-2 align-items-end">
         <div class="col-lg-4 col-md-12">
-            <label class="form-label text-secondary small fw-semibold mb-1">Search</label>
+            <label class="form-label text-secondary small fw-semibold mb-1">Zoeken</label>
             <div class="search-box">
                 <i class="bi bi-search"></i>
-                <input type="text" class="form-control form-control-dark" placeholder="File name, scout or message"
+                <input type="text" class="form-control form-control-dark" placeholder="Bestandsnaam, scout of bericht"
                        @bind="filter.SearchTerm" @bind:event="oninput" @bind:after="SearchAsync" />
             </div>
         </div>
 
         <div class="col-lg-2 col-md-3 col-6">
-            <label class="form-label text-secondary small fw-semibold mb-1">Group</label>
+            <label class="form-label text-secondary small fw-semibold mb-1">Groep</label>
             <select class="form-select form-select-dark" @bind="selectedGroupId" @bind:after="SearchAsync">
-                <option value="">All groups</option>
+                <option value="">Alle groepen</option>
                 @foreach (var g in groups)
                 {
                     <option value="@g.Id">@g.Name</option>
@@ -32,9 +32,9 @@
         </div>
 
         <div class="col-lg-2 col-md-3 col-6">
-            <label class="form-label text-secondary small fw-semibold mb-1">Assignment</label>
+            <label class="form-label text-secondary small fw-semibold mb-1">Opdracht</label>
             <select class="form-select form-select-dark" @bind="selectedAssignmentNumber" @bind:after="SearchAsync">
-                <option value="">All assignments</option>
+                <option value="">Alle opdrachten</option>
                 @foreach (var a in assignments)
                 {
                     <option value="@a.Number">#@a.Number</option>
@@ -45,17 +45,17 @@
         <div class="col-lg-2 col-md-3 col-6">
             <label class="form-label text-secondary small fw-semibold mb-1">Status</label>
             <select class="form-select form-select-dark" @bind="selectedStatus" @bind:after="SearchAsync">
-                <option value="">All statuses</option>
-                <option value="@SubmissionStatus.Pending">Pending</option>
-                <option value="@SubmissionStatus.Approved">Approved</option>
-                <option value="@SubmissionStatus.Awesome">Awesome</option>
-                <option value="@SubmissionStatus.Rejected">Rejected</option>
+                <option value="">Alle statussen</option>
+                @foreach (var s in new[] { SubmissionStatus.Pending, SubmissionStatus.Approved, SubmissionStatus.Awesome, SubmissionStatus.Rejected })
+                {
+                    <option value="@s">@s.StatusLabel()</option>
+                }
             </select>
         </div>
 
         <div class="col-lg-2 col-md-3 col-6">
-            <label class="form-label text-secondary small fw-semibold mb-1">Reviewer</label>
-            <input type="text" class="form-control form-control-dark" placeholder="Name or Slack ID"
+            <label class="form-label text-secondary small fw-semibold mb-1">Jurylid</label>
+            <input type="text" class="form-control form-control-dark" placeholder="Naam of Slack-ID"
                    @bind="filter.Reviewer" @bind:event="oninput" @bind:after="SearchAsync" />
         </div>
     </div>
@@ -65,24 +65,24 @@
 <div class="glass-panel p-4">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h2 class="h6 fw-bold text-white mb-0">
-            @VisibleSubmissions.Count @(VisibleSubmissions.Count == 1 ? "submission" : "submissions")
-            <span class="text-secondary fw-normal small ms-1">newest first</span>
+            @VisibleSubmissions.Count @(VisibleSubmissions.Count == 1 ? "inzending" : "inzendingen")
+            <span class="text-secondary fw-normal small ms-1">nieuwste eerst</span>
         </h2>
         <div class="form-check form-switch mb-0 ms-auto me-3">
             <input class="form-check-input" type="checkbox" role="switch" id="favoritesOnly" @bind="favoritesOnly" disabled="@(!Favorites.IsLoaded)" />
             <label class="form-check-label text-secondary small" for="favoritesOnly">
-                <i class="bi bi-star-fill text-warning"></i> Favorites only (@Favorites.Count)
+                <i class="bi bi-star-fill text-warning"></i> Alleen favorieten (@Favorites.Count)
             </label>
         </div>
-        <a href="@SlideshowHref" class="btn btn-sm btn-scout-secondary d-flex align-items-center gap-1 me-2 slideshow-link" title="Show these photos, videos and audio as a slideshow">
+        <a href="@SlideshowHref" class="btn btn-sm btn-scout-secondary d-flex align-items-center gap-1 me-2 slideshow-link" title="Toon deze foto's, video's en geluidsopnames als diavoorstelling">
             <i class="bi bi-play-btn"></i>
-            <span>Slideshow</span>
+            <span>Diavoorstelling</span>
         </a>
         @if (HasActiveFilters)
         {
             <button class="btn btn-sm btn-scout-secondary d-flex align-items-center gap-1" @onclick="ResetFilters">
                 <i class="bi bi-x-lg"></i>
-                <span>Clear filters</span>
+                <span>Filters wissen</span>
             </button>
         }
     </div>
@@ -91,7 +91,7 @@
     {
         <div class="empty-state">
             <i class="bi bi-inbox"></i>
-            No submissions match these filters.
+            Geen inzendingen met deze filters.
         </div>
     }
     else
@@ -100,12 +100,12 @@
             <table class="custom-table">
                 <thead>
                     <tr>
-                        <th style="width: 2.5rem;"><span class="visually-hidden">Favorite</span></th>
-                        <th>File</th>
-                        <th>Group</th>
-                        <th>Assignment</th>
+                        <th style="width: 2.5rem;"><span class="visually-hidden">Favoriet</span></th>
+                        <th>Bestand</th>
+                        <th>Groep</th>
+                        <th>Opdracht</th>
                         <th>Status</th>
-                        <th>Submitted</th>
+                        <th>Ingezonden</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -127,7 +127,7 @@
                                         <div class="text-muted small text-truncate">
                                             @if (storedName != sub.FileName)
                                             {
-                                                <span title="Original file name">@sub.FileName · </span>
+                                                <span title="Oorspronkelijke bestandsnaam">@sub.FileName · </span>
                                             }
                                             @FormatFileSize(sub.FileSizeBytes)
                                         </div>
@@ -135,16 +135,16 @@
                                 </div>
                             </td>
                             <td>
-                                <a href="groups/@sub.GroupId" class="text-white text-decoration-none hover-underline">@(sub.Group?.Name ?? "Unknown")</a>
+                                <a href="groups/@sub.GroupId" class="text-white text-decoration-none hover-underline">@(sub.Group?.Name ?? "Onbekend")</a>
                             </td>
                             <td>
                                 @if (sub.AssignmentNumber.HasValue)
                                 {
-                                    <a href="assignments/@sub.AssignmentNumber" class="badge assignment-badge text-decoration-none" title="Open assignment">#@sub.AssignmentNumber</a>
+                                    <a href="assignments/@sub.AssignmentNumber" class="badge assignment-badge text-decoration-none" title="Opdracht openen">#@sub.AssignmentNumber</a>
                                 }
                                 else
                                 {
-                                    <span class="badge bg-danger">Unresolved</span>
+                                    <span class="badge bg-danger">Onopgelost</span>
                                     @if (!string.IsNullOrWhiteSpace(sub.UnresolvedReason))
                                     {
                                         <div class="text-muted small text-truncate unresolved-reason" title="@sub.UnresolvedReason">@sub.UnresolvedReason</div>
@@ -159,7 +159,7 @@
                                 <div class="text-muted small">@sub.CreatedAt.ToGameTime().ToString("g")</div>
                             </td>
                             <td class="text-end">
-                                <a href="submissions/@sub.Id" class="btn btn-sm btn-scout-secondary" title="View details" aria-label="View details">
+                                <a href="submissions/@sub.Id" class="btn btn-sm btn-scout-secondary" title="Details bekijken" aria-label="Details bekijken">
                                     <i class="bi bi-chevron-right"></i>
                                 </a>
                             </td>

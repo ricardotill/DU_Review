@@ -1,0 +1,233 @@
+@page "/events"
+@rendermode InteractiveServer
+@implements IDisposable
+@inject SlackEventLog EventLog
+@inject RuntimeSettingsService Runtime
+@inject IServiceScopeFactory ScopeFactory
+
+<PageTitle>Gebeurtenissen - DU Review</PageTitle>
+
+<PageHeader Title="Gebeurtenissen" Subtitle="@($"Alle Slack-gebeurtenissen live, de laatste {SlackEventLog.Capacity} sinds de start van de app.")">
+    <Actions>
+        <button class="btn btn-sm btn-scout-secondary d-flex align-items-center gap-1 align-self-center pause-toggle" @onclick="TogglePause">
+            <i class="bi @(paused ? "bi-play-fill" : "bi-pause-fill")"></i>
+            <span>@(paused ? (held.Count > 0 ? $"Hervatten ({held.Count} nieuw)" : "Hervatten") : "Pauzeren")</span>
+        </button>
+        <span class="badge @(paused ? "badge-pending" : "badge-approved") align-self-center" title="Nieuwe gebeurtenissen verschijnen vanzelf">
+            @if (paused)
+            {
+                <i class="bi bi-pause-fill me-1"></i>
+                <span>Gepauzeerd</span>
+            }
+            else
+            {
+                <span class="live-dot me-1"></span>
+                <span>Live</span>
+            }
+        </span>
+    </Actions>
+</PageHeader>
+
+<div class="glass-panel p-3 mb-4">
+    <div class="row g-2 align-items-end">
+        <div class="col-md-4 col-6">
+            <label class="form-label text-secondary small fw-semibold mb-1">Soort</label>
+            <select class="form-select form-select-dark" @bind="kindFilter">
+                <option value="">Alle soorten</option>
+                @foreach (var kind in Enum.GetValues<SlackEventKind>())
+                {
+                    <option value="@kind">@KindLabel(kind)</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-4 col-6">
+            <label class="form-label text-secondary small fw-semibold mb-1">Resultaat</label>
+            <select class="form-select form-select-dark" @bind="outcomeFilter">
+                <option value="">Alle resultaten</option>
+                @foreach (var outcome in Enum.GetValues<SlackEventOutcome>())
+                {
+                    <option value="@outcome">@OutcomeLabel(outcome)</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-4 col-12">
+            <label class="form-label text-secondary small fw-semibold mb-1">Groep</label>
+            <select class="form-select form-select-dark" @bind="channelFilter">
+                <option value="">Alle groepen</option>
+                @foreach (var g in groups)
+                {
+                    <option value="@g.SlackChannelId">@g.Name</option>
+                }
+            </select>
+        </div>
+    </div>
+</div>
+
+<div class="glass-panel p-4">
+    <h2 class="h6 fw-bold text-white mb-3">
+        @Visible.Count @(Visible.Count == 1 ? "gebeurtenis" : "gebeurtenissen")
+        <span class="text-secondary fw-normal small ms-1">nieuwste eerst</span>
+    </h2>
+
+    @if (Visible.Count == 0)
+    {
+        <div class="empty-state">
+            <i class="bi bi-activity"></i>
+            @(entries.Count == 0 ? "Nog geen gebeurtenissen sinds de start van de app." : "Geen gebeurtenissen met deze filters.")
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="custom-table events-table">
+                <thead>
+                    <tr>
+                        <th>Tijd</th>
+                        <th>Soort</th>
+                        <th>Groep</th>
+                        <th>Wie</th>
+                        <th>Inhoud</th>
+                        <th>Resultaat</th>
+                        <th>Toelichting</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var e in Visible)
+                    {
+                        <tr @key="e.Id">
+                            <td class="text-white-50 text-nowrap" title="@($"Verwerkt in {e.Duration.TotalMilliseconds:F0} ms")">@e.ReceivedAt.ToGameTime().ToString("HH:mm:ss")</td>
+                            <td class="text-nowrap"><i class="bi @KindIcon(e.Kind) me-1"></i>@KindLabel(e.Kind)</td>
+                            <td class="text-white">@GroupName(e.Channel)</td>
+                            <td class="text-white-50" title="@e.User">@Runtime.DisplayName(e.User)</td>
+                            <td class="text-white-50 event-content">
+                                @if (e.Reaction != null)
+                                {
+                                    <code>:@e.Reaction:</code>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(e.Text))
+                                {
+                                    <span class="d-block text-truncate" title="@e.Text">@e.Text</span>
+                                }
+                                @if (e.FileCount > 0)
+                                {
+                                    <span class="small text-muted"><i class="bi bi-paperclip"></i> @e.FileCount @(e.FileCount == 1 ? "bestand" : "bestanden")</span>
+                                }
+                            </td>
+                            <td><span class="badge @OutcomeBadge(e.Outcome)">@OutcomeLabel(e.Outcome)</span></td>
+                            <td class="text-white-50 small event-detail">@e.Detail</td>
+                            <td class="text-end">
+                                @if (e.SubmissionIds.Count == 1)
+                                {
+                                    <a href="submissions/@e.SubmissionIds[0]" class="btn btn-sm btn-scout-secondary" title="Inzending openen" aria-label="Inzending openen">
+                                        <i class="bi bi-chevron-right"></i>
+                                    </a>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    private List<SlackEventLogEntry> entries = new();
+    private readonly List<SlackEventLogEntry> held = new();
+    private IReadOnlyList<Group> groups = new List<Group>();
+    private Dictionary<string, string> groupNames = new();
+    private bool paused;
+
+    private string? kindFilter;
+    private string? outcomeFilter;
+    private string? channelFilter;
+
+    private List<SlackEventLogEntry> Visible => entries
+        .Where(e => !Enum.TryParse<SlackEventKind>(kindFilter, out var kind) || e.Kind == kind)
+        .Where(e => !Enum.TryParse<SlackEventOutcome>(outcomeFilter, out var outcome) || e.Outcome == outcome)
+        .Where(e => string.IsNullOrEmpty(channelFilter) || e.Channel == channelFilter)
+        .ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        entries = EventLog.Recent().ToList();
+        EventLog.Added += OnAdded;
+
+        // A fresh scope: the circuit's own DbContext would live as long as the tab
+        await using var scope = ScopeFactory.CreateAsyncScope();
+        groups = await scope.ServiceProvider.GetRequiredService<IGroupRepository>().GetAllAsync();
+        groupNames = groups.GroupBy(g => g.SlackChannelId).ToDictionary(g => g.Key, g => g.First().Name);
+    }
+
+    private void OnAdded(SlackEventLogEntry entry) => InvokeAsync(() =>
+    {
+        if (paused)
+        {
+            held.Insert(0, entry);
+        }
+        else
+        {
+            Insert(new[] { entry });
+        }
+
+        StateHasChanged();
+    });
+
+    private void TogglePause()
+    {
+        paused = !paused;
+        if (!paused)
+        {
+            Insert(held);
+            held.Clear();
+        }
+    }
+
+    /// <param name="newest">New entries, newest first.</param>
+    private void Insert(IEnumerable<SlackEventLogEntry> newest)
+    {
+        entries.InsertRange(0, newest);
+        if (entries.Count > SlackEventLog.Capacity)
+        {
+            entries.RemoveRange(SlackEventLog.Capacity, entries.Count - SlackEventLog.Capacity);
+        }
+    }
+
+    private string GroupName(string? channel) =>
+        channel == null ? "–" : groupNames.GetValueOrDefault(channel) ?? $"#{channel}";
+
+    private static string KindLabel(SlackEventKind kind) => kind switch
+    {
+        SlackEventKind.Message => "Bericht",
+        SlackEventKind.Edited => "Bewerkt",
+        SlackEventKind.Deleted => "Verwijderd",
+        SlackEventKind.ReactionAdded => "Emoji geplaatst",
+        _ => "Emoji weggehaald"
+    };
+
+    private static string KindIcon(SlackEventKind kind) => kind switch
+    {
+        SlackEventKind.Message => "bi-chat-left-text text-info",
+        SlackEventKind.Edited => "bi-pencil text-secondary",
+        SlackEventKind.Deleted => "bi-trash text-danger",
+        SlackEventKind.ReactionAdded => "bi-emoji-smile text-warning",
+        _ => "bi-emoji-neutral text-secondary"
+    };
+
+    private static string OutcomeLabel(SlackEventOutcome outcome) => outcome switch
+    {
+        SlackEventOutcome.Processed => "Verwerkt",
+        SlackEventOutcome.Ignored => "Genegeerd",
+        _ => "Mislukt"
+    };
+
+    private static string OutcomeBadge(SlackEventOutcome outcome) => outcome switch
+    {
+        SlackEventOutcome.Processed => "badge-approved",
+        SlackEventOutcome.Ignored => "badge-pending",
+        _ => "badge-rejected"
+    };
+
+    public void Dispose() => EventLog.Added -= OnAdded;
+}

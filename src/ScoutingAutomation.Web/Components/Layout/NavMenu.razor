@@ -12,7 +12,7 @@
     </div>
 </div>
 
-<input type="checkbox" title="Navigation menu" class="navbar-toggler" />
+<input type="checkbox" title="Navigatiemenu" class="navbar-toggler" />
 
 <div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()" style="background: #0f141c; border-right: 1px solid var(--border-color);">
     <nav class="nav flex-column p-2 gap-1">
@@ -24,30 +24,44 @@
         </div>
 
         <div class="nav-item">
+            <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="queue">
+                <i class="bi bi-inbox-fill" style="color: #fbbf24;"></i>
+                <span class="nav-label fw-medium">Te beoordelen</span>
+            </NavLink>
+        </div>
+
+        <div class="nav-item">
             <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="submissions">
                 <i class="bi bi-folder2-open" style="color: #38bdf8;"></i>
-                <span class="nav-label fw-medium">Submissions</span>
+                <span class="nav-label fw-medium">Inzendingen</span>
+            </NavLink>
+        </div>
+
+        <div class="nav-item">
+            <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="events">
+                <i class="bi bi-activity" style="color: #fb923c;"></i>
+                <span class="nav-label fw-medium">Gebeurtenissen</span>
             </NavLink>
         </div>
 
         <div class="nav-item">
             <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="slideshow">
                 <i class="bi bi-play-btn-fill" style="color: #f472b6;"></i>
-                <span class="nav-label fw-medium">Slideshow</span>
+                <span class="nav-label fw-medium">Diavoorstelling</span>
             </NavLink>
         </div>
 
         <div class="nav-item">
             <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="assignments">
                 <i class="bi bi-list-ol" style="color: #a78bfa;"></i>
-                <span class="nav-label fw-medium">Assignments</span>
+                <span class="nav-label fw-medium">Opdrachten</span>
             </NavLink>
         </div>
 
         <div class="nav-item">
             <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="groups">
                 <i class="bi bi-people-fill" style="color: #34d399;"></i>
-                <span class="nav-label fw-medium">Groups</span>
+                <span class="nav-label fw-medium">Groepen</span>
             </NavLink>
         </div>
 
@@ -65,23 +79,23 @@
         <div class="nav-item">
             <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="configuration">
                 <i class="bi bi-sliders" style="color: #fbbf24;"></i>
-                <span class="nav-label fw-medium">Configuration</span>
+                <span class="nav-label fw-medium">Configuratie</span>
             </NavLink>
         </div>
 
         <div class="nav-item">
             <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="admin">
                 <i class="bi bi-shield-lock" style="color: #f87171;"></i>
-                <span class="nav-label fw-medium">Admin</span>
+                <span class="nav-label fw-medium">Beheer</span>
             </NavLink>
         </div>
     </nav>
 
     <div class="mt-auto p-3 text-muted d-flex justify-content-between align-items-center" style="font-size: 0.75rem; border-top: 1px solid var(--border-color);">
-        <span>Scouting Regional Game</span>
+        <span>Destination Unknown regiospel</span>
         <form method="post" action="logout">
             <AntiforgeryToken />
-            <button type="submit" class="btn btn-link btn-sm text-secondary p-0 logout" title="Log out"><i class="bi bi-box-arrow-right"></i> Log out</button>
+            <button type="submit" class="btn btn-link btn-sm text-secondary p-0 logout" title="Uitloggen"><i class="bi bi-box-arrow-right"></i> Uitloggen</button>
         </form>
     </div>
 </div>

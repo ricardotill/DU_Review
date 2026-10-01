@@ -17,12 +17,12 @@ public class HomePageTests : PageTestBase
 
         cut.WaitForAssertion(() => cut.FindAll("tbody tr").Should().HaveCount(3));
         var stats = cut.FindAll(".stat-card").ToDictionary(c => c.QuerySelector(".stat-label")!.TextContent, c => c.QuerySelector(".stat-value")!.TextContent);
-        stats["Submitted"].Should().Be("3");
-        stats["Approved"].Should().Be("1");
+        stats["Ingezonden"].Should().Be("3");
+        stats["Goedgekeurd"].Should().Be("1");
         stats["Awesome"].Should().Be("1");
-        stats["Pending"].Should().Be("1");
-        stats["Rejected"].Should().Be("0", "the rejected upload was replaced by an approved one");
-        stats["Unresolved"].Should().Be("1");
+        stats["Open"].Should().Be("1");
+        stats["Afgekeurd"].Should().Be("0", "the rejected upload was replaced by an approved one");
+        stats["Onopgelost"].Should().Be("1");
 
         var rows = cut.FindAll("tbody tr");
         rows[0].TextContent.Should().Contain("De Wolven").And.Contain("DWO");
@@ -53,9 +53,9 @@ public class HomePageTests : PageTestBase
     {
         var cut = Render<Home>();
 
-        cut.WaitForAssertion(() => cut.Markup.Should().Contain("No groups configured."));
-        cut.Markup.Should().Contain("No submissions yet.");
-        cut.FindAll(".stat-label").Select(l => l.TextContent).Should().NotContain("Unresolved");
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Geen groepen ingesteld."));
+        cut.Markup.Should().Contain("Nog geen inzendingen.");
+        cut.FindAll(".stat-label").Select(l => l.TextContent).Should().NotContain("Onopgelost");
     }
 
     [Fact]

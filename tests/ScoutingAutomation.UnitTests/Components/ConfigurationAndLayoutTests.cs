@@ -24,17 +24,17 @@ public class ConfigurationPageTests : PageTestBase
         var cut = Render<Configuration>();
 
         cut.WaitForAssertion(() => cut.FindAll("tbody tr").Should().HaveCount(3));
-        cut.FindAll("tbody tr").Single(r => r.TextContent.Contains("De Vossen")).TextContent.Should().Contain("not set").And.Contain("–");
+        cut.FindAll("tbody tr").Single(r => r.TextContent.Contains("De Vossen")).TextContent.Should().Contain("niet ingesteld").And.Contain("–");
         cut.Find("a[href^='groups/']").GetAttribute("href").Should().StartWith("groups/");
-        cut.Markup.Should().Contain("U_JURY").And.Contain("Only reactions from these Slack users count");
+        cut.Markup.Should().Contain("U_JURY").And.Contain("Alleen reacties van deze Slack-gebruikers tellen");
         cut.Markup.Should().Contain(":thumbsup:").And.Contain("/approved/").And.Contain("/awesome/").And.Contain("/rejected/");
-        cut.Markup.Should().Contain("no reaction").And.Contain("No reply").And.Contain(":question:");
+        cut.Markup.Should().Contain("geen emoji").And.Contain("Geen antwoord").And.Contain(":question:");
         cut.Markup.Should().Contain(".jpg").And.Contain("image/*");
-        Row(cut, "Assignments").Should().Contain("3 loaded");
-        Row(cut, "Slack mode").Should().Contain("Simulation");
-        Row(cut, "Signing secret").Should().Contain("not checked in simulation");
-        Row(cut, "Bot token").Should().Contain("not set");
-        cut.FindAll("dt").Select(d => d.TextContent).Should().NotContain("Connection");
+        Row(cut, "Opdrachten").Should().Contain("3 geladen");
+        Row(cut, "Slack-modus").Should().Contain("Simulatie");
+        Row(cut, "Signing secret").Should().Contain("niet gecontroleerd in simulatie");
+        Row(cut, "Bot token").Should().Contain("niet ingesteld");
+        cut.FindAll("dt").Select(d => d.TextContent).Should().NotContain("Verbinding");
     }
 
     [Fact]
@@ -44,30 +44,30 @@ public class ConfigurationPageTests : PageTestBase
 
         var cut = Render<Configuration>();
 
-        cut.Markup.Should().Contain("No reviewers: all reactions are ignored.");
+        cut.Markup.Should().Contain("Geen juryleden: alle reacties worden genegeerd.");
     }
 
     [Theory]
-    [InlineData("", "not set: all Slack requests are rejected")]
-    [InlineData("secret", "set, requests are verified")]
+    [InlineData("", "niet ingesteld: alle verzoeken van Slack worden geweigerd")]
+    [InlineData("secret", "ingesteld, verzoeken worden gecontroleerd")]
     public void EventsApi_ShouldShowSigningSecretState(string secret, string expected)
     {
         Settings.Slack = new SlackSettings { SimulationMode = false, SigningSecret = secret, BotToken = "xoxb" };
 
         var cut = Render<Configuration>();
 
-        Row(cut, "Slack mode").Should().Contain("Live");
-        Row(cut, "Connection").Should().Contain("Events API");
+        Row(cut, "Slack-modus").Should().Contain("Live");
+        Row(cut, "Verbinding").Should().Contain("Events API");
         Row(cut, "Signing secret").Should().Contain(expected);
-        Row(cut, "Bot token").Should().Contain("set");
+        Row(cut, "Bot token").Should().Contain("ingesteld");
         cut.FindAll("dt").Select(d => d.TextContent).Should().NotContain("App token");
     }
 
     [Theory]
-    [InlineData("", SlackConnectionState.Error, "App token not set", "badge-rejected", "not set: no events are received")]
-    [InlineData("xapp", SlackConnectionState.Connected, null, "badge-approved", "set")]
-    [InlineData("xapp", SlackConnectionState.Connecting, null, "badge-pending", "set")]
-    [InlineData("xapp", SlackConnectionState.Disabled, null, "badge-received", "set")]
+    [InlineData("", SlackConnectionState.Error, "App-token niet ingesteld", "badge-rejected", "niet ingesteld: er komen geen gebeurtenissen binnen")]
+    [InlineData("xapp", SlackConnectionState.Connected, null, "badge-approved", "ingesteld")]
+    [InlineData("xapp", SlackConnectionState.Connecting, null, "badge-pending", "ingesteld")]
+    [InlineData("xapp", SlackConnectionState.Disabled, null, "badge-received", "ingesteld")]
     public void SocketMode_ShouldShowConnectionState(string appToken, SlackConnectionState state, string? detail, string badge, string tokenText)
     {
         Settings.Slack = new SlackSettings { SimulationMode = false, SocketMode = true, AppToken = appToken };
@@ -75,26 +75,26 @@ public class ConfigurationPageTests : PageTestBase
 
         var cut = Render<Configuration>();
 
-        var connection = cut.FindAll("dt").Single(dt => dt.TextContent == "Connection").NextElementSibling!;
-        connection.TextContent.Should().Contain("Socket Mode").And.Contain(state.ToString());
+        var connection = cut.FindAll("dt").Single(dt => dt.TextContent == "Verbinding").NextElementSibling!;
+        connection.TextContent.Should().Contain("Socket Mode").And.Contain(state.Label());
         connection.QuerySelector(".badge")!.ClassList.Should().Contain(badge);
         if (detail != null) connection.TextContent.Should().Contain(detail);
         Row(cut, "App token").Should().Contain(tokenText);
-        Row(cut, "Signing secret").Should().Contain("not needed in Socket Mode");
+        Row(cut, "Signing secret").Should().Contain("niet nodig bij Socket Mode");
     }
 }
 
 public class LayoutTests : PageTestBase
 {
     private IRenderedComponent<MainLayout> RenderLayout() =>
-        Render<MainLayout>(p => p.Add(l => l.Body, (RenderFragment)(b => b.AddContent(0, "page body"))));
+        RenderLayout("page body");
 
     [Fact]
     public void Simulation_ShouldShowSimulationBadgeAndSimulatorLink()
     {
         var cut = RenderLayout();
 
-        cut.Markup.Should().Contain("page body").And.Contain("Simulation mode");
+        cut.Markup.Should().Contain("page body").And.Contain("Simulatiemodus");
         cut.FindAll("a[href='simulator']").Should().ContainSingle();
     }
 
@@ -105,14 +105,14 @@ public class LayoutTests : PageTestBase
 
         var cut = RenderLayout();
 
-        cut.Markup.Should().Contain("Connected to Slack");
+        cut.Markup.Should().Contain("Verbonden met Slack");
         cut.FindAll("a[href='simulator']").Should().BeEmpty();
     }
 
     [Theory]
-    [InlineData(SlackConnectionState.Connected, "Connected to Slack")]
-    [InlineData(SlackConnectionState.Error, "Slack: error")]
-    [InlineData(SlackConnectionState.Connecting, "Slack: connecting")]
+    [InlineData(SlackConnectionState.Connected, "Verbonden met Slack")]
+    [InlineData(SlackConnectionState.Error, "Slack: fout")]
+    [InlineData(SlackConnectionState.Connecting, "Slack: verbinden")]
     public void SocketMode_ShouldShowRealConnectionState(SlackConnectionState state, string expected)
     {
         Settings.Slack = new SlackSettings { SimulationMode = false, SocketMode = true, AppToken = "xapp" };

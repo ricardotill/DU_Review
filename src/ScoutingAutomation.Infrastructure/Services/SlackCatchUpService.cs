@@ -138,7 +138,7 @@ public class SlackCatchUpService : BackgroundService, ISlackCatchUpService
         var workflow = scope.ServiceProvider.GetRequiredService<ISubmissionWorkflowService>();
 
         // The game takes one day: everything since midnight is enough, and cheap to read again
-        var since = GameTime.FromGameTime(DateTimeOffset.UtcNow.ToGameTime().Date);
+        var since = _runtime.NotBeforeEventStart(GameTime.FromGameTime(DateTimeOffset.UtcNow.ToGameTime().Date));
         int checkedCount = 0, added = 0, reviews = 0;
         var errors = new List<string>();
 

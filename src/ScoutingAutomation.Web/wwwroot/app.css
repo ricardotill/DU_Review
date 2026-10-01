@@ -239,6 +239,36 @@ h1, h2, h3, h4, h5, h6, .brand-font {
     transition: width 0.5s ease-out;
 }
 
+/* Tags in the top bar */
+.top-tags {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.top-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-shrink: 0;
+    padding: 0.3rem 0.7rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.2;
+    white-space: nowrap;
+    text-decoration: none;
+    transition: filter 0.15s ease;
+}
+
+a.top-tag:hover {
+    filter: brightness(1.25);
+    text-decoration: none;
+}
+
 /* Live pulse */
 .live-dot {
     display: inline-block;
@@ -390,4 +420,8 @@ h1:focus {
 .form-control-dark::placeholder {
     color: #6e7681;
     opacity: 1;
+}
+
+.reminder-minutes {
+    max-width: 7rem;
 }

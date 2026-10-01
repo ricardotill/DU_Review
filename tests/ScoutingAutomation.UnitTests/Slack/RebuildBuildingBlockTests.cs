@@ -229,7 +229,7 @@ public class SlackProcessingGateTests
     {
         var gate = new SlackProcessingGate();
         var workflow = new Moq.Mock<ISubmissionWorkflowService>();
-        var dispatcher = new SlackEventDispatcher(workflow.Object, gate, NullLogger<SlackEventDispatcher>.Instance);
+        var dispatcher = new SlackEventDispatcher(workflow.Object, gate, new SlackEventLog(NullLogger<SlackEventLog>.Instance), TimeProvider.System, NullLogger<SlackEventDispatcher>.Instance);
         var closed = await gate.CloseAsync();
 
         var dispatching = dispatcher.DispatchAsync(new SlackEventEnvelopeDto { Type = "event_callback", Event = new SlackEventItemDto { Type = "reaction_added" } });

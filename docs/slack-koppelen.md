@@ -52,7 +52,7 @@ oauth_config:
       - reactions:read     # emoji-reacties van de jury ontvangen
       - users:read         # namen van juryleden ophalen
       - reactions:write    # zelf een emoji plaatsen bij een probleem
-      - chat:write         # een antwoord in de thread plaatsen
+      - chat:write         # een antwoord in de thread en het startbericht plaatsen
 settings:
   event_subscriptions:
     bot_events:
@@ -172,14 +172,14 @@ Slack stuurt geen namen maar **member-ID's**. Die vind je zo: open iemands profi
 "Reviewers": [ "U04ABC123", "U05DEF456" ]
 ```
 
-Juryleden kun je ook tijdens het spel toevoegen, zonder herstart: op de pagina **Configuration**, onder **Reviewers** (alleen in admin-modus). Die tellen meteen mee en blijven bewaard na een herstart (in `runtime-settings.json`, zie `Scouting:RuntimeSettingsFile`). Juryleden uit `appsettings.json` hebben daar een slotje en kun je alleen in dat bestand aanpassen.
+Juryleden kun je ook tijdens het spel toevoegen, zonder herstart: op de pagina **Configuratie**, onder **Juryleden** (alleen in beheermodus). Die tellen meteen mee en blijven bewaard na een herstart (in `runtime-settings.json`, zie `Scouting:RuntimeSettingsFile`). Juryleden uit `appsettings.json` hebben daar een slotje en kun je alleen in dat bestand aanpassen.
 
 #### Namen van juryleden
 
 Een member-ID zegt weinig. Geef juryleden daarom een naam; die zie je dan overal in de app in plaats van het ID. Er zijn drie manieren, in deze volgorde van voorrang:
 
-1. **Zelf invullen** op de pagina **Configuration**, bij het jurylid (potloodje). Een lege naam haalt hem weer weg.
-2. **Ophalen uit Slack** met **Fetch names from Slack**. De app gebruikt de weergavenaam uit het Slack-profiel. Een naam die je zelf hebt ingevuld, wordt nooit overschreven. Hiervoor is het recht `users:read` nodig.
+1. **Zelf invullen** op de pagina **Configuratie**, bij het jurylid (potloodje). Een lege naam haalt hem weer weg.
+2. **Ophalen uit Slack** met **Namen ophalen uit Slack**. De app gebruikt de weergavenaam uit het Slack-profiel. Een naam die je zelf hebt ingevuld, wordt nooit overschreven. Hiervoor is het recht `users:read` nodig.
 3. In `appsettings.json` onder `ReviewerNames`:
 
    ```json
@@ -190,11 +190,26 @@ Namen uit de app worden bewaard in `runtime-settings.json`.
 
 Heb je de Slack-app al eerder aangemaakt? Voeg dan `users:read` toe onder **OAuth & Permissions** → **Bot Token Scopes**, en installeer de app opnieuw.
 
-Haalt een jurylid een emoji weg, dan kijkt de app welke beoordelingen er nog op het bericht staan. De beste daarvan telt; is er geen meer, dan wordt de inzending weer **Pending**. Daarvoor is het event `reaction_removed` nodig (staat in de manifesten hierboven).
+Haalt een jurylid een emoji weg, dan kijkt de app welke beoordelingen er nog op het bericht staan. De beste daarvan telt; is er geen meer, dan wordt de inzending weer **Open**. Daarvoor is het event `reaction_removed` nodig (staat in de manifesten hierboven).
 
 Heb je de Slack-app al eerder aangemaakt? Voeg dan `reaction_removed` toe onder **Event Subscriptions** → **Subscribe to bot events**, en sla op. Er zijn geen extra rechten nodig.
 
 Bewerkte en verwijderde berichten komen binnen via dezelfde events `message.channels` en `message.groups`. Je hoeft daarvoor niets extra in te stellen. Voegt een groep het opdrachtnummer toe door het bericht te bewerken, dan haalt de bot zijn eigen ❓ weg. Daarvoor gebruikt hij het recht `reactions:write`, dat hij al heeft.
+
+#### Jurykanaal voor herinneringen
+
+Wacht een inzending te lang op een beoordeling, dan zet de bot een herinnering in een apart kanaal voor de jury. Maak daarvoor een kanaal aan, bijvoorbeeld `#du-jury`, en zet het kanaal-ID in de instellingen. Het ID vind je zoals bij de groepskanalen.
+
+```json
+"ReviewReminder": {
+  "ChannelId": "C07JURY123",
+  "AfterMinutes": 15
+}
+```
+
+`AfterMinutes` is de wachttijd in minuten; `null` zet herinneringen uit. Je kunt de tijd ook in de app aanpassen, op **Configuratie** onder **Beoordelingsregels**. Elke inzending krijgt één herinnering. De herinnering bevat links naar de berichten.
+
+Er zijn geen extra rechten nodig: de bot gebruikt `chat:write`, dat hij al heeft. Voor de links vraagt de app één keer de workspace op via `auth.test`; daarvoor is geen recht nodig.
 
 ### Emoji's voor beoordelingen
 
@@ -219,7 +234,7 @@ De emoji's die de bot zelf plaatst (onder `SlackFeedback`) mogen niet in deze li
    ```
 
 2. Controleer de verbinding:
-   - **Socket Mode:** binnen een paar seconden staat bovenaan de app **Connected to Slack**. Staat er **Slack: error** of **Slack: connecting**, klik er dan op voor de reden. De app probeert het zelf opnieuw, met steeds langere pauzes (tot 30 seconden). Valt de internetverbinding even weg, dan maakt de app daarna zelf weer verbinding.
+   - **Socket Mode:** binnen een paar seconden staat bovenaan de app **Verbonden met Slack**. Staat er **Slack: error** of **Slack: connecting**, klik er dan op voor de reden. De app probeert het zelf opnieuw, met steeds langere pauzes (tot 30 seconden). Valt de internetverbinding even weg, dan maakt de app daarna zelf weer verbinding.
    - **Events API:** controleer in de Slack-app onder **Event Subscriptions** dat de Request URL **Verified** is.
      - Gebruik je een tunnel? Laat die naar `http://localhost:5231` wijzen, niet naar de https-poort. Anders stuurt de app de verzoeken door naar een adres dat Slack niet kan bereiken.
      - Draait de app achter een proxy? Die mag de inhoud van het verzoek niet aanpassen (bijvoorbeeld opnieuw formatteren of comprimeren). De handtekening klopt dan niet meer.
@@ -229,28 +244,30 @@ De emoji's die de bot zelf plaatst (onder `SlackFeedback`) mogen niet in deze li
    /invite @DU Review
    ```
 
-   Zonder uitnodiging ontvangt de app geen berichten uit dat kanaal.
+   Zonder uitnodiging ontvangt de app geen berichten uit dat kanaal, en kan de bot er geen startbericht plaatsen.
+
+4. Nodig de bot ook uit in het **jurykanaal**, als je herinneringen gebruikt. Anders geeft Slack de fout `not_in_channel` en komt er geen herinnering.
 
 ## Stap 5: Testen
 
-1. Controleer op de pagina **Configuration** in de app:
+1. Controleer op de pagina **Configuratie** in de app:
    - de Slack-modus staat op **Live**;
    - bij **Connection** staat **Socket Mode** met **Connected**, of **Events API**;
    - bij Socket Mode staat het app-token op **set**; bij de Events API staat het Signing Secret op **set, requests are verified**;
    - het bot-token staat op **set**;
    - alle groepen hebben het juiste kanaal en een afkorting;
-   - de jury staat onder **Reviewers**.
+   - de jury staat onder **Juryleden**.
 2. Plaats in een groepskanaal een foto met de tekst `Opdracht 1`. Binnen een paar seconden staat de inzending op het dashboard.
-3. Reageer als jurylid met 👍 op het bericht. De status wordt **Approved** en het bestand verhuist naar de map `approved/`.
+3. Reageer als jurylid met 👍 op het bericht. De status wordt **Goedgekeurd** en het bestand verhuist naar de map `approved/`.
 4. Plaats een foto met de tekst `Hallo`. De bot reageert met ❓ en vraagt in de thread om een opdrachtnummer. Er wordt niets opgeslagen.
 
 ## Herbouwen vanuit Slack
 
-Draaide de app een tijd niet, of klopt er iets niet meer, dan kun je alle inzendingen opnieuw opbouwen uit de berichten in Slack. Ga naar **Configuration** → **Rebuild from Slack**, kies het tijdstip vanaf wanneer berichten meetellen, en typ `REBUILD`.
+Draaide de app een tijd niet, of klopt er iets niet meer, dan kun je alle inzendingen opnieuw opbouwen uit de berichten in Slack. Ga naar **Configuratie** → **Opnieuw opbouwen uit Slack**, kies het tijdstip vanaf wanneer berichten meetellen, en typ `OPBOUWEN`.
 
 - Hiervoor zijn geen extra rechten nodig: `channels:history`, `groups:history` en `files:read` staan al in het manifest.
 - De bot moet lid zijn van elk groepskanaal (zie stap 4). Anders stopt het herbouwen voordat er iets is veranderd. De app toont dan per kanaal dat niet gelezen kon worden: de groep, het kanaal-ID, de foutcode van Slack en wat je eraan kunt doen.
-- Alleen in admin-modus.
+- Alleen in beheermodus.
 - Het werkt alleen met `SimulationMode` op `false` en een bot-token.
 - Alle huidige bestanden en een `submissions.json` gaan eerst naar `scouting_storage/_backup/{tijdstip}/`.
 - Er wordt niets in Slack geplaatst. Berichten en reacties die tijdens het herbouwen binnenkomen, wachten tot het klaar is.
@@ -265,7 +282,7 @@ Zie de [README](../README.md#herbouwen-vanuit-slack) voor wat er precies gebeurt
 | Probleem | Oplossing |
 |---|---|
 | Berichten komen niet binnen | Is de bot uitgenodigd in het kanaal? Klopt het kanaal-ID in `Groups`? |
-| Reacties van de jury doen niets | Staat het member-ID (`U...`) van het jurylid onder **Reviewers** (in `appsettings.json` of toegevoegd in de app)? Staat de emoji in `ReviewStatusReactions`? Staat **Manual mode** uit? |
+| Reacties van de jury doen niets | Staat het member-ID (`U...`) van het jurylid onder **Juryleden** (in `appsettings.json` of toegevoegd in de app)? Staat de emoji in `ReviewStatusReactions`? Staat **Handmatige modus** uit? |
 | Een weggehaalde emoji verandert niets | Staat `reaction_removed` bij de bot events van de Slack-app? Kan de app de reacties lezen (recht `reactions:read`)? Zie het logboek: kan de app ze niet lezen, dan blijft de status zoals hij was. |
 | De bot reageert niet zelf | Staat `SimulationMode` op `false` en is het bot-token ingesteld? Heeft de app de rechten `reactions:write` en `chat:write`? Zie het logboek van de app. |
 | De bot reageert met ⚠️ dat een bestand niet kon worden opgehaald | De download uit Slack mislukte. Heeft de app het recht `files:read`? Installeer de app opnieuw na het toevoegen van rechten. |
@@ -275,7 +292,7 @@ Zie de [README](../README.md#herbouwen-vanuit-slack) voor wat er precies gebeurt
 | Herbouwen stopt met `invalid_auth` of `token_revoked` | Het bot-token klopt niet (meer). Kopieer het opnieuw uit **OAuth & Permissions**. |
 | Namen ophalen geeft `missing_scope` | De app mist `users:read`. Voeg het recht toe en installeer de app opnieuw. |
 | Namen ophalen: "Slack does not know …" | Het member-ID klopt niet. Kopieer het opnieuw via **Copy member ID**. |
-| **Fetch names from Slack** ontbreekt | Namen ophalen werkt alleen met `SimulationMode` op `false` en een bot-token. |
+| **Namen ophalen uit Slack** ontbreekt | Namen ophalen werkt alleen met `SimulationMode` op `false` en een bot-token. |
 | Een bericht zonder bestand wordt genegeerd | Dat klopt: alleen berichten met een bestand zijn inzendingen. |
 
 Na het toevoegen van rechten (scopes) moet je de Slack-app altijd opnieuw installeren in de workspace.

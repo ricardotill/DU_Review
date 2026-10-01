@@ -210,6 +210,19 @@ public class GameDayWorkflowTests : IDisposable
     }
 
     [Fact]
+    public async Task EditAfterTheEventEnd_OfAMessageFromBefore_ShouldStillCount()
+    {
+        // The message was posted at 16:00, the game ended at 16:30, the number is added now
+        _settings.Value.EventEnd = new DateTime(2024, 9, 30, 16, 30, 0);
+        await Create().ProcessSlackMessageAsync(Message("kijk!", File("a.jpg")));
+
+        var result = await Create().ProcessSlackMessageChangedAsync(Edit("kijk!", "kijk! Opdracht 4", File("a.jpg")));
+
+        result.CreatedSubmissionIds.Should().HaveCount(1);
+        _slack.Verify(s => s.AddReactionAsync(It.IsAny<string>(), It.IsAny<string>(), "alarm_clock", It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task EditWithoutTextChange_ShouldDoNothing()
     {
         // Slack sends an edit when the bot's thread reply changes the reply count

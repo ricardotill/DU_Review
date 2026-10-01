@@ -40,22 +40,26 @@ public class PageRoutesIntegrationTests : IClassFixture<WebApplicationFactory<Pr
         var submission = (await _app.GetAsync(sp => sp.GetRequiredService<ISubmissionRepository>().SearchSubmissionsAsync(new SubmissionFilter()))).First();
         var groupId = submission.GroupId;
 
-        (await GetPageAsync("/")).Should().Contain("Leaderboard");
+        (await GetPageAsync("/")).Should().Contain("Scorebord");
         (await GetPageAsync("/submissions")).Should().Contain(submission.FileName);
-        (await GetPageAsync($"/submissions?group={groupId}")).Should().Contain("Submissions");
-        (await GetPageAsync($"/submissions/{submission.Id}")).Should().Contain("Review history");
-        (await GetPageAsync($"/submissions/{Guid.NewGuid()}")).Should().Contain("Submission not found");
-        (await GetPageAsync("/slideshow")).Should().Contain("Start slideshow");
-        (await GetPageAsync("/assignments")).Should().Contain("Assignments");
-        (await GetPageAsync("/assignments/1")).Should().Contain("Assignment #1");
-        (await GetPageAsync("/assignments/999")).Should().Contain("Not in the assignment list");
+        (await GetPageAsync($"/submissions?group={groupId}")).Should().Contain("Inzendingen");
+        (await GetPageAsync($"/submissions/{submission.Id}")).Should().Contain("Beoordelingen");
+        (await GetPageAsync($"/submissions/{Guid.NewGuid()}")).Should().Contain("Inzending niet gevonden");
+        (await GetPageAsync("/slideshow")).Should().Contain("Diavoorstelling starten");
+        (await GetPageAsync("/assignments")).Should().Contain("Opdrachten");
+        (await GetPageAsync("/assignments/1")).Should().Contain("Opdracht 1");
+        (await GetPageAsync("/assignments/1?open=true")).Should().Contain("Alleen open inzendingen");
+        (await GetPageAsync("/queue")).Should().Contain("Te beoordelen");
+        (await GetPageAsync("/slideshow?status=Awesome")).Should().Contain("Alleen awesome");
+        (await GetPageAsync("/assignments/999")).Should().Contain("Staat niet in de opdrachtenlijst");
         (await GetPageAsync("/groups")).Should().Contain("group-card");
-        (await GetPageAsync($"/groups/{groupId}")).Should().Contain("Rank #");
-        (await GetPageAsync($"/groups/{Guid.NewGuid()}")).Should().Contain("Group not found");
-        (await GetPageAsync("/configuration")).Should().Contain("opdrachtenpunten.csv");
-        (await GetPageAsync("/simulator")).Should().Contain("Upload a file");
-        (await GetPageAsync("/not-found")).Should().Contain("Page not found");
-        (await GetPageAsync("/Error")).Should().Contain("Something went wrong");
+        (await GetPageAsync($"/groups/{groupId}")).Should().Contain("Plaats ");
+        (await GetPageAsync($"/groups/{Guid.NewGuid()}")).Should().Contain("Groep niet gevonden");
+        (await GetPageAsync("/configuration")).Should().Contain("opdrachtenpunten.csv").And.Contain("Beoordelingsregels");
+        (await GetPageAsync("/simulator")).Should().Contain("Bestand uploaden");
+        (await GetPageAsync("/events")).Should().Contain("Gebeurtenissen");
+        (await GetPageAsync("/not-found")).Should().Contain("Pagina niet gevonden");
+        (await GetPageAsync("/Error")).Should().Contain("Er ging iets mis");
     }
 
     [Fact]

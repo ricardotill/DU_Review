@@ -34,7 +34,7 @@ public partial class AssignmentParser : IAssignmentParser
         if (string.IsNullOrWhiteSpace(messageText))
         {
             _logger.LogWarning("Assignment parsing failed: message text is empty");
-            return AssignmentParseResult.Failed("Message text is empty");
+            return AssignmentParseResult.Failed("Tekst van het bericht is leeg");
         }
 
         // 1. Try keyword regex: "opdracht 5", "assignment 12"
@@ -70,6 +70,6 @@ public partial class AssignmentParser : IAssignmentParser
         }
 
         _logger.LogWarning("Could not identify assignment number from message: '{Text}'", messageText);
-        return AssignmentParseResult.Failed($"No valid assignment number pattern found in: '{messageText}'");
+        return AssignmentParseResult.Failed($"Geen geldig opdrachtnummer gevonden in: '{messageText}'");
     }
 }

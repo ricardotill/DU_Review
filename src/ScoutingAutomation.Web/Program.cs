@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -14,6 +15,9 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Components.Authorization;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// The app is Dutch: dates and numbers are shown the Dutch way
+CultureInfo.DefaultThreadCurrentCulture = CultureInfo.DefaultThreadCurrentUICulture = CultureInfo.GetCultureInfo("nl-NL");
 
 // Aspire service defaults (OpenTelemetry, HealthChecks, ServiceDiscovery)
 builder.AddServiceDefaults();
@@ -49,6 +53,7 @@ else
 // Add Domain & Infrastructure services
 builder.Services.AddScoutingInfrastructure(builder.Configuration);
 builder.Services.AddScoped<ScoutingAutomation.Web.Favorites.FavoritesService>();
+builder.Services.AddScoped<ScoutingAutomation.Web.Notifications.NotificationPreferences>();
 
 // One shared access key, plus an admin key: see Auth/KeyAuth.cs
 builder.Services.AddAuthentication(KeyAuth.Scheme)
@@ -73,6 +78,17 @@ var scoutingSettings = app.Services.GetRequiredService<IOptions<ScoutingSettings
 if (!GameTime.Configure(scoutingSettings.TimeZone))
 {
     app.Logger.LogWarning("Unknown time zone '{TimeZone}' in Scouting:TimeZone: using the server's time zone {Local}", scoutingSettings.TimeZone, TimeZoneInfo.Local.Id);
+}
+
+var runtimeSettings = app.Services.GetRequiredService<RuntimeSettingsService>();
+if (runtimeSettings.EventStart is { } eventStart)
+{
+    app.Logger.LogInformation("Slack messages before the event start {EventStart} are ignored", eventStart);
+}
+
+if (runtimeSettings.EventEnd is { } eventEnd)
+{
+    app.Logger.LogInformation("Submissions from the event end {EventEnd} on do not count", eventEnd);
 }
 
 // Configure the HTTP request pipeline
@@ -205,6 +221,12 @@ api.MapGet("/files/{id:guid}", async (
 
 app.MapPost("/logout", async (HttpContext http) =>
 {
+    // The antiforgery middleware only records a failed check; an endpoint that binds no form must act on it itself
+    if (http.Features.Get<IAntiforgeryValidationFeature>() is not { IsValid: true })
+    {
+        return Results.BadRequest();
+    }
+
     await http.SignOutAsync(KeyAuth.Scheme);
     return Results.Redirect("/login");
 }).WithMetadata(new RequireAntiforgeryTokenAttribute());

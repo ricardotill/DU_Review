@@ -23,6 +23,20 @@ public class ScoutingSettings
     public string TimeZone { get; set; } = "Europe/Amsterdam";
 
     /// <summary>
+    /// Optional start of the event, in the game's time zone (<see cref="TimeZone"/>), e.g. "2026-10-03T09:00".
+    /// Slack messages posted before it are ignored. Without it, every message counts.
+    /// Can be changed in the app while it runs.
+    /// </summary>
+    public DateTime? EventStart { get; set; }
+
+    /// <summary>
+    /// Optional end of the event, in the game's time zone (<see cref="TimeZone"/>), e.g. "2026-10-03T17:00".
+    /// Submissions posted from then on do not count; the bot replies with <see cref="SlackFeedbackConfig.TooLate"/>.
+    /// Without it, the game never ends. Can be changed in the app while it runs.
+    /// </summary>
+    public DateTime? EventEnd { get; set; }
+
+    /// <summary>
     /// Optional first access key, shared with everyone who may use the app. Without it, one is generated.
     /// A key regenerated in the app (saved in <see cref="KeysFile"/>) always takes priority.
     /// </summary>
@@ -46,6 +60,26 @@ public class ScoutingSettings
     /// Automatic reactions and thread replies the bot places on problematic submissions.
     /// </summary>
     public SlackFeedbackConfig SlackFeedback { get; set; } = new();
+
+    /// <summary>
+    /// The message posted in every group channel when the game starts.
+    /// </summary>
+    public GameStartAnnouncementConfig GameStartAnnouncement { get; set; } = new();
+
+    /// <summary>
+    /// The message posted in every group channel when the game ends.
+    /// </summary>
+    public GameEndAnnouncementConfig GameEndAnnouncement { get; set; } = new();
+
+    /// <summary>
+    /// Whether a group may still send an attempt for an assignment it already has approved or awesome.
+    /// When true, such an attempt is not stored and the bot replies with <see cref="SlackFeedbackConfig.AlreadyCompleted"/>.
+    /// Can be switched in the app while it runs.
+    /// </summary>
+    public bool BlockAttemptsAfterApproval { get; set; }
+
+    /// <summary>The reminder in the jury channel for submissions that wait too long for a review.</summary>
+    public ReviewReminderConfig ReviewReminder { get; set; } = new();
 
     public List<GroupConfig> Groups { get; set; } = new();
 
@@ -101,6 +135,96 @@ public class SlackFeedbackConfig
         Reaction = "warning",
         Message = "Het bestand {files} kon niet worden opgehaald. Plaats je inzending opnieuw."
     };
+
+    /// <summary>
+    /// A new attempt for an assignment the group already completed, when <see cref="ScoutingSettings.BlockAttemptsAfterApproval"/> is on.
+    /// Placeholder <c>{number}</c> is replaced by the assignment number.
+    /// </summary>
+    public FeedbackConfig AlreadyCompleted { get; set; } = new()
+    {
+        Reaction = "lock",
+        Message = "Opdracht {number} is al goedgekeurd. Een nieuwe poging telt niet meer en is niet opgeslagen."
+    };
+
+    /// <summary>
+    /// A submission posted after <see cref="ScoutingSettings.EventEnd"/>; it is not stored.
+    /// Placeholder <c>{end}</c> is replaced by the end time, e.g. "17:00".
+    /// </summary>
+    public FeedbackConfig TooLate { get; set; } = new()
+    {
+        Reaction = "alarm_clock",
+        Message = "Het spel is om {end} afgelopen. Deze inzending telt niet meer mee en is niet opgeslagen."
+    };
+}
+
+public class ReviewReminderConfig
+{
+    /// <summary>The Slack channel of the jury. The bot must be a member. Empty means no reminders.</summary>
+    public string? ChannelId { get; set; }
+
+    /// <summary>
+    /// Minutes a submission may wait for a review before the jury is reminded. Null means no reminders.
+    /// Can be changed in the app while it runs.
+    /// </summary>
+    public int? AfterMinutes { get; set; }
+}
+
+public class GameStartAnnouncementConfig
+{
+    /// <summary>
+    /// Post the message by itself when <see cref="ScoutingSettings.EventStart"/> passes.
+    /// An admin can always post it by hand in the app.
+    /// </summary>
+    public bool AutoPost { get; set; } = true;
+
+    /// <summary>
+    /// Slack text of the message; leave empty to post nothing. Placeholders: <c>{group}</c> is the group's name.
+    /// <c>{approved}</c>, <c>{awesome}</c> and <c>{rejected}</c> are the review emoji from <see cref="ScoutingSettings.ReviewStatusReactions"/>.
+    /// <c>{missingNumber}</c>, <c>{unknownNumber}</c>, <c>{unsupportedFile}</c>, <c>{downloadFailed}</c> and <c>{alreadyCompleted}</c>
+    /// are the reactions from <see cref="ScoutingSettings.SlackFeedback"/>. <c>{retryRule}</c> says whether a group may send
+    /// a new attempt after approval, following <see cref="ScoutingSettings.BlockAttemptsAfterApproval"/>.
+    /// </summary>
+    public string? Message { get; set; } = DefaultMessage;
+
+    public const string DefaultMessage =
+        ":checkered_flag: *Het spel is begonnen, {group}!* Vanaf nu kun je inzendingen sturen.\n\n" +
+        "*Zo stuur je een inzending*\n" +
+        "• Plaats een bericht in dit kanaal met je foto, video, geluidsopname, PDF of Word-document als bijlage.\n" +
+        "• Zet het opdrachtnummer in het bericht, bijvoorbeeld \"Opdracht 12\".\n" +
+        "• Meerdere bestanden voor dezelfde opdracht mogen in één bericht.\n" +
+        "• {retryRule}\n\n" +
+        "*Wat betekenen de emoji's?*\n" +
+        "• {approved} goedgekeurd\n" +
+        "• {awesome} awesome, extra goed gedaan!\n" +
+        "• {rejected} afgekeurd, probeer het opnieuw\n" +
+        "• {missingNumber} geen of onbekend opdrachtnummer: plaats je inzending opnieuw met het juiste nummer\n" +
+        "• {unsupportedFile} bestand niet ondersteund of niet op te halen: plaats je inzending opnieuw";
+
+    /// <summary>What <c>{retryRule}</c> becomes when a new attempt after approval is allowed.</summary>
+    public const string RetryAllowedRule = "Opnieuw insturen mag: je beste inzending telt.";
+
+    /// <summary>What <c>{retryRule}</c> becomes when a new attempt after approval is blocked. The emoji placeholders are filled in too.</summary>
+    public const string RetryBlockedRule =
+        "Opnieuw insturen mag tot je opdracht is goedgekeurd. Na {approved} of {awesome} is de opdracht klaar: een nieuwe poging wordt niet nagekeken ({alreadyCompleted}).";
+}
+
+public class GameEndAnnouncementConfig
+{
+    /// <summary>
+    /// Post the message by itself when <see cref="ScoutingSettings.EventEnd"/> passes.
+    /// An admin can always post it by hand in the app.
+    /// </summary>
+    public bool AutoPost { get; set; } = true;
+
+    /// <summary>
+    /// Slack text of the message; leave empty to post nothing. Placeholders: <c>{group}</c> is the group's name,
+    /// <c>{end}</c> the end time, e.g. "17:00".
+    /// </summary>
+    public string? Message { get; set; } = DefaultMessage;
+
+    public const string DefaultMessage =
+        ":stopwatch: *Het spel is afgelopen, {group}!* Inzendingen vanaf {end} tellen niet meer mee.\n\n" +
+        "De jury beoordeelt nog de inzendingen die op tijd binnen waren. Bedankt voor het meedoen!";
 }
 
 /// <summary>
