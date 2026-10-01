@@ -68,6 +68,17 @@
             </select>
         </div>
 
+        <div class="mb-4">
+            <label class="form-label text-secondary small fw-semibold mb-1" for="slideshowScoreboard">Scorebord tussendoor</label>
+            <select class="form-select form-select-dark seconds" id="slideshowScoreboard" @bind="scoreboardEvery">
+                <option value="0">Nooit</option>
+                @foreach (var every in ScoreboardEveryOptions)
+                {
+                    <option value="@every">Elke @every items</option>
+                }
+            </select>
+        </div>
+
         <div class="d-flex align-items-center gap-3">
             <button class="btn btn-scout-primary d-flex align-items-center gap-2" disabled="@(Playlist.Count == 0)" @onclick="StartAsync">
                 <i class="bi bi-play-fill"></i>
@@ -95,6 +106,17 @@ else
         {
             var fileUrl = $"/api/files/{item.Id}";
 
+            @if (showingScoreboard && stats != null)
+            {
+                <div class="media scoreboard-slide" @key="(nameof(showingScoreboard), showCount)">
+                    <div class="scoreboard-slide-inner">
+                        <h2 class="scoreboard-slide-title"><i class="bi bi-trophy-fill text-warning"></i> Tussenstand</h2>
+                        <ScoreboardBoard Stats="stats" />
+                    </div>
+                </div>
+            }
+            else
+            {
             <div class="media" @key="item.Id">
                 @if (item.ContentType.StartsWith("image/"))
                 {
@@ -120,6 +142,7 @@ else
                 <div class="caption-assignment">@AssignmentLabel(item)</div>
                 <div class="caption-group">@(item.Group?.Name ?? "Onbekende groep")</div>
             </div>
+            }
 
             @* Buttons keep focus off themselves, so the arrow keys and space keep working on the stage *@
             <div class="controls" @onmousedown:preventDefault="true">
@@ -163,6 +186,8 @@ else
 
 @code {
     private static readonly int[] SecondsOptions = { 3, 5, 8, 10, 15, 30 };
+    private static readonly int[] ScoreboardEveryOptions = { 3, 5, 10, 20 };
+    private static readonly TimeSpan ScoreboardDuration = TimeSpan.FromSeconds(15);
 
     [SupplyParameterFromQuery(Name = "favorites")]
     public bool? FavoritesFromQuery { get; set; }
@@ -186,6 +211,9 @@ else
     private bool loop = true;
     private bool shuffle;
     private int secondsPerImage = 8;
+    // 0 = never; otherwise the scoreboard shows after this many items
+    private int scoreboardEvery;
+    private SubmissionStatistics? stats;
 
     private bool started;
     private bool paused;
@@ -196,6 +224,8 @@ else
     private CancellationTokenSource? imageTimer;
     private ElementReference stage;
     private bool focusStage;
+    private bool showingScoreboard;
+    private int itemsSinceScoreboard;
 
     /// <summary>What a start would show: media that is not rejected, narrowed by the choices in the setup.</summary>
     private List<Submission> Playlist => media
@@ -257,6 +287,7 @@ else
             .Where(s => s.Status != SubmissionStatus.Rejected && IsMedia(s.ContentType))
             .OrderBy(s => s.CreatedAt)
             .ToList();
+        stats = await services.GetRequiredService<ISubmissionRepository>().GetStatisticsAsync();
         loaded = true;
 
         // A running show keeps its order; it only drops items that were rejected or removed
@@ -292,6 +323,8 @@ else
 
         started = true;
         paused = false;
+        showingScoreboard = false;
+        itemsSinceScoreboard = 0;
         index = 0;
         focusStage = true;
         ShowCurrent();
@@ -311,6 +344,16 @@ else
 
     private Task MoveAsync(int step)
     {
+        // The scoreboard sits between the current item and the next: back shows the current item again
+        if (showingScoreboard)
+        {
+            showingScoreboard = false;
+            if (step < 0)
+            {
+                step = 0;
+            }
+        }
+
         var target = index + step;
         if (target < 0 || target >= shown.Count)
         {
@@ -343,9 +386,23 @@ else
 
     private Task AdvanceAutomaticallyAsync()
     {
+        if (showingScoreboard)
+        {
+            return NextAsync();
+        }
+
         if (index >= shown.Count - 1 && !loop)
         {
             paused = true;
+            return Task.CompletedTask;
+        }
+
+        if (scoreboardEvery > 0 && itemsSinceScoreboard >= scoreboardEvery)
+        {
+            showingScoreboard = true;
+            itemsSinceScoreboard = 0;
+            showCount++;
+            StartImageTimer();
             return Task.CompletedTask;
         }
 
@@ -355,13 +412,16 @@ else
     private void ShowCurrent()
     {
         showCount++;
+        itemsSinceScoreboard++;
         StartImageTimer();
     }
 
+    /// <summary>Photos and the scoreboard move on after a set time; video and audio when they end.</summary>
     private void StartImageTimer()
     {
         StopImageTimer();
-        if (paused || Current is not { } item || !item.ContentType.StartsWith("image/")) return;
+        if (paused || Current is not { } item) return;
+        if (!showingScoreboard && !item.ContentType.StartsWith("image/")) return;
 
         var timer = new CancellationTokenSource();
         imageTimer = timer;
@@ -372,7 +432,7 @@ else
     {
         try
         {
-            await Task.Delay(TimeSpan.FromSeconds(secondsPerImage), token);
+            await Task.Delay(showingScoreboard ? ScoreboardDuration : TimeSpan.FromSeconds(secondsPerImage), token);
             await InvokeAsync(async () =>
             {
                 if (token.IsCancellationRequested) return;

@@ -25,6 +25,7 @@
   <ItemGroup>
     <NpmManifest Include="package.json;package-lock.json" />
     <NpmAsset Include="node_modules/bootstrap/dist/css/bootstrap.min.css;node_modules/bootstrap/dist/css/bootstrap.min.css.map" DestinationFolder="wwwroot/lib/bootstrap/dist/css" />
+    <NpmAsset Include="node_modules/bootstrap/dist/js/bootstrap.bundle.min.js;node_modules/bootstrap/dist/js/bootstrap.bundle.min.js.map" DestinationFolder="wwwroot/lib/bootstrap/dist/js" />
     <NpmAsset Include="node_modules/bootstrap-icons/font/bootstrap-icons.min.css" DestinationFolder="wwwroot/lib/bootstrap-icons/font" />
     <NpmAsset Include="node_modules/bootstrap-icons/font/fonts/bootstrap-icons.woff;node_modules/bootstrap-icons/font/fonts/bootstrap-icons.woff2" DestinationFolder="wwwroot/lib/bootstrap-icons/font/fonts" />
   </ItemGroup>

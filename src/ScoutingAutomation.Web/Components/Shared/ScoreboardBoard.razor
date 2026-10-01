@@ -1,0 +1,36 @@
+@* The scoreboard in big type, for a beamer: rank, group and points. *@
+@if (Stats.GroupStatistics.Count == 0)
+{
+    <div class="empty-state">Geen groepen ingesteld.</div>
+}
+else
+{
+    <ol class="board">
+        @foreach (var g in Stats.GroupStatistics.OrderBy(x => x.Rank).ThenBy(x => x.GroupName))
+        {
+            <li class="board-row @RankClass(g.Rank)" @key="g.GroupId">
+                <span class="board-rank">
+                    @if (g.Rank <= 3)
+                    {
+                        <i class="bi bi-trophy-fill" aria-hidden="true"></i>
+                    }
+                    @g.Rank
+                </span>
+                <span class="board-name">@g.GroupName</span>
+                <span class="board-score">@g.Score <span class="board-unit">@(g.Score == 1 ? "punt" : "punten")</span></span>
+            </li>
+        }
+    </ol>
+}
+
+@code {
+    [Parameter, EditorRequired] public SubmissionStatistics Stats { get; set; } = default!;
+
+    private static string RankClass(int rank) => rank switch
+    {
+        1 => "gold",
+        2 => "silver",
+        3 => "bronze",
+        _ => ""
+    };
+}

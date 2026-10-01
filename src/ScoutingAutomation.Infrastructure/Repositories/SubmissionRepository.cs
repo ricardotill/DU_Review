@@ -105,7 +105,8 @@ public class SubmissionRepository : ISubmissionRepository
         return list.OrderByDescending(s => s.CreatedAt).ToList();
     }
 
-    private sealed record AssignmentOutcome(Guid GroupId, int AssignmentNumber, SubmissionStatus Status);
+    /// <param name="AchievedAt">Post time of the first submission with the best status.</param>
+    private sealed record AssignmentOutcome(Guid GroupId, int AssignmentNumber, SubmissionStatus Status, DateTimeOffset AchievedAt);
 
     /// <summary>
     /// One outcome per group and assignment, using the best status of all its submissions.
@@ -115,10 +116,15 @@ public class SubmissionRepository : ISubmissionRepository
         return submissions
             .Where(s => s.AssignmentNumber.HasValue)
             .GroupBy(s => (s.GroupId, Number: s.AssignmentNumber!.Value))
-            .Select(g => new AssignmentOutcome(
-                g.Key.GroupId,
-                g.Key.Number,
-                g.Select(s => s.Status).Best()))
+            .Select(g =>
+            {
+                var best = g.Select(s => s.Status).Best();
+                return new AssignmentOutcome(
+                    g.Key.GroupId,
+                    g.Key.Number,
+                    best,
+                    g.Where(s => s.Status.Rank() == best.Rank()).Min(s => s.CreatedAt));
+            })
             .ToList();
     }
 
@@ -170,9 +176,20 @@ public class SubmissionRepository : ISubmissionRepository
                 PendingCount = CountStatus(groupOutcomes, SubmissionStatus.Pending),
                 ApprovedCount = CountStatus(groupOutcomes, SubmissionStatus.Approved),
                 RejectedCount = CountStatus(groupOutcomes, SubmissionStatus.Rejected),
-                AwesomeCount = CountStatus(groupOutcomes, SubmissionStatus.Awesome)
+                AwesomeCount = CountStatus(groupOutcomes, SubmissionStatus.Awesome),
+                LastSubmissionAt = submissions.Where(s => s.GroupId == group.Id).Select(s => (DateTimeOffset?)s.CreatedAt).Max()
             });
         }
+
+        stats.ScoreEvents = outcomes
+            .Select(o => new ScoreEvent(
+                o.GroupId,
+                o.AssignmentNumber,
+                o.AchievedAt,
+                assignmentsByNumber.TryGetValue(o.AssignmentNumber, out var assignment) ? assignment.PointsFor(o.Status) : 0))
+            .Where(e => e.Points > 0)
+            .OrderBy(e => e.At)
+            .ToList();
 
         foreach (var groupStat in stats.GroupStatistics)
         {

@@ -31,6 +31,12 @@ else
                 <i class="bi bi-folder2-open"></i>
                 <span>Alle uploads</span>
             </a>
+            <AuthorizeView Roles="@KeyAuth.AdminRole">
+                <a href="/api/export/files.zip?status=approved&group=@group.Id" download class="btn btn-scout-secondary d-flex align-items-center gap-2" title="Goedgekeurde en awesome bestanden van deze groep">
+                    <i class="bi bi-file-earmark-zip"></i>
+                    <span>Downloaden</span>
+                </a>
+            </AuthorizeView>
         </Actions>
     </PageHeader>
 
@@ -96,6 +102,14 @@ else
         </div>
     }
 
+    @if (stats != null)
+    {
+        <div class="glass-panel p-4 mb-4">
+            <h2 class="panel-title"><i class="bi bi-graph-up text-info"></i> Punten in de loop van het spel</h2>
+            <ScoreChart Stats="stats" Highlight="Id" />
+        </div>
+    }
+
     <!-- Per assignment -->
     <div class="glass-panel p-4">
         <h2 class="panel-title"><i class="bi bi-list-ol text-info"></i> Opdrachten</h2>
@@ -110,7 +124,7 @@ else
         else
         {
             <div class="table-responsive">
-                <table class="custom-table">
+                <table class="custom-table assignment-results">
                     <thead>
                         <tr>
                             <th>Opdracht</th>
@@ -162,6 +176,7 @@ else
 
     private bool loaded;
     private Group? group;
+    private SubmissionStatistics? stats;
     private GroupStatistic? groupStats;
     private int groupCount;
     private int assignmentCount;
@@ -182,7 +197,7 @@ else
             return;
         }
 
-        var stats = await submissionRepository.GetStatisticsAsync();
+        stats = await submissionRepository.GetStatisticsAsync();
         groupStats = stats.GroupStatistics.FirstOrDefault(g => g.GroupId == Id);
         groupCount = stats.GroupStatistics.Count;
 

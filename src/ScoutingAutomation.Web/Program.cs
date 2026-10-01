@@ -10,6 +10,7 @@ using ScoutingAutomation.Infrastructure.Extensions;
 using ScoutingAutomation.Infrastructure.Services;
 using ScoutingAutomation.Web.Auth;
 using ScoutingAutomation.Web.Components;
+using ScoutingAutomation.Web.Export;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Components.Authorization;
@@ -218,6 +219,8 @@ api.MapGet("/files/{id:guid}", async (
     // Range requests let browsers seek in videos and audio
     return Results.File(stream, submission.ContentType, submission.FileName, enableRangeProcessing: true);
 }).RequireAuthorization();
+
+api.MapExportEndpoints();
 
 app.MapPost("/logout", async (HttpContext http) =>
 {

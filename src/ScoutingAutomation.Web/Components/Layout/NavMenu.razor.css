@@ -101,3 +101,14 @@
         overflow-y: auto;
     }
 }
+
+/* Headings between groups of pages; spans, so the nav-item padding rules above still find the first and last item */
+.nav-section {
+    display: block;
+    padding: 0.75rem 1rem 0.25rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}

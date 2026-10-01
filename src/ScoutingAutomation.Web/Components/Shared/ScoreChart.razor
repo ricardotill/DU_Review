@@ -1,0 +1,226 @@
+@inject RuntimeSettingsService Runtime
+@inject TimeProvider Time
+
+@* Each group's score through the game, as a step line per group. Points count from the Slack post time.
+   With Highlight, only that group is in color; the others are grey context lines behind it. *@
+@if (Stats.ScoreEvents.Count == 0)
+{
+    <div class="empty-state">
+        <i class="bi bi-graph-up"></i>
+        Nog geen punten.
+    </div>
+}
+else
+{
+    var chart = Build();
+    <figure class="score-chart @(Large ? "large" : "")">
+        <svg viewBox="0 0 @Width @Height" role="img" aria-label="@chart.Description">
+            @foreach (var tick in chart.YTicks)
+            {
+                var y = chart.Y(tick);
+                <g>
+                    <line class="grid" x1="@F(Left)" x2="@F(Width - Right)" y1="@F(y)" y2="@F(y)" />
+                    <text class="axis" x="@F(Left - 8)" y="@F(y)" text-anchor="end" dominant-baseline="middle">@tick</text>
+                </g>
+            }
+            @foreach (var tick in chart.XTicks)
+            {
+                <g><text class="axis" x="@F(chart.X(tick))" y="@F(Height - Bottom + 18)" text-anchor="middle">@tick.ToGameTime().ToString("HH:mm")</text></g>
+            }
+            <line class="baseline" x1="@F(Left)" x2="@F(Width - Right)" y1="@F(chart.Y(0))" y2="@F(chart.Y(0))" />
+
+            @foreach (var series in chart.Context)
+            {
+                <path class="line context" d="@series.Path" />
+            }
+            @* Behind the colored lines, so the leaders stay on top *@
+            @foreach (var series in chart.Shown.AsEnumerable().Reverse())
+            {
+                <path class="line" d="@series.Path" stroke="@series.Color" />
+            }
+            @foreach (var series in chart.Shown)
+            {
+                @foreach (var point in series.Points)
+                {
+                    <circle class="marker" cx="@F(chart.X(point.At))" cy="@F(chart.Y(point.Total))" r="4" fill="@series.Color" />
+                    <circle class="hit" cx="@F(chart.X(point.At))" cy="@F(chart.Y(point.Total))" r="12">
+                        <title>@series.Name · @point.At.ToGameTime().ToString("HH:mm") · opdracht @point.AssignmentNumber +@point.Points → @point.Total punten</title>
+                    </circle>
+                }
+            }
+            @foreach (var label in chart.EndLabels)
+            {
+                <g><text class="end-label" x="@F(Width - Right + 8)" y="@F(label.Y)" dominant-baseline="middle">@label.Text</text></g>
+            }
+        </svg>
+
+        <figcaption class="legend">
+            @foreach (var series in chart.Shown.OrderByDescending(s => s.Total).ThenBy(s => s.Name))
+            {
+                <span class="legend-item"><span class="swatch" style="background: @series.Color"></span>@series.Name <span class="legend-score">@series.Total</span></span>
+            }
+            @if (chart.Context.Count > 0)
+            {
+                <span class="legend-item"><span class="swatch context"></span>Andere groepen</span>
+            }
+        </figcaption>
+
+        @if (!Large)
+        {
+            <details class="mt-2">
+                <summary class="text-secondary small">Als tabel</summary>
+                <table class="custom-table small mt-2">
+                    <thead><tr><th>Tijd</th><th>Groep</th><th>Opdracht</th><th class="text-end">Punten</th><th class="text-end">Totaal</th></tr></thead>
+                    <tbody>
+                        @foreach (var row in chart.Shown.SelectMany(s => s.Points.Select(p => (s.Name, p))).OrderBy(r => r.p.At))
+                        {
+                            <tr>
+                                <td>@row.p.At.ToGameTime().ToString("HH:mm")</td>
+                                <td>@row.Name</td>
+                                <td>#@row.p.AssignmentNumber</td>
+                                <td class="text-end">+@row.p.Points</td>
+                                <td class="text-end">@row.p.Total</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </details>
+        }
+    </figure>
+}
+
+@code {
+    // Categorical palette for dark surfaces, in fixed order; validated against the panel color #161b22.
+    // A group keeps its color however the scores change: colors follow the group's name, not its rank.
+    private static readonly string[] Palette = { "#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767" };
+    private const string OtherColor = "#6e7681";
+
+    private const double Width = 900, Height = 300, Left = 40, Top = 12, Bottom = 30;
+
+    // Room for the names at the end of the lines; the beamer has none, its big legend names every group
+    private double Right => Large ? 24 : 150;
+
+    [Parameter, EditorRequired] public SubmissionStatistics Stats { get; set; } = default!;
+
+    /// <summary>Bigger text for the beamer; no table.</summary>
+    [Parameter] public bool Large { get; set; }
+
+    /// <summary>Shows this group in color and the other groups as grey lines for comparison.</summary>
+    [Parameter] public Guid? Highlight { get; set; }
+
+    private static string F(double value) => value.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+
+    private sealed record ChartPoint(DateTimeOffset At, int AssignmentNumber, int Points, int Total);
+
+    private sealed record ChartSeries(Guid GroupId, string Name, string Color, List<ChartPoint> Points, string Path)
+    {
+        public int Total => Points.Count == 0 ? 0 : Points[^1].Total;
+    }
+
+    private sealed record EndLabel(double Y, string Text);
+
+    /// <param name="Shown">The groups in color.</param>
+    /// <param name="Context">Grey lines behind them; only with a highlighted group.</param>
+    private sealed record ChartModel(
+        List<ChartSeries> Shown,
+        List<ChartSeries> Context,
+        string Description,
+        Func<DateTimeOffset, double> X,
+        Func<double, double> Y,
+        List<int> YTicks,
+        List<DateTimeOffset> XTicks,
+        List<EndLabel> EndLabels);
+
+    private ChartModel Build()
+    {
+        var events = Stats.ScoreEvents;
+        var now = Time.GetUtcNow();
+
+        // From the start of the game (or the first points) until now, or the end once the game is over
+        var from = Runtime.EventStart is { } start && start <= events[0].At ? start : events[0].At;
+        var to = Runtime.EventEnd is { } end && end < now ? end : now;
+        if (to < events[^1].At) to = events[^1].At;
+        if (to - from < TimeSpan.FromMinutes(10)) to = from + TimeSpan.FromMinutes(10);
+
+        var maxScore = Math.Max(1, events.GroupBy(e => e.GroupId).Max(g => g.Sum(e => e.Points)));
+        var yStep = NiceStep(maxScore / 4.0);
+        var yMax = (int)Math.Ceiling(maxScore / (double)yStep) * yStep;
+
+        double X(DateTimeOffset at) => Left + (at - from).TotalSeconds / (to - from).TotalSeconds * (Width - Left - Right);
+        double Y(double value) => Height - Bottom - value / yMax * (Height - Top - Bottom);
+
+        var colorOrder = Stats.GroupStatistics.OrderBy(g => g.GroupName, StringComparer.CurrentCulture).Select(g => g.GroupId).ToList();
+        var series = new List<ChartSeries>();
+        foreach (var group in Stats.GroupStatistics)
+        {
+            var total = 0;
+            var points = events.Where(e => e.GroupId == group.GroupId)
+                .Select(e => new ChartPoint(e.At, e.AssignmentNumber, e.Points, total += e.Points))
+                .ToList();
+
+            var path = new System.Text.StringBuilder($"M{F(X(from))},{F(Y(0))}");
+            foreach (var p in points)
+            {
+                path.Append($" H{F(X(p.At))} V{F(Y(p.Total))}");
+            }
+            path.Append($" H{F(X(to))}");
+
+            var slot = colorOrder.IndexOf(group.GroupId);
+            series.Add(new ChartSeries(group.GroupId, group.GroupName, slot < Palette.Length ? Palette[slot] : OtherColor, points, path.ToString()));
+        }
+        series = series.OrderByDescending(s => s.Total).ThenBy(s => s.Name).ToList();
+
+        var shown = series.Where(s => Highlight == null || s.GroupId == Highlight).ToList();
+        var context = series.Except(shown).ToList();
+        var description = Highlight != null && shown.Count == 1
+            ? $"Punten van {shown[0].Name} in de loop van het spel, met de andere groepen in grijs"
+            : "Punten per groep in de loop van het spel";
+
+        return new ChartModel(shown, context, description, X, Y,
+            Enumerable.Range(0, yMax / yStep + 1).Select(i => i * yStep).ToList(),
+            TimeTicks(from, to),
+            Large ? new List<EndLabel>() : EndLabels(shown, Y));
+    }
+
+    // Names at the end of the lines, pushed apart so equal scores don't overlap. The legend has them all as well.
+    private static List<EndLabel> EndLabels(List<ChartSeries> series, Func<double, double> y)
+    {
+        const double gap = 16;
+        var labels = new List<EndLabel>();
+        var previous = double.NegativeInfinity;
+        foreach (var s in series.Take(8))
+        {
+            var at = Math.Max(y(s.Total), previous + gap);
+            labels.Add(new EndLabel(at, s.Name));
+            previous = at;
+        }
+
+        return labels;
+    }
+
+    // 1, 2 or 5 times a power of ten
+    private static int NiceStep(double rough)
+    {
+        var magnitude = Math.Pow(10, Math.Floor(Math.Log10(Math.Max(rough, 1))));
+        var step = new[] { 1, 2, 5, 10 }.Select(m => m * magnitude).First(s => s >= rough);
+        return Math.Max(1, (int)step);
+    }
+
+    // Whole hours, or half or quarter hours for a short span; at most about eight labels
+    private static List<DateTimeOffset> TimeTicks(DateTimeOffset from, DateTimeOffset to)
+    {
+        var span = to - from;
+        var step = new[] { 15, 30, 60, 120, 240 }.Select(m => TimeSpan.FromMinutes(m)).FirstOrDefault(s => span / s <= 8, TimeSpan.FromHours(6));
+        var local = from.ToGameTime();
+        var first = local.AddTicks(-(local.TimeOfDay.Ticks % step.Ticks));
+        if (first < local) first += step;
+
+        var ticks = new List<DateTimeOffset>();
+        for (var t = first; t <= to; t += step)
+        {
+            ticks.Add(t);
+        }
+
+        return ticks;
+    }
+}

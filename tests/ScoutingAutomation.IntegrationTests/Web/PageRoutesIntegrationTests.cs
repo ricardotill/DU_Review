@@ -46,6 +46,7 @@ public class PageRoutesIntegrationTests : IClassFixture<WebApplicationFactory<Pr
         (await GetPageAsync($"/submissions/{submission.Id}")).Should().Contain("Beoordelingen");
         (await GetPageAsync($"/submissions/{Guid.NewGuid()}")).Should().Contain("Inzending niet gevonden");
         (await GetPageAsync("/slideshow")).Should().Contain("Diavoorstelling starten");
+        (await GetPageAsync("/scoreboard")).Should().Contain("board-row");
         (await GetPageAsync("/assignments")).Should().Contain("Opdrachten");
         (await GetPageAsync("/assignments/1")).Should().Contain("Opdracht 1");
         (await GetPageAsync("/assignments/1?open=true")).Should().Contain("Alleen open inzendingen");

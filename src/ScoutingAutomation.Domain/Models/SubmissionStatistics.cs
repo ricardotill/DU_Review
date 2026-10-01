@@ -25,7 +25,16 @@ public class SubmissionStatistics
     public List<GroupStatistic> GroupStatistics { get; set; } = new();
     public List<AssignmentStatistic> AssignmentStatistics { get; set; } = new();
     public List<DailyActivityStatistic> RecentActivity { get; set; } = new();
+
+    /// <summary>
+    /// When each group earned its points, oldest first: one entry per group and assignment that scores.
+    /// The points count from the Slack post time of the first submission with the best status, so
+    /// the timeline stays the same after a rebuild from Slack.
+    /// </summary>
+    public List<ScoreEvent> ScoreEvents { get; set; } = new();
 }
+
+public sealed record ScoreEvent(Guid GroupId, int AssignmentNumber, DateTimeOffset At, int Points);
 
 public class GroupStatistic
 {
@@ -40,6 +49,9 @@ public class GroupStatistic
     public int ApprovedCount { get; set; }
     public int RejectedCount { get; set; }
     public int AwesomeCount { get; set; }
+
+    /// <summary>Slack post time of the group's latest upload, with or without a valid number; null when it has none.</summary>
+    public DateTimeOffset? LastSubmissionAt { get; set; }
 
     public double ApprovalRate => TotalSubmissions > 0
         ? Math.Round(((double)(ApprovedCount + AwesomeCount) / TotalSubmissions) * 100, 1)

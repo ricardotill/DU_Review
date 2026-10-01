@@ -14,6 +14,16 @@
                     <input class="form-check-input" type="checkbox" role="switch" id="manualMode" checked="@Runtime.ManualMode" @onchange="ToggleManualMode" />
                     <label class="form-check-label text-white small fw-semibold" for="manualMode">Handmatige modus</label>
                 </div>
+                <div class="dropdown align-self-center">
+                    <button class="btn btn-scout-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="bi bi-download me-1"></i> Exporteren
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end">
+                        <li><a class="dropdown-item" href="/api/export/scores.csv" download><i class="bi bi-filetype-csv me-2"></i>Scores (CSV)</a></li>
+                        <li><a class="dropdown-item" href="/api/export/files.zip?status=awesome" download><i class="bi bi-fire me-2"></i>Awesome bestanden (ZIP)</a></li>
+                        <li><a class="dropdown-item" href="/api/export/files.zip?status=approved" download><i class="bi bi-check2-all me-2"></i>Goedgekeurd + awesome (ZIP)</a></li>
+                    </ul>
+                </div>
             </Authorized>
             <NotAuthorized>
                 @if (Runtime.ManualMode)
@@ -107,7 +117,7 @@ else
         else
         {
             <div class="table-responsive">
-                <table class="custom-table">
+                <table class="custom-table leaderboard">
                     <thead>
                         <tr>
                             <th style="width: 3rem;">#</th>
@@ -119,6 +129,7 @@ else
                             <th class="text-center">Awesome</th>
                             <th class="text-center">Afgekeurd</th>
                             <th style="width: 180px;">Goedgekeurd %</th>
+                            <th>Laatst actief</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -147,12 +158,18 @@ else
                                         <span class="text-white-50 small">@g.ApprovalRate%</span>
                                     </div>
                                 </td>
+                                <td class="small"><LastActivity At="g.LastSubmissionAt" /></td>
                             </tr>
                         }
                     </tbody>
                 </table>
             </div>
         }
+    </div>
+
+    <div class="glass-panel p-4 mb-4">
+        <h2 class="panel-title"><i class="bi bi-graph-up text-info"></i> Punten in de loop van het spel</h2>
+        <ScoreChart Stats="stats" />
     </div>
 
     <!-- Assignments with submissions -->

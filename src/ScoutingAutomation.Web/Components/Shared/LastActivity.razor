@@ -1,0 +1,66 @@
+@implements IDisposable
+@inject RuntimeSettingsService Runtime
+@inject TimeProvider Time
+
+@* How long ago a group last uploaded something. Turns yellow, then red, when a group has been quiet for a while during the game. *@
+@{
+    var now = Time.GetUtcNow();
+    var level = Level(now);
+}
+<span class="last-activity @level.CssClass" title="@Title">
+    @if (level.Icon is { } icon)
+    {
+        <i class="bi @icon me-1" aria-hidden="true"></i>
+    }
+    @(At is { } at ? $"{ReviewQueue.FormatWait(now - at)} geleden" : "Nog niets")
+    @if (level.Label is { } label)
+    {
+        <span class="visually-hidden">(@label)</span>
+    }
+</span>
+
+@code {
+    /// <summary>Quiet this long during the game: yellow.</summary>
+    public static readonly TimeSpan QuietAfter = TimeSpan.FromMinutes(30);
+
+    /// <summary>Quiet this long during the game: red.</summary>
+    public static readonly TimeSpan SilentAfter = TimeSpan.FromMinutes(60);
+
+    /// <summary>Slack post time of the group's latest upload; null when it has none.</summary>
+    [Parameter] public DateTimeOffset? At { get; set; }
+
+    private ITimer? timer;
+
+    private string? Title => At is { } at ? $"Laatste upload: {at.ToGameTime():HH:mm}" : "Nog geen uploads";
+
+    private sealed record ActivityLevel(string CssClass, string? Icon, string? Label);
+
+    private static readonly ActivityLevel Normal = new("text-white-50", null, null);
+    private static readonly ActivityLevel Quiet = new("text-warning", "bi-hourglass-split", "al even stil");
+    private static readonly ActivityLevel Silent = new("text-danger", "bi-exclamation-triangle-fill", "lang stil");
+
+    // Only while the game runs: before the start nobody is expected to upload, after the end nobody can.
+    // Without any upload, the quiet time counts from the start.
+    private ActivityLevel Level(DateTimeOffset now)
+    {
+        if (Runtime.EventStart is not { } start || now < start) return Normal;
+        if (Runtime.EventEnd is { } end && now >= end) return Normal;
+
+        var quiet = now - (At is { } at && at > start ? at : start);
+        return quiet >= SilentAfter ? Silent : quiet >= QuietAfter ? Quiet : Normal;
+    }
+
+    protected override void OnInitialized()
+    {
+        Runtime.Changed += OnRuntimeChanged;
+        timer = Time.CreateTimer(_ => InvokeAsync(StateHasChanged), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+    }
+
+    private void OnRuntimeChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        Runtime.Changed -= OnRuntimeChanged;
+        timer?.Dispose();
+    }
+}

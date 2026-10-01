@@ -1,0 +1,45 @@
+@page "/scoreboard"
+@rendermode InteractiveServer
+@inherits LiveComponentBase
+@inject IJSRuntime JS
+
+<PageTitle>Scorebord - DU Review</PageTitle>
+
+@* For a beamer: the scoreboard and the points over time, live. Full screen hides everything else. *@
+<div class="beamer" @ref="beamer">
+    <GameCountdown />
+    <div class="beamer-header">
+        <h1 class="beamer-title"><i class="bi bi-trophy-fill text-warning"></i> Scorebord</h1>
+        <button class="btn btn-scout-secondary fullscreen" title="Volledig scherm" aria-label="Volledig scherm" @onclick="ToggleFullscreenAsync">
+            <i class="bi bi-arrows-fullscreen"></i>
+        </button>
+    </div>
+
+    @if (stats == null)
+    {
+        <div class="empty-state">
+            <div class="spinner-border text-success" role="status"></div>
+        </div>
+    }
+    else
+    {
+        <div class="beamer-body">
+            <div class="beamer-board"><ScoreboardBoard Stats="stats" /></div>
+            <div class="beamer-chart"><ScoreChart Stats="stats" Large="true" /></div>
+        </div>
+    }
+</div>
+
+@code {
+    private SubmissionStatistics? stats;
+    private ElementReference beamer;
+
+    protected override Task OnInitializedAsync() => ReloadAsync();
+
+    protected override async Task LoadAsync(IServiceProvider services)
+    {
+        stats = await services.GetRequiredService<ISubmissionRepository>().GetStatisticsAsync();
+    }
+
+    private async Task ToggleFullscreenAsync() => await JS.InvokeVoidAsync("duSlideshow.toggleFullscreen", beamer);
+}

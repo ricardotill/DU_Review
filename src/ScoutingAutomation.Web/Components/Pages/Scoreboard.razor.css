@@ -1,0 +1,54 @@
+.beamer {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    min-height: calc(100vh - 7rem);
+    padding: 1.5rem;
+    border-radius: 12px;
+    background: var(--bg-main);
+}
+
+.beamer:fullscreen {
+    min-height: 100vh;
+    border-radius: 0;
+    padding: 2.5rem 3rem;
+    overflow: auto;
+}
+
+.beamer-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    /* Room for the countdown in the top right corner */
+    padding-right: 14rem;
+}
+
+.beamer-title {
+    margin: 0;
+    font-size: clamp(1.75rem, 4vw, 3.5rem);
+    font-weight: 800;
+    color: #fff;
+}
+
+.beamer:fullscreen .fullscreen {
+    display: none;
+}
+
+.beamer-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 2rem;
+    align-items: start;
+}
+
+@media (max-width: 991.98px) {
+    .beamer-body {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .beamer-header {
+        padding-right: 0;
+        padding-top: 4rem;
+    }
+}

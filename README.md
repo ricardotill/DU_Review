@@ -118,18 +118,35 @@ Een los getal ergens in de tekst telt **niet**. Zo wordt "we deden het met 3 man
 
 | Pagina | Wat je ziet |
 |---|---|
-| **Dashboard** | Totalen, het scorebord en de voortgang per opdracht, en de schakelaar voor **Handmatige modus**. |
+| **Dashboard** | Totalen, het scorebord met **Laatst actief** per groep, de punten in de loop van het spel en de voortgang per opdracht. In beheermodus ook de schakelaar voor **Handmatige modus** en **Exporteren**. Zie **Scorebord en export**. |
 | **Te beoordelen** | De open inzendingen per Slack-bericht, de langst wachtende eerst, met de wachttijd. Een klik opent het bericht in de Slack-app; ernaast staat een link naar het bericht in de browser. Zie **Te beoordelen**. |
 | **Inzendingen** | Alle inzendingen, met zoeken en filteren op groep, opdracht, status en jurylid (op naam of Slack-ID), en alleen je favorieten. |
-| **Gebeurtenissen** | Live elke Slack-gebeurtenis (bericht, bewerking, verwijdering, emoji erbij of eraf) met wat de app ermee deed: verwerkt, genegeerd met reden, of mislukt. Toont de laatste 500 sinds de start van de app; na een herstart begint de lijst leeg. |
-| **Diavoorstelling** | Alle foto's, video's en geluidsopnames achter elkaar, bijvoorbeeld op een beamer. Afgekeurde inzendingen worden overgeslagen. Kies een groep, een opdracht, alleen awesome of alleen favorieten. |
 | **Opdrachten** | Alle opdrachten. Per opdracht een pagina met de inzendingen van alle groepen naast elkaar. Met **Alleen open inzendingen** beoordeel je één opdracht in één keer; sneltoetsen ← en → gaan naar de vorige en volgende opdracht, **N** naar de volgende met open inzendingen. |
-| **Groepen** | Alle groepen. Per groep een pagina met score, plaats en alle opdrachten. |
+| **Groepen** | Alle groepen. Per groep een pagina met score, plaats, de punten in de loop van het spel (de andere groepen in grijs ter vergelijking) en alle opdrachten. |
+| **Scorebord** | Het scorebord in grote letters en de punten in de loop van het spel, voor een beamer. |
+| **Diavoorstelling** | Alle foto's, video's en geluidsopnames achter elkaar, bijvoorbeeld op een beamer. Afgekeurde inzendingen worden overgeslagen. Kies een groep, een opdracht, alleen awesome of alleen favorieten, en of het scorebord tussendoor komt. |
+| **Gebeurtenissen** | Live elke Slack-gebeurtenis (bericht, bewerking, verwijdering, emoji erbij of eraf) met wat de app ermee deed: verwerkt, genegeerd met reden, of mislukt. Toont de laatste 500 sinds de start van de app; na een herstart begint de lijst leeg. |
+| **Slack-simulator** | Nep-inzendingen en -reacties versturen om te testen. Alleen zichtbaar in simulatiemodus. |
 | **Configuratie** | Alle instellingen, de juryleden met hun namen, de **Beoordelingsregels**, en **Opnieuw opbouwen uit Slack** (zie hieronder). |
 | **Beheer** | Naar beheermodus gaan, de toegangssleutel bekijken en sleutels opnieuw aanmaken. |
-| **Slack-simulator** | Nep-inzendingen en -reacties versturen om te testen. Alleen zichtbaar in simulatiemodus. |
 
 Beoordelen gebeurt in Slack. Voor noodgevallen kan een status op de detailpagina van een inzending handmatig worden aangepast, onder **Status handmatig aanpassen** (alleen in beheermodus). Dit vraagt om een reden en wordt vastgelegd in de beoordelingsgeschiedenis. Een latere emoji in Slack overschrijft zo'n aanpassing weer.
+
+## Scorebord en export
+
+**Laatst actief.** Het scorebord op het **Dashboard** en de kaarten op **Groepen** tonen wanneer een groep voor het laatst iets in Slack plaatste. Een upload zonder geldig opdrachtnummer telt ook mee. Tijdens het spel (tussen `EventStart` en `EventEnd`) wordt dat geel na 30 minuten zonder upload en rood na een uur. Heeft een groep nog niets ingestuurd, dan telt de tijd vanaf de start. Voor de start en na het einde blijft het grijs.
+
+**Punten in de loop van het spel.** Het **Dashboard** en de pagina **Scorebord** tonen per groep een lijn met de punten. De pagina van een groep toont die groep in kleur en de andere groepen in grijs. Een opdracht telt vanaf het moment waarop de inzending met de beste beoordeling in Slack is geplaatst, niet vanaf het moment van beoordelen. Zo blijft de lijn hetzelfde na **Opnieuw opbouwen uit Slack**. Een open inzending die later wordt goedgekeurd, verschijnt dus achteraf op het tijdstip van plaatsen. Elke groep houdt dezelfde kleur, op alfabetische volgorde van naam; vanaf de negende groep zijn de lijnen grijs.
+
+**Beamer.** De pagina **Scorebord** toont de stand in grote letters, met de resterende speeltijd en de grafiek. De knop rechtsboven zet hem op volledig scherm. In de **Diavoorstelling** kun je met **Scorebord tussendoor** elke 3, 5, 10 of 20 items 15 seconden de tussenstand tonen.
+
+**Exporteren** (alleen in beheermodus), via de knop op het **Dashboard**:
+
+- `/api/export/scores.csv`: het scorebord als CSV, met puntkomma's, zodat Excel het direct goed opent;
+- `/api/export/files.zip?status=awesome`: alle awesome bestanden;
+- `/api/export/files.zip?status=approved`: alle goedgekeurde en awesome bestanden. Op de pagina van een groep doet **Downloaden** hetzelfde voor alleen die groep (`&group={id}`).
+
+De ZIP heeft per groep een map, met daarin `approved/` en `awesome/`. Bestanden die niet meer op schijf staan, worden overgeslagen en in het logboek gemeld.
 
 ## Te beoordelen
 

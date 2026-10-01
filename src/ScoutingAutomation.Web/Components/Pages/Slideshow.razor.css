@@ -138,3 +138,19 @@
 .preload {
     display: none;
 }
+
+.scoreboard-slide {
+    padding: 4rem 3rem 2rem;
+    overflow: auto;
+}
+
+.scoreboard-slide-inner {
+    width: min(60rem, 100%);
+}
+
+.scoreboard-slide-title {
+    margin-bottom: 1.5rem;
+    font-size: clamp(1.5rem, 3.5vw, 3rem);
+    font-weight: 800;
+    color: #fff;
+}

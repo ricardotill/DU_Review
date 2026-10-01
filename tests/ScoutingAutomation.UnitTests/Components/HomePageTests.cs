@@ -15,7 +15,7 @@ public class HomePageTests : PageTestBase
 
         var cut = Render<Home>();
 
-        cut.WaitForAssertion(() => cut.FindAll("tbody tr").Should().HaveCount(3));
+        cut.WaitForAssertion(() => cut.FindAll(".leaderboard tbody tr").Should().HaveCount(3));
         var stats = cut.FindAll(".stat-card").ToDictionary(c => c.QuerySelector(".stat-label")!.TextContent, c => c.QuerySelector(".stat-value")!.TextContent);
         stats["Ingezonden"].Should().Be("3");
         stats["Goedgekeurd"].Should().Be("1");
@@ -24,7 +24,7 @@ public class HomePageTests : PageTestBase
         stats["Afgekeurd"].Should().Be("0", "the rejected upload was replaced by an approved one");
         stats["Onopgelost"].Should().Be("1");
 
-        var rows = cut.FindAll("tbody tr");
+        var rows = cut.FindAll(".leaderboard tbody tr");
         rows[0].TextContent.Should().Contain("De Wolven").And.Contain("DWO");
         var wolvesCells = rows[0].QuerySelectorAll("td");
         wolvesCells[0].TextContent.Should().Be("1");
@@ -41,9 +41,9 @@ public class HomePageTests : PageTestBase
     {
         Seed();
         var cut = Render<Home>();
-        cut.WaitForAssertion(() => cut.FindAll("tbody tr").Should().HaveCount(3));
+        cut.WaitForAssertion(() => cut.FindAll(".leaderboard tbody tr").Should().HaveCount(3));
 
-        cut.FindAll("tbody tr")[0].Click();
+        cut.FindAll(".leaderboard tbody tr")[0].Click();
 
         CurrentUri.Should().EndWith($"groups/{Wolves.Id}");
     }

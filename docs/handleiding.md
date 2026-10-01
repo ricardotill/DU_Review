@@ -107,13 +107,14 @@ Na 5 verkeerde sleutels binnen een minuut moet je even wachten voordat je het op
 
 | Pagina | Wat je er ziet en doet |
 | --- | --- |
-| **Dashboard** | Totalen, het scorebord en de voortgang per opdracht. |
+| **Dashboard** | Totalen, het scorebord met per groep wanneer ze voor het laatst iets instuurden, de punten in de loop van het spel en de voortgang per opdracht. In beheermodus ook **Exporteren**. |
 | **Te beoordelen** | De open inzendingen, de langst wachtende eerst, met hoe lang ze al wachten. Klik om het bericht in Slack te openen. Inzendingen die geen punten meer kunnen opleveren staan apart onder **telt niet meer**. |
 | **Inzendingen** | Alle inzendingen. Zoek en filter op groep, opdracht, status en jurylid, of toon alleen je favorieten. |
-| **Gebeurtenissen** | Alles wat er live uit Slack binnenkomt, en wat de app ermee deed. Zie [Gebeurtenissen](#gebeurtenissen). |
-| **Diavoorstelling** | Alle foto's, video's en geluidsopnames achter elkaar, bijvoorbeeld op een beamer. Afgekeurde inzendingen worden overgeslagen. Kies een groep, een opdracht, alleen awesome of alleen favorieten, herhalen, door elkaar, en het aantal seconden per foto. |
 | **Opdrachten** | Alle opdrachten. Per opdracht zie je de inzendingen van alle groepen naast elkaar, desgewenst alleen de open inzendingen. Daar start je ook een diavoorstelling van die opdracht. |
-| **Groepen** | Alle groepen. Per groep zie je score, plaats en alle opdrachten. |
+| **Groepen** | Alle groepen. Per groep zie je score, plaats, de punten in de loop van het spel naast die van de andere groepen, en alle opdrachten. |
+| **Scorebord** | Het scorebord in grote letters met de punten in de loop van het spel, voor een beamer. Werkt zichzelf bij. |
+| **Diavoorstelling** | Alle foto's, video's en geluidsopnames achter elkaar, bijvoorbeeld op een beamer. Afgekeurde inzendingen worden overgeslagen. Kies een groep, een opdracht, alleen awesome of alleen favorieten, herhalen, door elkaar, het aantal seconden per foto, en of het scorebord tussendoor komt. |
+| **Gebeurtenissen** | Alles wat er live uit Slack binnenkomt, en wat de app ermee deed. Zie [Gebeurtenissen](#gebeurtenissen). |
 | **Configuratie** | De instellingen en de juryleden. Voor de organisatie. |
 | **Beheer** | Naar beheermodus gaan. Voor de organisatie. |
 
@@ -274,6 +275,8 @@ Doe de generale repetitie een paar dagen vóór het spel, op dezelfde server en 
 - Houd de Slack-status bovenaan in de gaten. Staat er een rode melding in plaats van **Verbonden met Slack**, kijk dan in het logboek.
 - Gebruik **Opnieuw opbouwen uit Slack** niet tijdens het spel, tenzij het echt nodig is.
 - Gebruik **Status handmatig aanpassen** alleen als Slack hapert.
+- Kijk op het **Dashboard** naar **Laatst actief**. Geel betekent dat een groep 30 minuten niets heeft ingestuurd, rood een uur. Misschien zitten ze vast of zijn ze verdwaald.
+- Zet de pagina **Scorebord** op de beamer, of zet de diavoorstelling aan met **Scorebord tussendoor**.
 
 ### Na een herstart of storing
 
@@ -284,6 +287,7 @@ Doe de generale repetitie een paar dagen vóór het spel, op dezelfde server en 
 ### Na afloop
 
 - Maak een kopie van de map `scouting_storage` voordat je iets opruimt.
+- Download de uitslag en de bestanden via **Exporteren** op het **Dashboard** (beheermodus): de scores als CSV, en de awesome of alle goedgekeurde bestanden als ZIP. Per groep kan dat ook met **Downloaden** op de pagina van de groep.
 - Gebruik de favorieten en de slideshow voor de prijsuitreiking.
 
 ## Problemen oplossen

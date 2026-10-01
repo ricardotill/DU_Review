@@ -1,0 +1,98 @@
+.score-chart {
+    margin: 0;
+}
+
+.score-chart svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    overflow: visible;
+}
+
+.grid {
+    stroke: rgba(255, 255, 255, 0.06);
+    stroke-width: 1;
+}
+
+.baseline {
+    stroke: rgba(255, 255, 255, 0.2);
+    stroke-width: 1;
+}
+
+.axis {
+    fill: var(--text-muted);
+    font-size: 12px;
+}
+
+.line {
+    fill: none;
+    stroke-width: 2;
+    stroke-linejoin: round;
+}
+
+/* A ring in the panel color keeps overlapping markers apart */
+.marker {
+    stroke: #161b22;
+    stroke-width: 2;
+}
+
+.hit {
+    fill: transparent;
+    cursor: default;
+}
+
+.hit:hover {
+    fill: rgba(255, 255, 255, 0.12);
+}
+
+.end-label {
+    fill: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.25rem;
+    margin-top: 0.75rem;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.swatch {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+}
+
+.legend-score {
+    color: var(--text-primary);
+    font-weight: 700;
+}
+
+.large .axis {
+    font-size: 18px;
+}
+
+.large .legend {
+    font-size: 1.25rem;
+}
+
+/* Other groups, for comparison with the highlighted one */
+.line.context {
+    stroke: var(--text-muted);
+    stroke-width: 1.5;
+    opacity: 0.45;
+}
+
+.swatch.context {
+    background: var(--text-muted);
+    opacity: 0.6;
+}

@@ -64,7 +64,7 @@ public class GroupDetailPageTests : PageTestBase
         cut.Find("a[href^='submissions?group=']").GetAttribute("href").Should().Be($"submissions?group={Wolves.Id}");
         cut.FindAll(".unresolved-panel").Should().BeEmpty();
 
-        var rows = cut.FindAll("tbody tr");
+        var rows = cut.FindAll(".assignment-results tbody tr");
         rows.Should().HaveCount(2);
         rows[0].TextContent.Should().Contain("#1").And.Contain("+1").And.Contain("Goedgekeurd");
         rows[0].QuerySelectorAll("td")[3].TextContent.Should().Be("2");
