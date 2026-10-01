@@ -21,6 +21,31 @@
     <_ContentIncludedByDefault Remove="scouting_storage\_backup\20261001-112219\submissions.json" />
   </ItemGroup>
 
+  <!-- Front-end packages come from npm (package.json); only the files the app serves are copied into wwwroot/lib -->
+  <ItemGroup>
+    <NpmManifest Include="package.json;package-lock.json" />
+    <NpmAsset Include="node_modules/bootstrap/dist/css/bootstrap.min.css;node_modules/bootstrap/dist/css/bootstrap.min.css.map" DestinationFolder="wwwroot/lib/bootstrap/dist/css" />
+    <NpmAsset Include="node_modules/bootstrap-icons/font/bootstrap-icons.min.css" DestinationFolder="wwwroot/lib/bootstrap-icons/font" />
+    <NpmAsset Include="node_modules/bootstrap-icons/font/fonts/bootstrap-icons.woff;node_modules/bootstrap-icons/font/fonts/bootstrap-icons.woff2" DestinationFolder="wwwroot/lib/bootstrap-icons/font/fonts" />
+  </ItemGroup>
+
+  <Target Name="NpmInstall" Inputs="@(NpmManifest)" Outputs="node_modules/.install-stamp">
+    <Exec Command="npm ci --no-audit --no-fund" />
+    <Touch Files="node_modules/.install-stamp" AlwaysCreate="true" />
+  </Target>
+
+  <Target Name="CopyNpmAssets" DependsOnTargets="NpmInstall" BeforeTargets="BeforeBuild">
+    <Copy SourceFiles="@(NpmAsset)" DestinationFolder="%(NpmAsset.DestinationFolder)" SkipUnchangedFiles="true">
+      <Output TaskParameter="CopiedFiles" ItemName="_CopiedNpmAsset" />
+    </Copy>
+    <!-- On a clean checkout the files did not exist when Content was globbed -->
+    <ItemGroup>
+      <_NpmAssetContent Include="@(NpmAsset->'%(DestinationFolder)/%(Filename)%(Extension)')" />
+      <Content Remove="@(_NpmAssetContent)" />
+      <Content Include="@(_NpmAssetContent)" />
+    </ItemGroup>
+  </Target>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>

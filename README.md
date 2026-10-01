@@ -173,7 +173,7 @@ Geaccepteerde bestanden: alle afbeeldingen, video's en geluidsopnames, plus PDF 
 
 ## Lokaal draaien
 
-Je hebt de [.NET 10 SDK](https://dotnet.microsoft.com/download) nodig.
+Je hebt de [.NET 10 SDK](https://dotnet.microsoft.com/download) en [Node.js](https://nodejs.org/) (met npm) nodig. Bij de eerste build installeert npm Bootstrap en Bootstrap Icons; die worden naar `wwwroot/lib` gekopieerd.
 
 **Snel, met SQLite:**
 

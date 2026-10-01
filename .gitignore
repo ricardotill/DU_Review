@@ -635,3 +635,6 @@ scouting_dev.db-wal
 scouting_dev.db-shm
 runtime-settings.json
 access-keys.json
+
+# Copied from node_modules at build time (see ScoutingAutomation.Web.csproj)
+src/ScoutingAutomation.Web/wwwroot/lib/
