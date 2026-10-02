@@ -134,8 +134,10 @@ public class SlackSocketModeEventsIntegrationTests : IClassFixture<WebApplicatio
         var edited = (await Submissions(Channel, _edited)).Single();
         edited.Status.Should().Be(SubmissionStatus.Approved);
         Path.GetFileName(edited.StoragePath).Should().StartWith("DPV 2 ");
-        File.Exists(Path.Combine(_app.StorageRoot, LocalFileStorageService.DeletedFolderName, "de-poolvossen",
-            $"DPV 3 {SlackTimestamp.ToDateTimeOffset(_deleted)!.Value.ToGameTime():HH-mm-ss}.jpg")).Should().BeTrue();
+        // The rows are deleted before the file moves, so the file can land in "_deleted" just after the row is gone
+        var deletedFile = Path.Combine(_app.StorageRoot, LocalFileStorageService.DeletedFolderName, "de-poolvossen",
+            $"DPV 3 {SlackTimestamp.ToDateTimeOffset(_deleted)!.Value.ToGameTime():HH-mm-ss}.jpg");
+        await Eventually(() => Task.FromResult(File.Exists(deletedFile)), "the deleted file moves to the deleted folder");
 
         await Eventually(async () => (await Submissions("C02BOSUILEN", _missed)).Count == 1, "the catch-up on connect finds the missed upload");
         await catchUp.Completion.WaitAsync(TimeSpan.FromSeconds(10));
