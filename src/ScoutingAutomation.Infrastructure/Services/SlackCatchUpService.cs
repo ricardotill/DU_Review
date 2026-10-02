@@ -136,6 +136,9 @@ public class SlackCatchUpService : BackgroundService, ISlackCatchUpService
         var groups = await scope.ServiceProvider.GetRequiredService<IGroupRepository>().GetAllAsync(ct);
         var history = scope.ServiceProvider.GetRequiredService<ISlackHistoryClient>();
         var workflow = scope.ServiceProvider.GetRequiredService<ISubmissionWorkflowService>();
+        var links = scope.ServiceProvider.GetService<SlackLinks>();
+        if (links != null) await links.EnsureLoadedAsync(ct);
+        var botUserId = links?.BotUserId;
 
         // The game takes one day: everything since midnight is enough, and cheap to read again
         var since = _runtime.NotBeforeEventStart(GameTime.FromGameTime(DateTimeOffset.UtcNow.ToGameTime().Date));
@@ -158,7 +161,7 @@ public class SlackCatchUpService : BackgroundService, ISlackCatchUpService
                 continue;
             }
 
-            foreach (var message in messages.Where(m => SlackRebuildService.IsCandidate(m, _runtime)))
+            foreach (var message in messages.Where(m => SlackRebuildService.IsCandidate(m, _runtime, botUserId)))
             {
                 checkedCount++;
                 var result = await workflow.ProcessMissedMessageAsync(message, ct);

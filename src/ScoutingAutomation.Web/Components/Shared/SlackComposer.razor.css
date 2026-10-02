@@ -1,0 +1,103 @@
+.slack-composer {
+    position: relative;
+}
+
+.slack-composer-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.15rem;
+    padding: 0.25rem;
+    margin-bottom: 0.4rem;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+}
+
+.slack-composer-toolbar .btn {
+    color: var(--text-secondary, #9ca3af);
+    border: none;
+    border-radius: 8px;
+    padding: 0.25rem 0.5rem;
+    line-height: 1;
+    font-size: 1.05rem;
+}
+
+.slack-composer-toolbar .btn:hover,
+.slack-composer-toolbar .btn:focus-visible {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+}
+
+.slack-composer-toolbar .btn.active {
+    background: rgba(56, 189, 248, 0.2);
+    color: #38bdf8;
+}
+
+.slack-composer-divider {
+    width: 1px;
+    align-self: stretch;
+    margin: 0.2rem 0.25rem;
+    background: var(--border-color);
+}
+
+.slack-composer-editor {
+    max-height: 24rem;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    cursor: text;
+}
+
+.slack-composer-editor:empty::before {
+    content: attr(data-placeholder);
+    color: rgba(255, 255, 255, 0.35);
+    pointer-events: none;
+}
+
+.slack-composer ::deep code {
+    color: #f472b6;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 0 0.25rem;
+    font-size: 0.875em;
+}
+
+.slack-composer ::deep a {
+    color: #38bdf8;
+}
+
+.slack-composer ::deep ul,
+.slack-composer ::deep ol {
+    margin: 0;
+    padding-left: 1.5rem;
+}
+
+.slack-composer-emoji {
+    position: absolute;
+    top: 2.75rem;
+    right: 0;
+    z-index: 20;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+    border-radius: 12px;
+}
+
+.slack-composer ::deep emoji-picker {
+    --background: #161b22;
+    --border-color: rgba(255, 255, 255, 0.08);
+    --input-border-color: rgba(255, 255, 255, 0.15);
+    --input-font-color: #fff;
+    --indicator-color: #10b981;
+    --outline-color: #38bdf8;
+    --border-radius: 12px;
+    max-width: calc(100vw - 2rem);
+    border-radius: 12px;
+}
+
+.slack-composer ::deep .slack-token {
+    color: #38bdf8;
+    background: rgba(56, 189, 248, 0.15);
+    border-radius: 4px;
+    padding: 0 0.2rem;
+}

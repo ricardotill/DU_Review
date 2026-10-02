@@ -53,6 +53,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<SlackProcessingGate>();
         services.AddSingleton<RuntimeSettingsService>();
         services.AddScoped<ReviewerNameFetcher>();
+        services.AddScoped<GroupMessageSender>();
         services.AddSingleton<AccessKeyService>();
         services.AddSingleton<LoginAttemptLimiter>();
         services.AddSingleton<ISlackRebuildService, SlackRebuildService>();

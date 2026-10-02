@@ -176,6 +176,55 @@ public class SlackClient : ISlackClient
         return await CallSlackApiAsync("chat.postMessage", new { channel, text }, ct);
     }
 
+    public async Task<string?> PostFileAsync(string channel, byte[] content, string fileName, string? text, CancellationToken ct = default)
+    {
+        if (IsSimulated)
+        {
+            _logger.LogInformation("Simulated file {FileName} ({Bytes} bytes) in {Channel}: {Text}", fileName, content.Length, channel, text);
+            return "simulation_mode";
+        }
+
+        // Slack's upload flow: ask for an upload address, send the bytes there, then share the file in the channel
+        // https://api.slack.com/messaging/files#uploading_files
+        var (error, upload) = await CallSlackFormApiAsync("files.getUploadURLExternal", new Dictionary<string, string>
+        {
+            ["filename"] = fileName,
+            ["length"] = content.Length.ToString(System.Globalization.CultureInfo.InvariantCulture)
+        }, ct);
+        if (error != null) return error;
+
+        var fileId = upload.TryGetProperty("file_id", out var id) ? id.GetString() : null;
+        var uploadUrl = upload.TryGetProperty("upload_url", out var url) ? url.GetString() : null;
+        if (string.IsNullOrWhiteSpace(fileId) || !IsSlackUploadUrl(uploadUrl, out var uploadUri))
+        {
+            _logger.LogWarning("Slack gave no usable upload address for {FileName}: {Url}", fileName, uploadUrl);
+            return "invalid_upload_url";
+        }
+
+        try
+        {
+            // The address itself grants the upload, so the bot token does not go along
+            using var request = new HttpRequestMessage(HttpMethod.Post, uploadUri) { Content = new ByteArrayContent(content) };
+            using var response = await _httpClient.SendAsync(request, ct);
+            response.EnsureSuccessStatusCode();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "Upload of {FileName} to Slack failed", fileName);
+            return "upload_failed";
+        }
+
+        var complete = new Dictionary<string, string>
+        {
+            ["files"] = JsonSerializer.Serialize(new[] { new { id = fileId, title = fileName } }),
+            ["channel_id"] = channel
+        };
+        if (!string.IsNullOrWhiteSpace(text)) complete["initial_comment"] = text;
+
+        (error, _) = await CallSlackFormApiAsync("files.completeUploadExternal", complete, ct);
+        return error;
+    }
+
     public async Task<IReadOnlyList<SlackMessageReactionDto>?> GetReactionsAsync(string channel, string messageTs, CancellationToken ct = default)
     {
         if (IsSimulated)
@@ -263,7 +312,8 @@ public class SlackClient : ISlackClient
                 return null;
             }
 
-            return new SlackWorkspace(body.TeamId, body.Url.EndsWith('/') ? body.Url : body.Url + "/");
+            return new SlackWorkspace(body.TeamId, body.Url.EndsWith('/') ? body.Url : body.Url + "/",
+                string.IsNullOrWhiteSpace(body.UserId) ? null : body.UserId);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -307,6 +357,44 @@ public class SlackClient : ISlackClient
         {
             _logger.LogWarning(ex, "Slack API {Method} call failed", method);
             return "request_failed";
+        }
+    }
+
+    /// <summary>Only an https address on Slack's own domain gets the picture.</summary>
+    internal static bool IsSlackUploadUrl(string? url, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out Uri? uri) =>
+        Uri.TryCreate(url, UriKind.Absolute, out uri)
+        && uri.Scheme == Uri.UriSchemeHttps
+        && (uri.Host == "slack.com" || uri.Host.EndsWith(".slack.com", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>A call with form fields, for methods that do not accept JSON, such as the file upload methods.</summary>
+    /// <returns>The Slack error code, or null with the response body on success.</returns>
+    private async Task<(string? Error, JsonElement Body)> CallSlackFormApiAsync(string method, IDictionary<string, string> fields, CancellationToken ct)
+    {
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, $"https://slack.com/api/{method}")
+            {
+                Content = new FormUrlEncodedContent(fields)
+            };
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.Value.Slack.BotToken);
+
+            using var response = await _httpClient.SendAsync(request, ct);
+            response.EnsureSuccessStatusCode();
+
+            using var body = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
+            if (body.RootElement.GetProperty("ok").GetBoolean())
+            {
+                return (null, body.RootElement.Clone());
+            }
+
+            var error = body.RootElement.TryGetProperty("error", out var e) ? e.GetString() ?? "unknown" : "unknown";
+            _logger.LogWarning("Slack API {Method} failed: {Error}", method, error);
+            return (error, default);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "Slack API {Method} call failed", method);
+            return ("request_failed", default);
         }
     }
 

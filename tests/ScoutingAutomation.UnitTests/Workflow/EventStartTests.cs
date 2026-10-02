@@ -126,4 +126,16 @@ public class EventStartTests
         SlackRebuildService.IsCandidate(Message(JustBeforeTs), runtime).Should().BeFalse();
         SlackRebuildService.IsCandidate(Message(AtStartTs), runtime).Should().BeTrue();
     }
+
+    [Fact]
+    public void HistoryMessage_FromTheBotsOwnUser_ShouldNotBeACandidate()
+    {
+        var runtime = TestRuntime.For(Options.Create(Settings(Start)));
+        var message = Message(AtStartTs);
+        message.User = "UBOT";
+
+        SlackRebuildService.IsCandidate(message, runtime, botUserId: "UBOT").Should().BeFalse();
+        SlackRebuildService.IsCandidate(message, runtime, botUserId: "UOTHER").Should().BeTrue();
+        SlackRebuildService.IsCandidate(message, runtime).Should().BeTrue("the bot's user ID is not known");
+    }
 }

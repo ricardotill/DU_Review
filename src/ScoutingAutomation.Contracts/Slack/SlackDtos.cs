@@ -140,6 +140,10 @@ public class SlackAuthTestResponseDto
 
     [JsonPropertyName("team_id")]
     public string? TeamId { get; set; }
+
+    /// <summary>The bot's own user ID, which its messages carry, e.g. a picture it shared.</summary>
+    [JsonPropertyName("user_id")]
+    public string? UserId { get; set; }
 }
 
 /// <summary>Response of users.info.</summary>

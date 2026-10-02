@@ -1,0 +1,99 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+@* A message editor that shows formatting as you type; the text goes to Slack as mrkdwn. *@
+<div class="slack-composer" @ref="root">
+    <div class="slack-composer-toolbar" role="toolbar" aria-label="Opmaak">
+        <button type="button" class="btn btn-sm" data-cmd="bold" title="Vet (Ctrl+B)" aria-label="Vet"><i class="bi bi-type-bold"></i></button>
+        <button type="button" class="btn btn-sm" data-cmd="italic" title="Schuin (Ctrl+I)" aria-label="Schuin"><i class="bi bi-type-italic"></i></button>
+        <button type="button" class="btn btn-sm" data-cmd="strikeThrough" title="Doorhalen (Ctrl+Shift+X)" aria-label="Doorhalen"><i class="bi bi-type-strikethrough"></i></button>
+        <button type="button" class="btn btn-sm" data-cmd="code" title="Code" aria-label="Code"><i class="bi bi-code"></i></button>
+        <span class="slack-composer-divider"></span>
+        <button type="button" class="btn btn-sm" data-cmd="link" title="Link" aria-label="Link"><i class="bi bi-link-45deg"></i></button>
+        <button type="button" class="btn btn-sm" data-cmd="insertUnorderedList" title="Opsomming" aria-label="Opsomming"><i class="bi bi-list-ul"></i></button>
+        <button type="button" class="btn btn-sm" data-cmd="insertOrderedList" title="Genummerde lijst" aria-label="Genummerde lijst"><i class="bi bi-list-ol"></i></button>
+        <span class="slack-composer-divider"></span>
+        <button type="button" class="btn btn-sm" data-emoji-toggle title="Emoji" aria-label="Emoji kiezen" aria-haspopup="dialog" aria-expanded="false"><i class="bi bi-emoji-smile"></i></button>
+    </div>
+    <div class="slack-composer-emoji" role="dialog" aria-label="Emoji kiezen" hidden></div>
+    @* No children: the browser owns the content, so a render never overwrites what was typed *@
+    <div class="slack-composer-editor form-control form-control-dark" contenteditable="true" role="textbox" aria-multiline="true"
+         aria-label="@Label" data-placeholder="@Placeholder" style="min-height: @(Rows * 1.6)rem"></div>
+</div>
+
+@code {
+    [Parameter] public string Label { get; set; } = "Bericht";
+    [Parameter] public string Placeholder { get; set; } = "Typ je bericht…";
+
+    /// <summary>The text (Slack mrkdwn) the editor starts with; later changes do not reach the editor.</summary>
+    [Parameter] public string? Value { get; set; }
+
+    /// <summary>The editor's height in lines of text before it grows.</summary>
+    [Parameter] public int Rows { get; set; } = 5;
+
+    /// <summary>Called with the text as Slack mrkdwn whenever it changes; empty when nothing is typed.</summary>
+    [Parameter] public EventCallback<string> TextChanged { get; set; }
+
+    private ElementReference root;
+    private IJSObjectReference? module;
+    private IJSObjectReference? instance;
+    private DotNetObjectReference<SlackComposer>? selfReference;
+    private bool disposed;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        selfReference = DotNetObjectReference.Create(this);
+        module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/slack-composer.js");
+        if (disposed)
+        {
+            await DisposeJsAsync();
+            return;
+        }
+        instance = await module.InvokeAsync<IJSObjectReference>("init", root, selfReference, Value ?? "");
+
+        // Disposed while the editor started: its listeners on the document must go too
+        if (disposed) await DisposeJsAsync();
+    }
+
+    /// <summary>The message as Slack mrkdwn; empty when nothing was typed.</summary>
+    public async Task<string> GetMrkdwnAsync() =>
+        module == null ? "" : await module.InvokeAsync<string?>("toMrkdwn", root) ?? "";
+
+    public async Task ClearAsync()
+    {
+        if (module == null) return;
+        await module.InvokeVoidAsync("clear", root);
+        await TextChanged.InvokeAsync("");
+    }
+
+    [JSInvokable]
+    public Task OnContentChanged(string text) => TextChanged.InvokeAsync(text);
+
+    public async ValueTask DisposeAsync()
+    {
+        disposed = true;
+        await DisposeJsAsync();
+        selfReference?.Dispose();
+    }
+
+    private async Task DisposeJsAsync()
+    {
+        var (started, loaded) = (instance, module);
+        (instance, module) = (null, null);
+        try
+        {
+            if (started != null)
+            {
+                await started.InvokeVoidAsync("dispose");
+                await started.DisposeAsync();
+            }
+            if (loaded != null) await loaded.DisposeAsync();
+        }
+        catch (JSDisconnectedException)
+        {
+            // The browser is gone; nothing to clean up there
+        }
+    }
+}

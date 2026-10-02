@@ -31,6 +31,10 @@ else
                 <i class="bi bi-folder2-open"></i>
                 <span>Alle uploads</span>
             </a>
+            <a href="messages?group=@group.Id" class="btn btn-scout-secondary d-flex align-items-center gap-2 send-group-message">
+                <i class="bi bi-megaphone"></i>
+                <span>Bericht sturen</span>
+            </a>
             <AuthorizeView Roles="@KeyAuth.AdminRole">
                 <a href="/api/export/files.zip?status=approved&group=@group.Id" download class="btn btn-scout-secondary d-flex align-items-center gap-2" title="Goedgekeurde en awesome bestanden van deze groep">
                     <i class="bi bi-file-earmark-zip"></i>

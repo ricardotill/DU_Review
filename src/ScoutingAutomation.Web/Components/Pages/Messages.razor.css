@@ -1,0 +1,11 @@
+.message-picture img {
+    width: 4.5rem;
+    height: 4.5rem;
+    object-fit: cover;
+    border-radius: 8px;
+    flex-shrink: 0;
+}
+
+.add-picture {
+    cursor: pointer;
+}

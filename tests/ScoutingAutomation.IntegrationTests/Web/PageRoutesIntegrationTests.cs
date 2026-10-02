@@ -59,8 +59,21 @@ public class PageRoutesIntegrationTests : IClassFixture<WebApplicationFactory<Pr
         (await GetPageAsync("/configuration")).Should().Contain("opdrachtenpunten.csv").And.Contain("Beoordelingsregels");
         (await GetPageAsync("/simulator")).Should().Contain("Bestand uploaden");
         (await GetPageAsync("/events")).Should().Contain("Gebeurtenissen");
+        (await GetPageAsync("/messages")).Should().Contain("message-group-");
+        (await GetPageAsync($"/messages?group={groupId}")).Should().Contain("1 van ");
         (await GetPageAsync("/not-found")).Should().Contain("Pagina niet gevonden");
         (await GetPageAsync("/Error")).Should().Contain("Er ging iets mis");
+    }
+
+    [Theory]
+    [InlineData("/js/slack-composer.js")]
+    [InlineData("/lib/emoji-picker-element/picker.js")]
+    [InlineData("/lib/emoji-picker-element/database.js")]
+    [InlineData("/lib/emoji-picker-element/i18n/nl.js")]
+    [InlineData("/lib/emoji-picker-element-data/nl/cldr/data.json")]
+    public async Task MessageEditorFiles_ShouldBeServed(string url)
+    {
+        (await _client.GetAsync(url)).StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
     [Fact]

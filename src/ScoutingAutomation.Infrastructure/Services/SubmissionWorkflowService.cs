@@ -22,6 +22,7 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
     private readonly RuntimeSettingsService _runtime;
     private readonly IOptions<ScoutingSettings> _options;
     private readonly ILogger<SubmissionWorkflowService> _logger;
+    private readonly SlackLinks? _links;
 
     public SubmissionWorkflowService(
         ISubmissionRepository submissionRepository,
@@ -33,7 +34,8 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         ISubmissionChangeNotifier changeNotifier,
         RuntimeSettingsService runtime,
         IOptions<ScoutingSettings> options,
-        ILogger<SubmissionWorkflowService> logger)
+        ILogger<SubmissionWorkflowService> logger,
+        SlackLinks? links = null)
     {
         _submissionRepository = submissionRepository;
         _groupRepository = groupRepository;
@@ -45,6 +47,7 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         _runtime = runtime;
         _options = options;
         _logger = logger;
+        _links = links;
     }
 
     public Task<ProcessSlackMessageResult> ProcessSlackMessageAsync(SlackEventItemDto messageEvent, CancellationToken ct = default) =>
@@ -98,6 +101,14 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         {
             _logger.LogDebug("Ignored message from reviewer {User} in {ChannelId}", messageEvent.User, channelId);
             return ProcessSlackMessageResult.Ignored($"Gebruiker '{messageEvent.User}' is jurylid");
+        }
+
+        // The bot's own messages, such as a picture the jury sent from the app, are never submissions.
+        // A shared file does not always carry bot_id, but it does carry the bot's user ID.
+        if (messageEvent.BotId != null || await IsOwnBotAsync(messageEvent.User, ct))
+        {
+            _logger.LogDebug("Ignored message from bot {BotId} in {ChannelId}", messageEvent.BotId, channelId);
+            return ProcessSlackMessageResult.Ignored("Bericht is van een bot");
         }
 
         // Check attachments
@@ -320,7 +331,7 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
             return ProcessSlackMessageResult.Ignored("Bewerking zonder kanaal of bericht");
         }
 
-        if (edited.BotId != null)
+        if (edited.BotId != null || await IsOwnBotAsync(edited.User, ct))
         {
             return ProcessSlackMessageResult.Ignored("Bewerkt bericht is van een bot");
         }
@@ -787,5 +798,13 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
 
         var prefixes = _options.Value.SupportedMimeTypePrefixes ?? new List<string>();
         return prefixes.Any(p => mimetype.StartsWith(p, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>Whether <paramref name="userId"/> is the bot itself; false while the bot's user ID is not known.</summary>
+    private async Task<bool> IsOwnBotAsync(string? userId, CancellationToken ct)
+    {
+        if (_links == null || string.IsNullOrWhiteSpace(userId)) return false;
+        await _links.EnsureLoadedAsync(ct);
+        return _links.BotUserId == userId;
     }
 }

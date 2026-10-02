@@ -179,6 +179,9 @@ public class SlackRebuildService : ISlackRebuildService
         var submissions = services.GetRequiredService<ISubmissionRepository>();
         var workflow = services.GetRequiredService<ISubmissionWorkflowService>();
         var history = services.GetRequiredService<ISlackHistoryClient>();
+        var links = services.GetService<SlackLinks>();
+        if (links != null) await links.EnsureLoadedAsync();
+        var botUserId = links?.BotUserId;
 
         // 1. Read every channel first: if any fails, nothing has been touched yet
         Update(p => p with { Step = "Slack lezen", ChannelsTotal = groups.Count });
@@ -235,7 +238,7 @@ public class SlackRebuildService : ISlackRebuildService
         var imported = new List<(Group Group, SlackEventItemDto Message)>();
         foreach (var (group, message) in ordered)
         {
-            if (IsCandidate(message))
+            if (IsCandidate(message, _runtime, botUserId))
             {
                 var result = await workflow.ImportSlackMessageAsync(message);
                 if (result.CreatedSubmissionIds.Count > 0) imported.Add((group, message));
@@ -278,11 +281,11 @@ public class SlackRebuildService : ISlackRebuildService
         _ => "Bekijk het app-log voor details en controleer het kanaal in Slack."
     };
 
-    private bool IsCandidate(SlackEventItemDto message) => IsCandidate(message, _runtime);
-
     /// <summary>Messages from Slack's history that could be submissions: from people, with files, not from reviewers.</summary>
-    public static bool IsCandidate(SlackEventItemDto message, RuntimeSettingsService runtime) =>
+    /// <param name="botUserId">The bot's own user ID, when known: a picture the bot shared need not carry bot_id.</param>
+    public static bool IsCandidate(SlackEventItemDto message, RuntimeSettingsService runtime, string? botUserId = null) =>
         message.BotId == null
+        && (botUserId == null || message.User != botUserId)
         && message.Subtype is null or "file_share" or "thread_broadcast"
         && message.Files is { Count: > 0 }
         && !runtime.IsReviewer(message.User)

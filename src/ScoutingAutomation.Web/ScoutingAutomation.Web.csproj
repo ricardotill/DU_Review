@@ -28,6 +28,9 @@
     <NpmAsset Include="node_modules/bootstrap/dist/js/bootstrap.bundle.min.js;node_modules/bootstrap/dist/js/bootstrap.bundle.min.js.map" DestinationFolder="wwwroot/lib/bootstrap/dist/js" />
     <NpmAsset Include="node_modules/bootstrap-icons/font/bootstrap-icons.min.css" DestinationFolder="wwwroot/lib/bootstrap-icons/font" />
     <NpmAsset Include="node_modules/bootstrap-icons/font/fonts/bootstrap-icons.woff;node_modules/bootstrap-icons/font/fonts/bootstrap-icons.woff2" DestinationFolder="wwwroot/lib/bootstrap-icons/font/fonts" />
+    <NpmAsset Include="node_modules/emoji-picker-element/index.js;node_modules/emoji-picker-element/picker.js;node_modules/emoji-picker-element/database.js" DestinationFolder="wwwroot/lib/emoji-picker-element" />
+    <NpmAsset Include="node_modules/emoji-picker-element/i18n/nl.js" DestinationFolder="wwwroot/lib/emoji-picker-element/i18n" />
+    <NpmAsset Include="node_modules/emoji-picker-element-data/nl/cldr/data.json" DestinationFolder="wwwroot/lib/emoji-picker-element-data/nl/cldr" />
   </ItemGroup>
 
   <Target Name="NpmInstall" Inputs="@(NpmManifest)" Outputs="node_modules/.install-stamp">

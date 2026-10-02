@@ -112,6 +112,7 @@ Na 5 verkeerde sleutels binnen een minuut moet je even wachten voordat je het op
 | **Inzendingen** | Alle inzendingen. Zoek en filter op groep, opdracht, status en jurylid, of toon alleen je favorieten. |
 | **Opdrachten** | Alle opdrachten. Per opdracht zie je de inzendingen van alle groepen naast elkaar, desgewenst alleen de open inzendingen. Daar start je ook een diavoorstelling van die opdracht. |
 | **Groepen** | Alle groepen. Per groep zie je score, plaats, de punten in de loop van het spel naast die van de andere groepen, en alle opdrachten. |
+| **Bericht sturen** | Een bericht van de bot in de Slack-kanalen van de groepen. Zie [Bericht sturen](#bericht-sturen). |
 | **Scorebord** | Het scorebord in grote letters met de punten in de loop van het spel, voor een beamer. Werkt zichzelf bij. |
 | **Diavoorstelling** | Alle foto's, video's en geluidsopnames achter elkaar, bijvoorbeeld op een beamer. Afgekeurde inzendingen worden overgeslagen. Kies een groep, een opdracht, alleen awesome of alleen favorieten, herhalen, door elkaar, het aantal seconden per foto, en of het scorebord tussendoor komt. |
 | **Gebeurtenissen** | Alles wat er live uit Slack binnenkomt, en wat de app ermee deed. Zie [Gebeurtenissen](#gebeurtenissen). |
@@ -137,6 +138,18 @@ Op **Gebeurtenissen** zie je live alles wat Slack naar de app stuurt: nieuwe ber
 Filter op soort, resultaat en groep. Met **Pauzeren** zet je de lijst stil om rustig te lezen; nieuwe gebeurtenissen worden geteld en verschijnen als je hervat.
 
 De pagina toont de laatste 500 gebeurtenissen sinds de app is gestart. Na een herstart begint de lijst leeg. Wat de app bij het inhalen of opnieuw opbouwen uit Slack leest, staat hier niet; dat staat in het logboek.
+
+### Bericht sturen
+
+Op **Bericht sturen** plaats je een bericht in de Slack-kanalen van de groepen, bijvoorbeeld "Lunch om 12:00 bij de kampvuurplaats". Elk jurylid kan dit. Het bericht verschijnt als de bot, niet onder je eigen naam.
+
+1. Typ je bericht. Met de knoppen erboven maak je tekst **vet**, *schuin*, ~~doorgehaald~~ of `code`, voeg je een link toe, of maak je een opsomming. Ctrl+B en Ctrl+I werken ook. Wat je ziet is hoe het in Slack komt.
+2. Met 🙂 kies je een emoji; zoeken kan in het Nederlands.
+3. Met **Foto toevoegen** stuur je één foto mee (maximaal 20 MB). De tekst komt dan boven de foto; alleen een foto zonder tekst kan ook. Met het kruisje haal je de foto weer weg.
+4. Rechts kies je de groepen. Standaard staan alle groepen aan; met **Niets** zet je ze allemaal uit, met **Alles** weer aan. Op de pagina van een groep brengt **Bericht sturen** je hier met alleen die groep aangevinkt.
+5. Klik op **Sturen naar … kanalen** en daarna op **Zeker?** om te bevestigen. Per groep zie je of het bericht geplaatst is.
+
+De bot moet lid zijn van het kanaal. Is hij dat niet, dan zie je bij die groep **Mislukt: `not_in_channel`**. Een bericht of foto van de bot telt nooit als inzending. Voor foto's heeft de bot het recht `files:write` nodig (zie [Slack koppelen](slack-koppelen.md)).
 
 ### Favorieten
 

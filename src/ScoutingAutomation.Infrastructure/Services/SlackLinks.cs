@@ -6,6 +6,7 @@ namespace ScoutingAutomation.Infrastructure.Services;
 /// <summary>
 /// Links from the app to a Slack message: one that opens the Slack app, and the web permalink as a fallback.
 /// The workspace is asked from Slack once; until that works (or in simulation) there are no links.
+/// It also tells the bot's own user ID, so the bot's messages are never taken for submissions.
 /// </summary>
 public class SlackLinks
 {
@@ -28,6 +29,9 @@ public class SlackLinks
 
     /// <summary>The workspace, when known.</summary>
     public SlackWorkspace? Workspace => _workspace;
+
+    /// <summary>The bot's own user ID, when known.</summary>
+    public string? BotUserId => _workspace?.BotUserId;
 
     /// <summary>Asks Slack for the workspace when it is not known yet. Cheap to call often.</summary>
     public async Task EnsureLoadedAsync(CancellationToken ct = default)

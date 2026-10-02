@@ -53,6 +53,7 @@ oauth_config:
       - users:read         # namen van juryleden ophalen
       - reactions:write    # zelf een emoji plaatsen bij een probleem
       - chat:write         # een antwoord in de thread en het startbericht plaatsen
+      - files:write        # een foto meesturen met een bericht van de jury (Bericht sturen)
 settings:
   event_subscriptions:
     bot_events:
@@ -285,6 +286,7 @@ Zie de [README](../README.md#herbouwen-vanuit-slack) voor wat er precies gebeurt
 | Reacties van de jury doen niets | Staat het member-ID (`U...`) van het jurylid onder **Juryleden** (in `appsettings.json` of toegevoegd in de app)? Staat de emoji in `ReviewStatusReactions`? Staat **Handmatige modus** uit? |
 | Een weggehaalde emoji verandert niets | Staat `reaction_removed` bij de bot events van de Slack-app? Kan de app de reacties lezen (recht `reactions:read`)? Zie het logboek: kan de app ze niet lezen, dan blijft de status zoals hij was. |
 | De bot reageert niet zelf | Staat `SimulationMode` op `false` en is het bot-token ingesteld? Heeft de app de rechten `reactions:write` en `chat:write`? Zie het logboek van de app. |
+| **Bericht sturen** met een foto geeft `missing_scope` | De app mist `files:write`. Voeg het recht toe en installeer de app opnieuw. |
 | De bot reageert met ⚠️ dat een bestand niet kon worden opgehaald | De download uit Slack mislukte. Heeft de app het recht `files:read`? Installeer de app opnieuw na het toevoegen van rechten. |
 | Herbouwen stopt met `not_in_channel` bij een kanaal | De bot is niet uitgenodigd in dat groepskanaal. Nodig hem uit (stap 4) en start opnieuw. |
 | Herbouwen stopt met `channel_not_found` bij een kanaal | Het kanaal-ID in `Groups` klopt niet, of het kanaal is privé en de bot is er geen lid van. |

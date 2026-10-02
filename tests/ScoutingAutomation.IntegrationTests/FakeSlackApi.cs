@@ -21,6 +21,7 @@ public sealed class FakeSlackApi : HttpMessageHandler
     public static readonly byte[] FileContent = { 1, 2, 3 };
 
     private readonly ConcurrentQueue<Call> _calls = new();
+    private int _uploads;
     private readonly ConcurrentDictionary<(string Channel, string Ts, string Name), byte> _botReactions = new();
 
     /// <summary>Messages returned by conversations.history, per channel.</summary>
@@ -50,6 +51,12 @@ public sealed class FakeSlackApi : HttpMessageHandler
     /// <summary>The workspace from auth.test; null gives no workspace, so the app has no Slack links.</summary>
     public (string TeamId, string Url)? Workspace { get; set; }
 
+    /// <summary>The bot's own user ID that auth.test gives.</summary>
+    public string BotUserId { get; set; } = "UBOT";
+
+    /// <summary>The upload address files.getUploadURLExternal gives instead of Slack's own.</summary>
+    public string? UploadUrl { get; set; }
+
     public IReadOnlyList<Call> AllCalls => _calls.ToList();
 
     public IReadOnlyList<Call> Calls(string method) => _calls.Where(c => c.Method == method).ToList();
@@ -61,7 +68,10 @@ public sealed class FakeSlackApi : HttpMessageHandler
     public IReadOnlyList<Call> ThreadReplies(string ts) => Calls("chat.postMessage").Where(c => c["thread_ts"] == ts).ToList();
 
     /// <summary>Calls that post something to Slack, as opposed to reading from it.</summary>
-    public IReadOnlyList<Call> Writes => _calls.Where(c => c.Method is "chat.postMessage" or "reactions.add" or "reactions.remove").ToList();
+    public IReadOnlyList<Call> Writes => _calls.Where(c => c.Method is "chat.postMessage" or "reactions.add" or "reactions.remove" or "files.completeUploadExternal").ToList();
+
+    /// <summary>Files the bot shared in a channel.</summary>
+    public IReadOnlyList<Call> SharedFiles => Calls("files.completeUploadExternal");
 
     public static string Key(string channel, string ts) => $"{channel}/{ts}";
 
@@ -79,6 +89,19 @@ public sealed class FakeSlackApi : HttpMessageHandler
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
     {
         var url = request.RequestUri!;
+        if (url.AbsolutePath.StartsWith("/upload/"))
+        {
+            var bytes = await request.Content!.ReadAsByteArrayAsync(ct);
+            _calls.Enqueue(new Call("upload", new Dictionary<string, string>
+            {
+                ["file_id"] = url.Segments.Last(),
+                ["length"] = bytes.Length.ToString(),
+                ["host"] = url.Host,
+                ["authorization"] = request.Headers.Authorization?.ToString() ?? ""
+            }));
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("OK - " + bytes.Length) };
+        }
+
         if (url.Host == "files.slack.com")
         {
             var name = url.Segments.Last();
@@ -128,9 +151,13 @@ public sealed class FakeSlackApi : HttpMessageHandler
                     ? Json(new { ok = true, user = new { name = userName.ToLowerInvariant(), profile = new { display_name = userName } } })
                     : Json(new { ok = false, error = "user_not_found" });
 
+            case "files.getUploadURLExternal":
+                var fileId = "F" + Interlocked.Increment(ref _uploads);
+                return Json(new { ok = true, upload_url = UploadUrl ?? $"https://files.slack.com/upload/v1/{fileId}", file_id = fileId });
+
             case "auth.test":
                 return Workspace is { } workspace
-                    ? Json(new { ok = true, team_id = workspace.TeamId, url = workspace.Url })
+                    ? Json(new { ok = true, team_id = workspace.TeamId, url = workspace.Url, user_id = BotUserId })
                     : Json(new { ok = false, error = "invalid_auth" });
 
             default:
@@ -151,7 +178,15 @@ public sealed class FakeSlackApi : HttpMessageHandler
         if (request.Content != null)
         {
             var body = await request.Content.ReadAsStringAsync(ct);
-            if (body.StartsWith('{'))
+            if (request.Content.Headers.ContentType?.MediaType == "application/x-www-form-urlencoded")
+            {
+                var form = HttpUtility.ParseQueryString(body);
+                foreach (var key in form.AllKeys.OfType<string>())
+                {
+                    args[key] = form[key] ?? "";
+                }
+            }
+            else if (body.StartsWith('{'))
             {
                 using var json = JsonDocument.Parse(body);
                 foreach (var property in json.RootElement.EnumerateObject())
