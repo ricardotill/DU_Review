@@ -1,0 +1,53 @@
+@* Totals: counted per group and assignment, resubmissions merged *@
+<div class="row g-3 @Class">
+    <div class="col-lg col-md-4 col-6">
+        <div class="stat-card stat-total h-100">
+            <div class="stat-label">Ingezonden</div>
+            <div class="stat-value text-white">@Stats.TotalSubmissions</div>
+            <div class="stat-caption">Opdrachten, per groep</div>
+        </div>
+    </div>
+    <div class="col-lg col-md-4 col-6">
+        <div class="stat-card stat-pending h-100">
+            <div class="stat-label">Open</div>
+            <div class="stat-value text-warning">@Stats.PendingCount</div>
+            <div class="stat-caption">Wacht op beoordeling in Slack</div>
+        </div>
+    </div>
+    <div class="col-lg col-md-4 col-6">
+        <div class="stat-card stat-approved h-100">
+            <div class="stat-label">Goedgekeurd</div>
+            <div class="stat-value text-success">@Stats.ApprovedCount</div>
+            <div class="stat-caption">@Stats.OverallApprovalRate% incl. awesome</div>
+        </div>
+    </div>
+    <div class="col-lg col-md-4 col-6">
+        <div class="stat-card stat-awesome h-100">
+            <div class="stat-label">Awesome</div>
+            <div class="stat-value text-awesome">@Stats.AwesomeCount</div>
+            <div class="stat-caption">Extra punten</div>
+        </div>
+    </div>
+    <div class="col-lg col-md-4 col-6">
+        <div class="stat-card stat-rejected h-100">
+            <div class="stat-label">Afgekeurd</div>
+            <div class="stat-value text-danger">@Stats.RejectedCount</div>
+            <div class="stat-caption">Nog niet opnieuw ingezonden</div>
+        </div>
+    </div>
+    @if (Stats.UnresolvedCount > 0)
+    {
+        <div class="col-lg col-md-4 col-6">
+            <a href="submissions" class="stat-card d-block h-100 text-decoration-none" style="border-left: 4px solid var(--status-rejected);">
+                <div class="stat-label">Onopgelost</div>
+                <div class="stat-value text-danger">@Stats.UnresolvedCount</div>
+                <div class="stat-caption">Oudere uploads zonder geldig nummer</div>
+            </a>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public SubmissionStatistics Stats { get; set; } = default!;
+    [Parameter] public string? Class { get; set; }
+}

@@ -1,8 +1,7 @@
 @page "/configuration"
 @rendermode InteractiveServer
 @inject IOptions<ScoutingSettings> ScoutingOptions
-@inject IGroupRepository GroupRepository
-@inject IAssignmentRepository AssignmentRepository
+@inject IServiceScopeFactory ScopeFactory
 @inject SlackConnectionStatus ConnectionStatus
 @inject RuntimeSettingsService Runtime
 
@@ -111,7 +110,7 @@
             <h2 class="panel-title"><i class="bi bi-hdd-fill text-secondary"></i> Bestanden &amp; opslag</h2>
             <dl class="config-list mb-3">
                 <dt>Opslagmap</dt>
-                <dd class="font-monospace small text-break">@options.StorageRoot</dd>
+                <dd class="font-monospace small text-break">@ServerPath(options.StorageRoot)</dd>
                 <dt>Indeling</dt>
                 <dd class="small"><code>/groep/</code> tot de beoordeling, daarna <code>approved/</code>, <code>awesome/</code> of <code>rejected/</code></dd>
                 <dt>Bestandsnamen</dt>
@@ -138,7 +137,7 @@
             <h2 class="panel-title"><i class="bi bi-gear-fill text-secondary"></i> Opdrachten &amp; Slack</h2>
             <dl class="config-list mb-0">
                 <dt>Puntenbestand</dt>
-                <dd class="font-monospace small text-break">@options.AssignmentPointsFile</dd>
+                <dd class="font-monospace small text-break">@ServerPath(options.AssignmentPointsFile)</dd>
                 <dt>Opdrachten</dt>
                 <dd>@assignmentCount geladen</dd>
                 <dt>Handmatige modus</dt>
@@ -278,7 +277,10 @@
 </div>
 
 @code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
     private ScoutingSettings options = new();
+    private bool isAdmin;
     private IReadOnlyList<Group> groups = new List<Group>();
     private int assignmentCount;
 
@@ -307,10 +309,18 @@
         ("Na de eindtijd", options.SlackFeedback.TooLate, SlackText.TooLate, "{end}")
     };
 
+    // Where the server keeps its files is for admins; the jury sees the name only
+    private string ServerPath(string? path) =>
+        isAdmin ? path ?? "" : Path.GetFileName(Path.TrimEndingDirectorySeparator(path ?? ""));
+
     protected override async Task OnInitializedAsync()
     {
         options = ScoutingOptions.Value;
-        groups = await GroupRepository.GetAllAsync();
-        assignmentCount = (await AssignmentRepository.GetAllAsync()).Count;
+        isAdmin = await AdminActions.IsAdminAsync(AuthState);
+
+        // A scope of its own: the tab's own database context would keep returning what it read first
+        await using var scope = ScopeFactory.CreateAsyncScope();
+        groups = await scope.ServiceProvider.GetRequiredService<IGroupRepository>().GetAllAsync();
+        assignmentCount = (await scope.ServiceProvider.GetRequiredService<IAssignmentRepository>().GetAllAsync()).Count;
     }
 }

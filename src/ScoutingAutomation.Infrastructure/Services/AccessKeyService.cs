@@ -42,8 +42,12 @@ public class AccessKeyService
             changed = true;
         }
 
-        if (changed) Save();
+        if (changed) Save(_keys);
+        DurableFile.RestrictToOwner(_file, _logger);
     }
+
+    /// <summary>A key set in the configuration should be at least this long; a shorter one is easy to guess.</summary>
+    public const int MinConfiguredKeyLength = 12;
 
     /// <summary>Raised when a key is regenerated, from any thread.</summary>
     public event Action? Changed;
@@ -78,9 +82,10 @@ public class AccessKeyService
         lock (_lock)
         {
             key = Generate();
-            _keys.AccessKey = key;
-            _keys.AccessStamp = NewStamp();
-            Save();
+            // Saved first: when saving fails, the old key stays in use and the admin sees the error
+            var keys = _keys with { AccessKey = key, AccessStamp = NewStamp() };
+            Save(keys);
+            _keys = keys;
         }
 
         _logger.LogWarning("Access key regenerated; everyone else is logged out");
@@ -95,9 +100,9 @@ public class AccessKeyService
         lock (_lock)
         {
             key = Generate();
-            _keys.AdminKey = key;
-            _keys.AdminStamp = NewStamp();
-            Save();
+            var keys = _keys with { AdminKey = key, AdminStamp = NewStamp() };
+            Save(keys);
+            _keys = keys;
         }
 
         _logger.LogWarning("Admin key regenerated; other admins lose admin mode");
@@ -126,7 +131,17 @@ public class AccessKeyService
 
     private string FirstKey(string? configured, string kind)
     {
-        if (!string.IsNullOrWhiteSpace(configured)) return configured.Trim();
+        if (!string.IsNullOrWhiteSpace(configured))
+        {
+            // Still used: refusing it would lock the organisers out on the day itself
+            if (Normalize(configured).Length < MinConfiguredKeyLength)
+            {
+                _logger.LogWarning("The configured {Kind} key is shorter than {Length} characters and easy to guess; regenerate it on the Beheer page",
+                    kind, MinConfiguredKeyLength);
+            }
+
+            return configured.Trim();
+        }
 
         var key = Generate();
         // Shown once, so whoever starts the app can log in and share it
@@ -146,20 +161,17 @@ public class AccessKeyService
         }
         catch (JsonException ex)
         {
-            _logger.LogError(ex, "Could not read {File}; new keys are created", _file);
+            // Set aside, not overwritten: the keys in it can still be looked up
+            var aside = DurableFile.Quarantine(_file, _logger);
+            _logger.LogError(ex, "Could not read {File}; new keys are created{Aside}", _file, aside == null ? "" : $" (old file kept as {aside})");
             return new SavedKeys();
         }
     }
 
-    private void Save()
-    {
-        Directory.CreateDirectory(Path.GetDirectoryName(_file)!);
-        var temp = _file + ".tmp";
-        File.WriteAllText(temp, JsonSerializer.Serialize(_keys, new JsonSerializerOptions { WriteIndented = true }));
-        File.Move(temp, _file, overwrite: true);
-    }
+    private void Save(SavedKeys keys) =>
+        DurableFile.WriteAllText(_file, JsonSerializer.Serialize(keys, new JsonSerializerOptions { WriteIndented = true }), ownerOnly: true);
 
-    private sealed class SavedKeys
+    private sealed record SavedKeys
     {
         public string AccessKey { get; set; } = "";
         public string AccessStamp { get; set; } = "";

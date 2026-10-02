@@ -25,7 +25,9 @@ public class DatabaseInitializerTests : IDisposable
             {
                 new() { Name = "De Wolven", Abbreviation = "DWO", SlackChannelId = "C1", Description = "Welpen" },
                 new() { Name = "De Bosuilen", Abbreviation = "DBU", SlackChannelId = "C2" }
-            }
+            },
+            // Sample submissions are only made for trying the app out
+            Slack = new SlackSettings { SimulationMode = true }
         };
     }
 

@@ -1,7 +1,7 @@
 @page "/messages"
 @rendermode InteractiveServer
-@inject IGroupRepository GroupRepository
-@inject GroupMessageSender Sender
+@implements IDisposable
+@inject IServiceScopeFactory ScopeFactory
 @inject ISlackClient Slack
 
 <PageTitle>Bericht sturen - DU Review</PageTitle>
@@ -48,7 +48,7 @@ else
                             }
                             <div class="min-w-0 flex-grow-1">
                                 <div class="text-white small text-truncate">@picture.FileName</div>
-                                <div class="stat-caption">@FormatSize(picture.Content.Length)</div>
+                                <div class="stat-caption">@FormatSize(picture.Size)</div>
                             </div>
                             <button type="button" class="btn btn-sm btn-link text-secondary remove-picture" aria-label="Foto weghalen" disabled="@posting" @onclick="RemovePicture">
                                 <i class="bi bi-x-lg"></i>
@@ -150,6 +150,8 @@ else
 }
 
 @code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
     /// <summary>Only this group is selected at first, instead of all groups.</summary>
     [SupplyParameterFromQuery(Name = "group")]
     public Guid? GroupId { get; set; }
@@ -158,7 +160,8 @@ else
     private HashSet<Guid> selected = new();
     private SlackComposer? composer;
     private IReadOnlyList<AnnouncementPostResult>? results;
-    private MessagePicture? picture;
+    // On disk until it is sent: a picture of up to 20 MB per open tab would otherwise stay in the server's memory
+    private PictureDraft? picture;
     private string? thumbnail;
     private bool loadingPicture;
     private string? error;
@@ -172,7 +175,9 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        groups = (await GroupRepository.GetAllAsync()).OrderBy(g => g.Name).ToList();
+        // A scope of its own: the tab's own database context would keep returning what it read first
+        await using var scope = ScopeFactory.CreateAsyncScope();
+        groups = (await scope.ServiceProvider.GetRequiredService<IGroupRepository>().GetAllAsync()).OrderBy(g => g.Name).ToList();
         if (GroupId is { } only && groups.Any(g => g.Id == only)) Select(new[] { only });
         else SelectAll();
     }
@@ -208,12 +213,23 @@ else
         confirming = false;
         try
         {
+            // Open to the jury, but not to a tab whose access key was regenerated in the meantime
+            if (AuthState == null || (await AuthState).User.Identity?.IsAuthenticated != true)
+            {
+                error = "Je bent niet meer ingelogd. Laad de pagina opnieuw.";
+                return;
+            }
+
             var text = await composer.GetMrkdwnAsync();
-            error = GroupMessageSender.Validate(text, picture);
+            var attached = picture == null ? null : new MessagePicture(picture.FileName, await File.ReadAllBytesAsync(picture.Path));
+            error = GroupMessageSender.Validate(text, attached);
             if (error != null) return;
 
             var sent = selected.ToList();
-            results = await Sender.PostAsync(text, sent, picture);
+            await using (var scope = ScopeFactory.CreateAsyncScope())
+            {
+                results = await scope.ServiceProvider.GetRequiredService<GroupMessageSender>().PostAsync(text, sent, attached);
+            }
 
             // Channels that have the message drop out, so sending again only retries the ones that failed
             var posted = groups!.Where(g => results.Any(r => r.Posted && r.ChannelId == g.SlackChannelId)).Select(g => g.Id);
@@ -224,6 +240,12 @@ else
                 RemovePicture();
                 Select(sent);
             }
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or TaskCanceledException or InvalidOperationException
+                                       or IOException or System.Data.Common.DbException)
+        {
+            // What was posted already stays listed in the results; the page keeps working
+            error = $"Versturen is mislukt: {ex.Message}";
         }
         finally
         {
@@ -248,27 +270,38 @@ else
 
         loadingPicture = true;
         confirming = false;
+        RemovePicture();
+        var path = Path.Combine(Path.GetTempPath(), $"du-picture-{Guid.NewGuid():N}");
         try
         {
-            using var content = new MemoryStream();
             await using (var stream = file.OpenReadStream(GroupMessageSender.MaxPictureBytes))
+            await using (var target = File.Create(path))
             {
-                await stream.CopyToAsync(content);
+                await stream.CopyToAsync(target);
             }
-            var chosen = new MessagePicture(GroupMessageSender.SafeFileName(file.Name), content.ToArray());
+
             // The browser's content type is only a claim; the bytes must be a picture too
-            if (GroupMessageSender.Validate(null, chosen) is { } problem)
+            var start = new byte[16];
+            int read;
+            await using (var check = File.OpenRead(path))
             {
-                error = problem;
+                read = await check.ReadAtLeastAsync(start, start.Length, throwOnEndOfStream: false);
+            }
+
+            if (read == 0 || !GroupMessageSender.IsPicture(start.AsSpan(0, read)))
+            {
+                File.Delete(path);
+                error = read == 0 ? "De foto is leeg." : "Kies een afbeelding.";
                 return;
             }
-            picture = chosen;
+
+            picture = new PictureDraft(GroupMessageSender.SafeFileName(file.Name), path, new FileInfo(path).Length);
             thumbnail = await ThumbnailAsync(file);
         }
-        catch (IOException ex)
+        catch (Exception ex) when (ex is IOException or JSException or JSDisconnectedException or TaskCanceledException or InvalidOperationException)
         {
             error = $"De foto kon niet worden gelezen: {ex.Message}";
-            picture = null;
+            if (picture?.Path != path) DeleteQuietly(path);
         }
         finally
         {
@@ -296,10 +329,28 @@ else
 
     private void RemovePicture()
     {
+        if (picture != null) DeleteQuietly(picture.Path);
         picture = null;
         thumbnail = null;
         confirming = false;
     }
+
+    private static void DeleteQuietly(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // A leftover in the temp folder; the system cleans that up
+        }
+    }
+
+    public void Dispose() => RemovePicture();
+
+    /// <summary>A chosen picture, kept in a temporary file until it is sent.</summary>
+    private sealed record PictureDraft(string FileName, string Path, long Size);
 
     private static string FormatSize(long bytes) => bytes >= 1024 * 1024
         ? $"{bytes / 1024d / 1024d:0.0} MB"

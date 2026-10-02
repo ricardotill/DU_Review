@@ -37,7 +37,10 @@ public class SlackProcessingGate
         }
     }
 
-    /// <summary>Stops new live events and waits for running ones. Disposing reopens the gate.</summary>
+    /// <summary>
+    /// Stops new live events and waits for running ones. Disposing reopens the gate.
+    /// When the wait is cancelled, the gate opens again right away, so live processing never stays paused.
+    /// </summary>
     public async Task<IDisposable> CloseAsync(CancellationToken ct = default)
     {
         Task drained;
@@ -54,7 +57,16 @@ public class SlackProcessingGate
             drained = _drained.Task;
         }
 
-        await drained.WaitAsync(ct);
+        try
+        {
+            await drained.WaitAsync(ct);
+        }
+        catch
+        {
+            Reopen();
+            throw;
+        }
+
         return new Releaser(Reopen);
     }
 

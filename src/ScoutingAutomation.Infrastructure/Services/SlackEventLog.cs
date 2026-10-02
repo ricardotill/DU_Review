@@ -8,7 +8,13 @@ public enum SlackEventKind
     Edited,
     Deleted,
     ReactionAdded,
-    ReactionRemoved
+    ReactionRemoved,
+    /// <summary>The connection with Slack came up, dropped or was refreshed.</summary>
+    Connection,
+    /// <summary>A run that reads back what Slack sent while the app was away.</summary>
+    CatchUp,
+    /// <summary>An error elsewhere in the app, such as a failed announcement, rebuild or save.</summary>
+    System
 }
 
 public enum SlackEventOutcome
@@ -78,6 +84,12 @@ public class SlackEventLog
             }
         }
     }
+
+    /// <summary>Adds an entry that is not a Slack event: a connection change, a catch-up or an error in the app.</summary>
+    /// <param name="source">Where it came from, shown as the content.</param>
+    public void AddNotice(SlackEventKind kind, SlackEventOutcome outcome, string detail, string? source = null, string? channel = null) =>
+        Add(new SlackEventLogEntry(Guid.NewGuid(), DateTimeOffset.UtcNow, TimeSpan.Zero, kind, channel, null, source, null, 0,
+            outcome, detail, Array.Empty<Guid>()));
 
     /// <summary>The kept events, newest first.</summary>
     public IReadOnlyList<SlackEventLogEntry> Recent()

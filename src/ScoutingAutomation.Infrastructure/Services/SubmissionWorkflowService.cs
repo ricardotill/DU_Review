@@ -23,6 +23,9 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
     private readonly IOptions<ScoutingSettings> _options;
     private readonly ILogger<SubmissionWorkflowService> _logger;
     private readonly SlackLinks? _links;
+    private readonly SlackChannelLocks? _channels;
+    private readonly SlackProcessingGate? _gate;
+    private readonly SlackOwnUploads? _ownUploads;
 
     public SubmissionWorkflowService(
         ISubmissionRepository submissionRepository,
@@ -35,8 +38,14 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         RuntimeSettingsService runtime,
         IOptions<ScoutingSettings> options,
         ILogger<SubmissionWorkflowService> logger,
-        SlackLinks? links = null)
+        SlackLinks? links = null,
+        SlackChannelLocks? channels = null,
+        SlackProcessingGate? gate = null,
+        SlackOwnUploads? ownUploads = null)
     {
+        _channels = channels;
+        _gate = gate;
+        _ownUploads = ownUploads;
         _submissionRepository = submissionRepository;
         _groupRepository = groupRepository;
         _assignmentRepository = assignmentRepository;
@@ -164,6 +173,8 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         var failedFileNames = new List<string>();
         var storedFileNames = new List<string>();
         var messageTs = messageEvent.Ts ?? $"{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
+        // Feedback emoji placed while handling this message; a second reply with the same emoji is still posted
+        var reactedNow = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         // The message's own time, so rebuilt and live submissions show when they were really posted
         var postedAt = SlackTimestamp.ToDateTimeOffset(messageEvent.Ts) ?? DateTimeOffset.UtcNow;
         // Fetched once per message, and only when a submission is actually created
@@ -176,6 +187,13 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         {
             // A deleted file still shows in the message as a "tombstone", without content
             if (string.IsNullOrWhiteSpace(file.Name) || file.IsDeleted) continue;
+
+            // A picture the jury sent from the app, also before the bot's own user ID is known
+            if (file.Id != null && (_ownUploads?.Contains(file.Id) ?? false))
+            {
+                _logger.LogDebug("Ignored file {FileName}: the app uploaded it", file.Name);
+                continue;
+            }
 
             if (!supportedFiles.Contains(file))
             {
@@ -195,18 +213,35 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
 
             // FR-004 / FR-005: Download the file straight into /group-name/, where it stays until reviewed.
             // The download streams to disk, so a large video is never held in memory.
-            var downloadUrl = file.UrlPrivateDownload ?? file.UrlPrivate ?? $"sim://{file.Name}";
+            // Connected to Slack, a file without an address (hidden by a plan limit, or still being processed)
+            // cannot be fetched: storing a stand-in would hide a lost submission
+            var downloadUrl = file.UrlPrivateDownload ?? file.UrlPrivate ?? (_slackClient.IsConnected ? null : $"sim://{file.Name}");
             var storedFileName = SubmissionFileName.Build(group, assignmentNumber, file.Name, postedAt.ToGameTime(), FileIndex(supportedFiles, file));
             string storagePath;
             try
             {
+                if (downloadUrl == null)
+                {
+                    throw new HttpRequestException($"Slack gave no download address for {file.Name}");
+                }
+
                 await using var stream = await _slackClient.DownloadFileAsync(downloadUrl, file.Name, ct);
                 storagePath = await _fileStorageService.SaveInitialFileAsync(group.Name, storedFileName, stream, ct);
             }
             // A timeout also throws OperationCanceledException; only a stop of the app itself ends processing
             catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
             {
-                _logger.LogWarning(ex, "Could not download {FileName} from message {Ts} in {Channel}", file.Name, messageTs, channelId);
+                if (IsDiskFull(ex))
+                {
+                    _logger.LogCritical(ex, "The disk is full: could not store {FileName} from message {Ts} in {Channel}", file.Name, messageTs, channelId);
+                }
+                else
+                {
+                    _logger.LogWarning(ex, "Could not download {FileName} from message {Ts} in {Channel}", file.Name, messageTs, channelId);
+                }
+
+                // Manual mode remembers what it saved: forget this file, so a next try downloads it again
+                if (manual) _runtime.ReleaseManualDownload(channelId, messageTs, file.Id ?? file.Name);
                 failedFileNames.Add(file.Name);
                 continue;
             }
@@ -235,7 +270,7 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
                 SlackFileId = string.IsNullOrWhiteSpace(file.Id) ? null : file.Id,
                 Submitter = messageEvent.User ?? "Unknown",
                 SubmitterName = submitterName,
-                FileName = file.Name,
+                FileName = file.Name.Length > MaxFileNameLength ? file.Name[..MaxFileNameLength] : file.Name,
                 FileSizeBytes = file.Size > 0 ? file.Size : new FileInfo(storagePath).Length,
                 ContentType = file.Mimetype ?? "application/octet-stream",
                 MessageText = messageEvent.Text,
@@ -252,9 +287,15 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
             {
                 // The same event was handled at the same time elsewhere and won the race: drop this copy
                 _logger.LogInformation("Submission already registered for file {FileName} in message {Ts}", file.Name, messageTs);
-                await _fileStorageService.DeleteFileAsync(storagePath, ct);
+                await _fileStorageService.DeleteFileAsync(storagePath, CancellationToken.None);
                 storedFileNames.Remove(Path.GetFileName(storagePath));
                 continue;
+            }
+            catch
+            {
+                // Not saved: the file must not stay behind without a submission. The catch-up tries the message again.
+                await _fileStorageService.DeleteFileAsync(storagePath, CancellationToken.None);
+                throw;
             }
 
             createdIds.Add(submission.Id);
@@ -283,12 +324,12 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
 
         if (unsupportedFileNames.Count > 0)
         {
-            await SendFeedbackAsync(silent, feedback.UnsupportedFile, channelId, messageEvent.Ts, "{files}", string.Join(", ", unsupportedFileNames), ct);
+            await SendFeedbackAsync(silent, feedback.UnsupportedFile, channelId, messageEvent.Ts, "{files}", string.Join(", ", unsupportedFileNames), ct, reactedNow);
         }
 
         if (failedFileNames.Count > 0)
         {
-            await SendFeedbackAsync(silent, feedback.DownloadFailed, channelId, messageEvent.Ts, "{files}", string.Join(", ", failedFileNames), ct);
+            await SendFeedbackAsync(silent, feedback.DownloadFailed, channelId, messageEvent.Ts, "{files}", string.Join(", ", failedFileNames), ct, reactedNow);
         }
 
         var summary = manual
@@ -416,7 +457,8 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         foreach (var submission in submissions)
         {
             var group = submission.Group ?? await _groupRepository.GetByIdAsync(submission.GroupId, ct);
-            var storagePath = submission.StoragePath;
+            var previousPath = submission.StoragePath;
+            var storagePath = previousPath;
             if (group != null)
             {
                 var file = supportedFiles.FirstOrDefault(f => f.Id != null && f.Id == submission.SlackFileId)
@@ -427,7 +469,16 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
 
             var previousNumber = submission.AssignmentNumber;
             submission.Reassign(number, storagePath);
-            await _submissionRepository.UpdateAsync(submission, ct);
+            try
+            {
+                await _submissionRepository.UpdateAsync(submission, ct);
+            }
+            catch
+            {
+                // The database still has the old name: the file gets it back
+                await UndoMoveAsync(storagePath, previousPath);
+                throw;
+            }
             _logger.LogInformation("Submission {Id} moved from assignment #{From} to #{To} after an edit in Slack", submission.Id, previousNumber, number);
         }
 
@@ -483,15 +534,30 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
     /// <summary>Removes submissions whose message or file was deleted in Slack. Their files move to "_deleted".</summary>
     private async Task RemoveSubmissionsAsync(IReadOnlyList<Submission> submissions, CancellationToken ct)
     {
+        var groupNames = new Dictionary<Guid, string>();
         foreach (var submission in submissions)
         {
             var group = submission.Group ?? await _groupRepository.GetByIdAsync(submission.GroupId, ct);
-            var movedTo = await _fileStorageService.MoveToDeletedAsync(group?.Name ?? "unknown-group", submission.StoragePath, ct);
-            _logger.LogInformation("Removed submission {Id} (assignment #{Number}) deleted in Slack; file kept at {Path}",
-                submission.Id, submission.AssignmentNumber, movedTo ?? "(no file)");
+            groupNames[submission.Id] = group?.Name ?? "unknown-group";
         }
 
+        // The rows go first: when that fails, nothing changed. A file that cannot be moved afterwards only stays
+        // in the group folder, where no submission points to it any more.
         await _submissionRepository.DeleteAsync(submissions, ct);
+        foreach (var submission in submissions)
+        {
+            try
+            {
+                var movedTo = await _fileStorageService.MoveToDeletedAsync(groupNames[submission.Id], submission.StoragePath, CancellationToken.None);
+                _logger.LogInformation("Removed submission {Id} (assignment #{Number}) deleted in Slack; file kept at {Path}",
+                    submission.Id, submission.AssignmentNumber, movedTo ?? "(no file)");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _logger.LogError(ex, "Removed submission {Id}, but could not move its file {Path} to the deleted folder", submission.Id, submission.StoragePath);
+            }
+        }
+
         _changeNotifier.NotifyChanged();
     }
 
@@ -545,6 +611,13 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         var current = await _slackClient.GetReactionsAsync(targetChannel, targetTs, ct);
         var review = ChooseReview(WithReaction(current, reaction, reviewer!))!;
 
+        // Slack delivers an event again when it got no answer in time: the same review is not added twice
+        if (submissions.All(s => s.Status == review.Status && s.Reviews.FirstOrDefault() is { } last
+                                 && last.Reviewer == review.Reviewer && last.ReactionEmoji == review.Emoji))
+        {
+            return ProcessSlackReactionResult.Ignored($"Status blijft {review.Status.StatusLabel()}");
+        }
+
         await ApplyStatusAsync(submissions, review.Status, review.Reviewer, review.Emoji, ct);
 
         _logger.LogInformation("Processed reaction '{Reaction}' on message {Ts}: {Count} submission(s) now {Status}",
@@ -592,6 +665,20 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         var submissions = await _submissionRepository.GetBySlackMessageIdAsync(channelId, messageTs, ct);
         if (submissions.Count == 0) return false;
 
+        if (!WouldChange(submissions, ChooseReview(reactions))) return false;
+
+        // The reactions were read with the channel's history, maybe minutes ago, and a reviewer may have reacted
+        // since: a status only changes on what Slack shows now. When that cannot be read, nothing changes.
+        if (_slackClient.IsConnected)
+        {
+            reactions = await _slackClient.GetReactionsAsync(channelId, messageTs, ct);
+            if (reactions == null)
+            {
+                _logger.LogWarning("Could not read reactions on message {Ts} in {Channel} again; review left unchanged", messageTs, channelId);
+                return false;
+            }
+        }
+
         var review = ChooseReview(reactions);
         if (review != null)
         {
@@ -611,6 +698,13 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         await ApplyStatusAsync(takenBack, SubmissionStatus.Pending, CatchUpReviewer, emoji: null, ct, notes: "Beoordelingsemoji weggehaald");
         return true;
     }
+
+    /// <summary>Whether <see cref="SyncReviewAsync"/> would change these submissions for this review.</summary>
+    private static bool WouldChange(IReadOnlyList<Submission> submissions, ChosenReview? review) =>
+        review != null
+            ? submissions.Any(s => s.Status != review.Status)
+            : submissions.Any(s => s.Status is not (SubmissionStatus.Pending or SubmissionStatus.Received)
+                                   && s.Reviews.FirstOrDefault()?.Reviewer != DashboardOverrideReviewer);
 
     public async Task<ProcessSlackReactionResult> ProcessSlackReactionRemovedAsync(SlackEventItemDto reactionEvent, CancellationToken ct = default)
     {
@@ -721,12 +815,43 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
             var groupName = group?.Name ?? "unknown-group";
 
             // FR-008: Move file
-            var newStoragePath = await _fileStorageService.MoveFileToStatusAsync(groupName, submission.StoragePath, status, ct);
+            var previousPath = submission.StoragePath;
+            var newStoragePath = await _fileStorageService.MoveFileToStatusAsync(groupName, previousPath, status, ct);
             submission.TransitionStatus(status, newStoragePath, reviewer, emoji, notes);
-            await _submissionRepository.UpdateAsync(submission, ct);
+            try
+            {
+                await _submissionRepository.UpdateAsync(submission, ct);
+            }
+            catch
+            {
+                // The database still points to the old place: the file goes back there
+                await UndoMoveAsync(newStoragePath, previousPath);
+                throw;
+            }
         }
 
         _changeNotifier.NotifyChanged();
+    }
+
+    /// <summary>Puts a file back at <paramref name="previousPath"/> after the database refused the change.</summary>
+    private async Task UndoMoveAsync(string currentPath, string previousPath)
+    {
+        if (string.Equals(currentPath, previousPath, StringComparison.Ordinal)) return;
+
+        try
+        {
+            if (!await _fileStorageService.FileExistsAsync(currentPath)) return;
+
+            var restored = await _fileStorageService.MoveToPathAsync(currentPath, previousPath);
+            if (!string.Equals(restored, previousPath, StringComparison.Ordinal))
+            {
+                _logger.LogError("File {Path} went back to {Restored}, not to {Previous}", currentPath, restored, previousPath);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Could not move file {Path} back to {Previous} after a failed save", currentPath, previousPath);
+        }
     }
 
     public const string DashboardOverrideReviewer = "Dashboard override";
@@ -738,12 +863,24 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
             throw new ArgumentException("A reason is required for a status override", nameof(reason));
         }
 
+        // A rebuild replaces every submission: an override now would be lost, or hit one that is gone
+        if (_gate?.IsClosed == true)
+        {
+            throw new InvalidOperationException("Opnieuw opbouwen uit Slack loopt; pas de status aan als dat klaar is");
+        }
+
         var submission = await _submissionRepository.GetByIdAsync(submissionId, ct)
             ?? throw new InvalidOperationException($"Submission {submissionId} not found");
 
-        await ApplyStatusAsync(new[] { submission }, newStatus, DashboardOverrideReviewer, emoji: null, ct, notes: reason.Trim());
+        // Takes turns with the Slack events of this channel, so a reaction and the override never move the file at once
+        using var turn = _channels == null ? null : await _channels.EnterAsync(submission.SlackChannelId, ct);
+        reason = reason.Trim();
+        if (reason.Length > MaxOverrideReasonLength) reason = reason[..MaxOverrideReasonLength];
 
-        _logger.LogWarning("Submission {Id} status overridden from the dashboard to {Status}. Reason: {Reason}", submissionId, newStatus, reason);
+        await ApplyStatusAsync(new[] { submission }, newStatus, DashboardOverrideReviewer, emoji: null, ct, notes: reason);
+
+        _logger.LogWarning("Submission {Id} status overridden from the dashboard to {Status}. Reason: {Reason}",
+            submissionId, newStatus, reason.ReplaceLineEndings(" "));
         return submission;
     }
 
@@ -762,15 +899,19 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         return lookup.Name.Length > 100 ? lookup.Name[..100] : lookup.Name;
     }
 
-    private async Task SendFeedbackAsync(bool silent, FeedbackConfig? config, string channel, string? messageTs, string? placeholder, string? value, CancellationToken ct)
+    /// <param name="reactedNow">Emoji placed while handling this message: a second reply with the same emoji is still posted.</param>
+    private async Task SendFeedbackAsync(bool silent, FeedbackConfig? config, string channel, string? messageTs, string? placeholder, string? value,
+        CancellationToken ct, ISet<string>? reactedNow = null)
     {
         if (silent || config == null || string.IsNullOrWhiteSpace(messageTs)) return;
 
-        // A reaction that was already there means this message got feedback before
-        if (!string.IsNullOrWhiteSpace(config.Reaction)
-            && !await _slackClient.AddReactionAsync(channel, messageTs, config.Reaction, ct))
+        // A reaction that was already there means this message got feedback before. One that could not be placed
+        // means no reply either: the catch-up tries again, and the scout does not get the same reply each time.
+        var reaction = config.Reaction?.Trim(':');
+        if (!string.IsNullOrWhiteSpace(reaction) && !(reactedNow?.Contains(reaction) ?? false))
         {
-            return;
+            if (!await _slackClient.AddReactionAsync(channel, messageTs, reaction, ct)) return;
+            reactedNow?.Add(reaction);
         }
 
         if (!string.IsNullOrWhiteSpace(config.Message))
@@ -779,6 +920,16 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
             await _slackClient.PostThreadReplyAsync(channel, messageTs, text, ct);
         }
     }
+
+    /// <summary>The longest original file name stored; the database column holds 260 characters.</summary>
+    public const int MaxFileNameLength = 260;
+
+    /// <summary>The longest reason for an override that is stored.</summary>
+    public const int MaxOverrideReasonLength = 1000;
+
+    /// <summary>Whether storing failed because the disk is full (ENOSPC on Linux and macOS, ERROR_DISK_FULL on Windows).</summary>
+    private static bool IsDiskFull(Exception ex) =>
+        ex is IOException io && (io.HResult & 0xFFFF) is 28 or 112 or 39;
 
     private bool IsSupportedFile(SlackFileItemDto file)
     {

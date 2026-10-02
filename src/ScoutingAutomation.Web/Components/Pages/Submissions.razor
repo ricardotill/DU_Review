@@ -69,7 +69,7 @@
             <span class="text-secondary fw-normal small ms-1">nieuwste eerst</span>
         </h2>
         <div class="form-check form-switch mb-0 ms-auto me-3">
-            <input class="form-check-input" type="checkbox" role="switch" id="favoritesOnly" @bind="favoritesOnly" disabled="@(!Favorites.IsLoaded)" />
+            <input class="form-check-input" type="checkbox" role="switch" id="favoritesOnly" @bind="favoritesOnly" @bind:after="FirstPage" disabled="@(!Favorites.IsLoaded)" />
             <label class="form-check-label text-secondary small" for="favoritesOnly">
                 <i class="bi bi-star-fill text-warning"></i> Alleen favorieten (@Favorites.Count)
             </label>
@@ -87,7 +87,11 @@
         }
     </div>
 
-    @if (VisibleSubmissions.Count == 0)
+    @{
+        var visible = VisibleSubmissions;
+    }
+
+    @if (visible.Count == 0)
     {
         <div class="empty-state">
             <i class="bi bi-inbox"></i>
@@ -110,7 +114,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var sub in VisibleSubmissions)
+                    @foreach (var sub in Pager.Slice(visible, page))
                     {
                         var storedName = GetStoredFileName(sub);
                         <tr>
@@ -168,6 +172,8 @@
                 </tbody>
             </table>
         </div>
+
+        <Pager TotalCount="visible.Count" @bind-Page="page" />
     }
 </div>
 
@@ -194,7 +200,15 @@
         return ReloadAsync();
     }
 
-    private Task SearchAsync() => ReloadAsync();
+    private int page = 1;
+
+    private Task SearchAsync()
+    {
+        FirstPage();
+        return ReloadAsync();
+    }
+
+    private void FirstPage() => page = 1;
 
     protected override async Task LoadAsync(IServiceProvider services)
     {

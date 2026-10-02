@@ -15,6 +15,13 @@ public interface IFileStorageService
     /// <returns>The new path, or the current path when the file does not exist.</returns>
     Task<string> RenameFileAsync(string storagePath, string newFileName, CancellationToken ct = default);
 
+    /// <summary>
+    /// Moves a stored file to <paramref name="targetPath"/>, or to "name (2).ext" etc. when that is taken.
+    /// Used to put a file back after the database refused a change.
+    /// </summary>
+    /// <returns>The path the file ended up at.</returns>
+    Task<string> MoveToPathAsync(string storagePath, string targetPath, CancellationToken ct = default);
+
     /// <summary>Moves a file out of the group folders into "_deleted/{group}", so it no longer counts but can be recovered.</summary>
     /// <returns>The new path, or null when the file does not exist.</returns>
     Task<string?> MoveToDeletedAsync(string groupName, string storagePath, CancellationToken ct = default);
@@ -27,8 +34,12 @@ public interface IFileStorageService
     Task EnsureFolderStructureAsync(string groupName, CancellationToken ct = default);
     string GetStatusDirectoryPath(string groupName, SubmissionStatus status);
 
-    /// <summary>Moves every stored file into a new timestamped backup folder and returns its path.</summary>
-    Task<string> MoveAllToBackupAsync(CancellationToken ct = default);
+    /// <summary>Moves the folders of these groups into a new timestamped backup folder and returns its path.
+    /// Other folders under the storage root are left alone.</summary>
+    Task<string> MoveAllToBackupAsync(IReadOnlyCollection<string> groupNames, CancellationToken ct = default);
+
+    /// <summary>Moves the group folders of a backup back to where they were, for a rebuild that failed halfway.</summary>
+    Task RestoreBackupAsync(string backupFolder, CancellationToken ct = default);
 
     /// <summary>Moves one group's stored files into a new timestamped backup folder and returns its path.</summary>
     Task<string> MoveGroupToBackupAsync(string groupName, CancellationToken ct = default);

@@ -106,8 +106,16 @@ public abstract class ScheduledAnnouncer : BackgroundService
                 var error = await slack.PostMessageAsync(group.SlackChannelId, Render(template, group.Name), ct);
                 if (error == null)
                 {
-                    MarkPosted(group.SlackChannelId, Time.GetUtcNow());
                     Logger.LogInformation("Posted the {Name} message for {Group} in {Channel}", Name, group.Name, group.SlackChannelId);
+                    try
+                    {
+                        MarkPosted(group.SlackChannelId, Time.GetUtcNow());
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        // Posted all the same: the other channels still get it
+                        Logger.LogError(ex, "Posted the {Name} message in {Channel}, but could not save that", Name, group.SlackChannelId);
+                    }
                 }
                 else
                 {
@@ -144,30 +152,39 @@ public abstract class ScheduledAnnouncer : BackgroundService
                 CancellationToken wake;
                 lock (_wakeLock) wake = _wake.Token;
 
-                var at = PostTime;
-                // The text is checked when posting: an admin can still set it before the time
-                if (AutoPost && at is { } time && time != postedFor)
+                try
                 {
-                    var now = Time.GetUtcNow();
-                    if (now - time > AutoPostWindow)
+                    var at = PostTime;
+                    // The text is checked when posting: an admin can still set it before the time
+                    if (AutoPost && at is { } time && time != postedFor)
                     {
-                        Logger.LogWarning("The {Name} time {Time} passed more than {Window} ago: the message is not posted by itself", Name, time, AutoPostWindow);
+                        var now = Time.GetUtcNow();
+                        if (now - time > AutoPostWindow)
+                        {
+                            Logger.LogWarning("The {Name} time {Time} passed more than {Window} ago: the message is not posted by itself", Name, time, AutoPostWindow);
+                        }
+                        else if (await WaitUntilAsync(time, now, wake, stoppingToken))
+                        {
+                            postedFor = time;
+                            await TryPostAsync(stoppingToken);
+                            continue;
+                        }
+                        else
+                        {
+                            // The settings changed: look at the time again
+                            continue;
+                        }
                     }
-                    else if (await WaitUntilAsync(time, now, wake, stoppingToken))
-                    {
-                        postedFor = time;
-                        await TryPostAsync(stoppingToken);
-                        continue;
-                    }
-                    else
-                    {
-                        // The settings changed: look at the time again
-                        continue;
-                    }
-                }
 
-                // Nothing to do until the settings change
-                await WaitForChangeAsync(wake, stoppingToken);
+                    // Nothing to do until the settings change
+                    await WaitForChangeAsync(wake, stoppingToken);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
+                {
+                    // A failing announcer must never stop the app: it tries again a bit later
+                    Logger.LogError(ex, "The {Name} announcer failed; trying again in a minute", Name);
+                    await Task.Delay(TimeSpan.FromMinutes(1), Time, stoppingToken);
+                }
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -188,7 +205,12 @@ public abstract class ScheduledAnnouncer : BackgroundService
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(wake, stoppingToken);
         try
         {
-            await Task.Delay(time - now, Time, linked.Token);
+            // Waited a day at most at a time: Task.Delay refuses waits over 49 days, and a date far ahead is a valid setting
+            for (var remaining = time - now; remaining > TimeSpan.Zero; remaining -= MaxSingleWait)
+            {
+                await Task.Delay(remaining > MaxSingleWait ? MaxSingleWait : remaining, Time, linked.Token);
+            }
+
             return true;
         }
         catch (OperationCanceledException) when (!stoppingToken.IsCancellationRequested)
@@ -209,15 +231,34 @@ public abstract class ScheduledAnnouncer : BackgroundService
         }
     }
 
+    private static readonly TimeSpan MaxSingleWait = TimeSpan.FromDays(1);
+
+    /// <summary>Attempts of the automatic post; channels that failed (e.g. a rate limit) are tried again.</summary>
+    public const int AutoPostAttempts = 3;
+
+    /// <summary>Time between attempts of the automatic post.</summary>
+    public static readonly TimeSpan AutoPostRetryDelay = TimeSpan.FromSeconds(30);
+
     private async Task TryPostAsync(CancellationToken stoppingToken)
     {
-        try
+        for (var attempt = 1; attempt <= AutoPostAttempts; attempt++)
         {
-            await PostAsync(resend: false, stoppingToken);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
-        {
-            Logger.LogError(ex, "Posting the {Name} message failed", Name);
+            try
+            {
+                // Without resend, a retry only posts in the channels that did not get the message yet
+                var results = await PostAsync(resend: false, stoppingToken);
+                if (results.All(r => r.Posted || r.Skipped)) return;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
+            {
+                Logger.LogError(ex, "Posting the {Name} message failed", Name);
+            }
+
+            if (attempt < AutoPostAttempts)
+            {
+                Logger.LogWarning("The {Name} message did not reach every channel; trying again in {Delay}", Name, AutoPostRetryDelay);
+                await Task.Delay(AutoPostRetryDelay, Time, stoppingToken);
+            }
         }
     }
 

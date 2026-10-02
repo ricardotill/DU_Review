@@ -73,6 +73,8 @@ public interface ISubmissionWorkflowService
     /// <summary>
     /// Brings a message's submissions in line with the reviews on it in Slack now. When Slack shows no review,
     /// a Slack review is undone, but a dashboard override is kept: it stands in for Slack while Slack had problems.
+    /// <paramref name="reactions"/> may be old: before a status changes, the reactions are read from Slack again,
+    /// and when that fails nothing changes.
     /// </summary>
     /// <returns>True when a status changed.</returns>
     Task<bool> SyncReviewAsync(string channelId, string messageTs, IReadOnlyList<SlackMessageReactionDto>? reactions, CancellationToken ct = default);

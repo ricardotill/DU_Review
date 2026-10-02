@@ -15,10 +15,21 @@ public sealed class SlackEventQueue
     private readonly object _lock = new();
     private bool _completed;
 
-    /// <param name="process">Handles one event; must not throw.</param>
-    public SlackEventQueue(Func<SlackEventEnvelopeDto, Task> process)
+    /// <param name="process">Handles one event. An exception is reported to <paramref name="onError"/>; the lane goes on with the next event.</param>
+    public SlackEventQueue(Func<SlackEventEnvelopeDto, Task> process, Action<SlackEventEnvelopeDto, Exception>? onError = null)
     {
-        _process = process;
+        _process = async envelope =>
+        {
+            try
+            {
+                await process(envelope);
+            }
+            catch (Exception ex)
+            {
+                // One failing event must never stop its channel: every later event of the group would be lost
+                onError?.Invoke(envelope, ex);
+            }
+        };
     }
 
     /// <summary>The channel an event belongs to: the message's channel, or the channel of the message reacted to.</summary>

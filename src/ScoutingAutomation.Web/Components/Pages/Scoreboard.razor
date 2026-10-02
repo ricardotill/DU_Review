@@ -5,7 +5,7 @@
 
 <PageTitle>Scorebord - DU Review</PageTitle>
 
-@* For a beamer: the scoreboard and the points over time, live. Full screen hides everything else. *@
+@* For a beamer: the submission totals, the scoreboard and the points over time, live. Full screen hides everything else. *@
 <div class="beamer" @ref="beamer">
     <GameCountdown />
     <div class="beamer-header">
@@ -23,6 +23,7 @@
     }
     else
     {
+        <SubmissionTotals Stats="stats" />
         <div class="beamer-body">
             <div class="beamer-board"><ScoreboardBoard Stats="stats" /></div>
             <div class="beamer-chart"><ScoreChart Stats="stats" Large="true" /></div>

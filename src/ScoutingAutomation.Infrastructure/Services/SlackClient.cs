@@ -16,26 +16,48 @@ public class SlackClient : ISlackClient
     private readonly IOptions<ScoutingSettings> _options;
     private readonly ILogger<SlackClient> _logger;
     private readonly Func<TimeSpan, CancellationToken, Task> _wait;
+    private readonly SlackOwnUploads? _ownUploads;
 
     /// <param name="wait">Waits between download attempts; tests pass one that does not really wait.</param>
+    /// <param name="ownUploads">Remembers the pictures this app uploads, so they are never taken for submissions.</param>
     public SlackClient(HttpClient httpClient, IOptions<ScoutingSettings> options, ILogger<SlackClient> logger,
-        Func<TimeSpan, CancellationToken, Task>? wait = null)
+        Func<TimeSpan, CancellationToken, Task>? wait = null, SlackOwnUploads? ownUploads = null)
     {
+        _ownUploads = ownUploads;
         _httpClient = httpClient;
         _options = options;
         _logger = logger;
         _wait = wait ?? Task.Delay;
     }
 
+    public const int DownloadAttempts = 3;
+
+    /// <summary>Slack's own upload limit; a larger body is not a Slack file.</summary>
+    public const long MaxDownloadBytes = 1L << 30;
+
+    /// <summary>A download that receives nothing for this long is given up, so one stalled video cannot hold up its group.</summary>
+    public TimeSpan DownloadIdleTimeout { get; init; } = TimeSpan.FromSeconds(60);
+
+    /// <summary>Time for one Web API call, including reading its answer.</summary>
+    public TimeSpan ApiTimeout { get; init; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>Attempts of one Web API call that Slack rate limits.</summary>
+    public const int ApiAttempts = 3;
+
     public async Task<Stream> DownloadFileAsync(string fileUrl, string? fileName = null, CancellationToken ct = default)
     {
         var token = _options.Value.Slack.BotToken;
 
-        // If in simulation mode or mock url or missing token, produce simulated content
-        if (_options.Value.Slack.SimulationMode || string.IsNullOrWhiteSpace(token) || fileUrl.StartsWith("sim://", StringComparison.OrdinalIgnoreCase))
+        if (_options.Value.Slack.SimulationMode || string.IsNullOrWhiteSpace(token))
         {
             _logger.LogInformation("Generating simulated file stream for: {FileName} ({Url})", fileName ?? "file", fileUrl);
             return CreateSimulatedFileStream(fileName ?? "submission.jpg");
+        }
+
+        // The bot token only goes to Slack itself; a file without a Slack address cannot be fetched
+        if (!IsSlackUrl(fileUrl, out _))
+        {
+            throw new HttpRequestException($"Not a Slack file address: {fileUrl}");
         }
 
         // A failed download throws: storing a placeholder would hide a lost submission
@@ -44,8 +66,19 @@ public class SlackClient : ISlackClient
         {
             response.EnsureSuccessStatusCode();
 
+            // Without the files:read scope, or with an expired link, Slack answers 200 with its login page
+            if (string.Equals(response.Content.Headers.ContentType?.MediaType, "text/html", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new HttpRequestException($"Slack sent a web page instead of the file {fileName}; check the files:read scope");
+            }
+
+            if (response.Content.Headers.ContentLength > MaxDownloadBytes)
+            {
+                throw new HttpRequestException($"File {fileName} is larger than {MaxDownloadBytes} bytes");
+            }
+
             // The caller reads straight from the network, so a large video is never held in memory
-            return new ResponseStream(response, await response.Content.ReadAsStreamAsync(ct));
+            return new ResponseStream(response, await response.Content.ReadAsStreamAsync(ct), DownloadIdleTimeout);
         }
         catch
         {
@@ -53,8 +86,6 @@ public class SlackClient : ISlackClient
             throw;
         }
     }
-
-    public const int DownloadAttempts = 3;
 
     /// <summary>
     /// Downloads are safe to repeat, so a network error, a Slack server error or a rate limit is retried a few times.
@@ -70,9 +101,18 @@ public class SlackClient : ISlackClient
             HttpResponseMessage response;
             try
             {
-                response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                timeout.CancelAfter(DownloadIdleTimeout);
+                try
+                {
+                    response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+                }
+                catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
+                {
+                    throw new TimeoutException($"Slack did not answer within {DownloadIdleTimeout.TotalSeconds:0} s", ex);
+                }
             }
-            catch (HttpRequestException ex) when (attempt < DownloadAttempts)
+            catch (Exception ex) when (ex is HttpRequestException or TimeoutException && attempt < DownloadAttempts)
             {
                 _logger.LogWarning(ex, "Download of {Url} failed (attempt {Attempt}), retrying", fileUrl, attempt);
                 await _wait(RetryDelay(attempt, null), ct);
@@ -98,20 +138,45 @@ public class SlackClient : ISlackClient
             ? TimeSpan.FromSeconds(Math.Min(wait.TotalSeconds, 30))
             : TimeSpan.FromSeconds(Math.Pow(2, attempt - 1));
 
-    /// <summary>The body of a download; disposing it also releases the HTTP response.</summary>
-    private sealed class ResponseStream(HttpResponseMessage response, Stream inner) : Stream
+    /// <summary>
+    /// The body of a download; disposing it also releases the HTTP response. A read that gets no bytes
+    /// for <paramref name="idleTimeout"/> throws <see cref="TimeoutException"/>, and so does a body over <see cref="MaxDownloadBytes"/>.
+    /// </summary>
+    private sealed class ResponseStream(HttpResponseMessage response, Stream inner, TimeSpan idleTimeout) : Stream
     {
+        private long _read;
+
         public override bool CanRead => true;
         public override bool CanSeek => false;
         public override bool CanWrite => false;
         public override long Length => throw new NotSupportedException();
         public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
 
-        public override int Read(byte[] buffer, int offset, int count) => inner.Read(buffer, offset, count);
-        public override int Read(Span<byte> buffer) => inner.Read(buffer);
-        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken ct) => inner.ReadAsync(buffer, offset, count, ct);
-        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default) => inner.ReadAsync(buffer, ct);
-        public override Task CopyToAsync(Stream destination, int bufferSize, CancellationToken ct) => inner.CopyToAsync(destination, bufferSize, ct);
+        public override int Read(byte[] buffer, int offset, int count) => Count(inner.Read(buffer, offset, count));
+        public override int Read(Span<byte> buffer) => Count(inner.Read(buffer));
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken ct) => ReadAsync(buffer.AsMemory(offset, count), ct).AsTask();
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default)
+        {
+            using var idle = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            idle.CancelAfter(idleTimeout);
+            try
+            {
+                return Count(await inner.ReadAsync(buffer, idle.Token));
+            }
+            catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
+            {
+                throw new TimeoutException($"The download received nothing for {idleTimeout.TotalSeconds:0} s", ex);
+            }
+        }
+
+        private int Count(int read)
+        {
+            _read += read;
+            if (_read > MaxDownloadBytes) throw new IOException($"The download is larger than {MaxDownloadBytes} bytes");
+            return read;
+        }
+
         public override void Flush() { }
         public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
         public override void SetLength(long value) => throw new NotSupportedException();
@@ -138,8 +203,10 @@ public class SlackClient : ISlackClient
             return true;
         }
 
+        // Only a reaction that is really on the message counts as feedback given: after a passing failure,
+        // the next catch-up tries again instead of the scout getting the same reply each time
         var error = await CallSlackApiAsync("reactions.add", new { channel, timestamp = messageTs, name }, ct);
-        return error != "already_reacted";
+        return error is not ("already_reacted" or RateLimited or RequestFailed or Timeout);
     }
 
     public async Task RemoveReactionAsync(string channel, string messageTs, string reaction, CancellationToken ct = default)
@@ -195,20 +262,25 @@ public class SlackClient : ISlackClient
 
         var fileId = upload.TryGetProperty("file_id", out var id) ? id.GetString() : null;
         var uploadUrl = upload.TryGetProperty("upload_url", out var url) ? url.GetString() : null;
-        if (string.IsNullOrWhiteSpace(fileId) || !IsSlackUploadUrl(uploadUrl, out var uploadUri))
+        if (string.IsNullOrWhiteSpace(fileId) || !IsSlackUrl(uploadUrl, out var uploadUri))
         {
             _logger.LogWarning("Slack gave no usable upload address for {FileName}: {Url}", fileName, uploadUrl);
             return "invalid_upload_url";
         }
 
+        // Remembered before sharing: Slack may send the message back before this call returns
+        _ownUploads?.Add(fileId);
+
         try
         {
             // The address itself grants the upload, so the bot token does not go along
             using var request = new HttpRequestMessage(HttpMethod.Post, uploadUri) { Content = new ByteArrayContent(content) };
-            using var response = await _httpClient.SendAsync(request, ct);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(ApiTimeout * 4);
+            using var response = await _httpClient.SendAsync(request, timeout.Token);
             response.EnsureSuccessStatusCode();
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             _logger.LogWarning(ex, "Upload of {FileName} to Slack failed", fileName);
             return "upload_failed";
@@ -236,10 +308,7 @@ public class SlackClient : ISlackClient
         try
         {
             var url = $"https://slack.com/api/reactions.get?channel={Uri.EscapeDataString(channel)}&timestamp={Uri.EscapeDataString(messageTs)}&full=true";
-            using var request = new HttpRequestMessage(HttpMethod.Get, url);
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.Value.Slack.BotToken);
-
-            using var response = await _httpClient.SendAsync(request, ct);
+            using var response = await SendApiAsync(() => new HttpRequestMessage(HttpMethod.Get, url), read: true, ct);
             response.EnsureSuccessStatusCode();
 
             var body = await response.Content.ReadFromJsonAsync<SlackReactionsResponseDto>(ct);
@@ -251,7 +320,7 @@ public class SlackClient : ISlackClient
 
             return body.Message?.Reactions ?? new List<SlackMessageReactionDto>();
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             _logger.LogWarning(ex, "Slack API reactions.get call failed");
             return null;
@@ -269,10 +338,8 @@ public class SlackClient : ISlackClient
 
         try
         {
-            using var request = new HttpRequestMessage(HttpMethod.Get, $"https://slack.com/api/users.info?user={Uri.EscapeDataString(userId)}");
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.Value.Slack.BotToken);
-
-            using var response = await _httpClient.SendAsync(request, ct);
+            using var response = await SendApiAsync(
+                () => new HttpRequestMessage(HttpMethod.Get, $"https://slack.com/api/users.info?user={Uri.EscapeDataString(userId)}"), read: true, ct);
             response.EnsureSuccessStatusCode();
 
             var body = await response.Content.ReadFromJsonAsync<SlackUserInfoResponseDto>(ct);
@@ -286,10 +353,10 @@ public class SlackClient : ISlackClient
                 .FirstOrDefault(n => !string.IsNullOrWhiteSpace(n));
             return name == null ? SlackUserLookup.Failed("no_name") : SlackUserLookup.Found(name.Trim());
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             _logger.LogWarning(ex, "Slack API users.info call failed");
-            return SlackUserLookup.Failed("request_failed");
+            return SlackUserLookup.Failed(RequestFailed);
         }
     }
 
@@ -299,10 +366,7 @@ public class SlackClient : ISlackClient
 
         try
         {
-            using var request = new HttpRequestMessage(HttpMethod.Post, "https://slack.com/api/auth.test");
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.Value.Slack.BotToken);
-
-            using var response = await _httpClient.SendAsync(request, ct);
+            using var response = await SendApiAsync(() => new HttpRequestMessage(HttpMethod.Post, "https://slack.com/api/auth.test"), read: true, ct);
             response.EnsureSuccessStatusCode();
 
             var body = await response.Content.ReadFromJsonAsync<SlackAuthTestResponseDto>(ct);
@@ -315,7 +379,7 @@ public class SlackClient : ISlackClient
             return new SlackWorkspace(body.TeamId, body.Url.EndsWith('/') ? body.Url : body.Url + "/",
                 string.IsNullOrWhiteSpace(body.UserId) ? null : body.UserId);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             _logger.LogWarning(ex, "Slack API auth.test call failed");
             return null;
@@ -325,18 +389,75 @@ public class SlackClient : ISlackClient
     private bool IsSimulated =>
         _options.Value.Slack.SimulationMode || string.IsNullOrWhiteSpace(_options.Value.Slack.BotToken);
 
+    public const string RateLimited = "ratelimited";
+    public const string RequestFailed = "request_failed";
+    public const string Timeout = "timeout";
+
+    /// <summary>
+    /// Sends one Web API call with the bot token and a time limit. Slack did not handle a rate-limited call,
+    /// so that is retried after Slack's Retry-After even when it posts something. Network and server errors
+    /// are only retried for a <paramref name="read"/>, which is safe to repeat.
+    /// </summary>
+    /// <exception cref="TimeoutException">Slack did not answer within <see cref="ApiTimeout"/>.</exception>
+    private async Task<HttpResponseMessage> SendApiAsync(Func<HttpRequestMessage> create, bool read, CancellationToken ct)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            using var request = create();
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.Value.Slack.BotToken);
+
+            HttpResponseMessage response;
+            try
+            {
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                timeout.CancelAfter(ApiTimeout);
+                try
+                {
+                    // The default completion option reads the whole answer, so the time limit covers it too
+                    response = await _httpClient.SendAsync(request, timeout.Token);
+                }
+                catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
+                {
+                    throw new TimeoutException($"Slack did not answer {request.RequestUri} within {ApiTimeout.TotalSeconds:0} s", ex);
+                }
+            }
+            catch (Exception ex) when (read && ex is HttpRequestException or TimeoutException && attempt < ApiAttempts)
+            {
+                _logger.LogWarning(ex, "Slack API {Url} failed (attempt {Attempt}), retrying", request.RequestUri, attempt);
+                await _wait(RetryDelay(attempt, null), ct);
+                continue;
+            }
+
+            var retry = response.StatusCode == HttpStatusCode.TooManyRequests || (read && (int)response.StatusCode >= 500);
+            if (!retry || attempt >= ApiAttempts)
+            {
+                return response;
+            }
+
+            _logger.LogWarning("Slack API {Url} got HTTP {Status} (attempt {Attempt}), retrying", request.RequestUri, (int)response.StatusCode, attempt);
+            var wait = RetryDelay(attempt, response.Headers.RetryAfter?.Delta);
+            response.Dispose();
+            await _wait(wait, ct);
+        }
+    }
+
+    /// <summary>The error code for a call that threw.</summary>
+    private static string ErrorFor(Exception ex) => ex is TimeoutException ? Timeout : RequestFailed;
+
     /// <returns>The Slack error code, or null on success.</returns>
     private async Task<string?> CallSlackApiAsync(string method, object payload, CancellationToken ct)
     {
         try
         {
-            using var request = new HttpRequestMessage(HttpMethod.Post, $"https://slack.com/api/{method}")
+            using var response = await SendApiAsync(() => new HttpRequestMessage(HttpMethod.Post, $"https://slack.com/api/{method}")
             {
                 Content = JsonContent.Create(payload)
-            };
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.Value.Slack.BotToken);
-
-            var response = await _httpClient.SendAsync(request, ct);
+            }, read: false, ct);
+            if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            {
+                _logger.LogWarning("Slack API {Method} is still rate limited", method);
+                return RateLimited;
+            }
             response.EnsureSuccessStatusCode();
 
             // Slack reports API errors with HTTP 200 and "ok": false
@@ -353,15 +474,15 @@ public class SlackClient : ISlackClient
             }
             return error;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             _logger.LogWarning(ex, "Slack API {Method} call failed", method);
-            return "request_failed";
+            return ErrorFor(ex);
         }
     }
 
-    /// <summary>Only an https address on Slack's own domain gets the picture.</summary>
-    internal static bool IsSlackUploadUrl(string? url, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out Uri? uri) =>
+    /// <summary>Only an https address on Slack's own domain gets the picture or the bot token.</summary>
+    internal static bool IsSlackUrl(string? url, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out Uri? uri) =>
         Uri.TryCreate(url, UriKind.Absolute, out uri)
         && uri.Scheme == Uri.UriSchemeHttps
         && (uri.Host == "slack.com" || uri.Host.EndsWith(".slack.com", StringComparison.OrdinalIgnoreCase));
@@ -372,13 +493,15 @@ public class SlackClient : ISlackClient
     {
         try
         {
-            using var request = new HttpRequestMessage(HttpMethod.Post, $"https://slack.com/api/{method}")
+            using var response = await SendApiAsync(() => new HttpRequestMessage(HttpMethod.Post, $"https://slack.com/api/{method}")
             {
                 Content = new FormUrlEncodedContent(fields)
-            };
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.Value.Slack.BotToken);
-
-            using var response = await _httpClient.SendAsync(request, ct);
+            }, read: false, ct);
+            if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            {
+                _logger.LogWarning("Slack API {Method} is still rate limited", method);
+                return (RateLimited, default);
+            }
             response.EnsureSuccessStatusCode();
 
             using var body = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
@@ -391,10 +514,10 @@ public class SlackClient : ISlackClient
             _logger.LogWarning("Slack API {Method} failed: {Error}", method, error);
             return (error, default);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             _logger.LogWarning(ex, "Slack API {Method} call failed", method);
-            return ("request_failed", default);
+            return (ErrorFor(ex), default);
         }
     }
 

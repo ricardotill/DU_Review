@@ -15,6 +15,6 @@
 
 @code {
     [Parameter] public bool Changed { get; set; }
-    [Parameter] public Action Reset { get; set; } = () => { };
+    [Parameter] public EventCallback Reset { get; set; }
     [Parameter] public string Configured { get; set; } = "";
 }

@@ -20,6 +20,10 @@
     <div class="slack-composer-editor form-control form-control-dark" contenteditable="true" role="textbox" aria-multiline="true"
          aria-label="@Label" data-placeholder="@Placeholder" style="min-height: @(Rows * 1.6)rem"></div>
 </div>
+@if (loadFailed)
+{
+    <div class="text-danger small mt-1 composer-error">De editor kon niet laden. Laad de pagina opnieuw.</div>
+}
 
 @code {
     [Parameter] public string Label { get; set; } = "Bericht";
@@ -39,19 +43,36 @@
     private IJSObjectReference? instance;
     private DotNetObjectReference<SlackComposer>? selfReference;
     private bool disposed;
+    private bool loadFailed;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender) return;
 
         selfReference = DotNetObjectReference.Create(this);
-        module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/slack-composer.js");
-        if (disposed)
+        try
         {
-            await DisposeJsAsync();
+            module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/slack-composer.js");
+            if (disposed)
+            {
+                await DisposeJsAsync();
+                return;
+            }
+            instance = await module.InvokeAsync<IJSObjectReference>("init", root, selfReference, Value ?? "");
+        }
+        catch (JSException)
+        {
+            // The script failed to load or start: say so, rather than breaking the whole page
+            loadFailed = true;
+            module = null;
+            StateHasChanged();
             return;
         }
-        instance = await module.InvokeAsync<IJSObjectReference>("init", root, selfReference, Value ?? "");
+        catch (Exception ex) when (ex is JSDisconnectedException or TaskCanceledException)
+        {
+            // The browser left while the editor started
+            return;
+        }
 
         // Disposed while the editor started: its listeners on the document must go too
         if (disposed) await DisposeJsAsync();

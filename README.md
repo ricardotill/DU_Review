@@ -123,9 +123,9 @@ Een los getal ergens in de tekst telt **niet**. Zo wordt "we deden het met 3 man
 | **Inzendingen** | Alle inzendingen, met zoeken en filteren op groep, opdracht, status en jurylid (op naam of Slack-ID), en alleen je favorieten. |
 | **Opdrachten** | Alle opdrachten. Per opdracht een pagina met de inzendingen van alle groepen naast elkaar. Met **Alleen open inzendingen** beoordeel je één opdracht in één keer; sneltoetsen ← en → gaan naar de vorige en volgende opdracht, **N** naar de volgende met open inzendingen. |
 | **Groepen** | Alle groepen. Per groep een pagina met score, plaats, de punten in de loop van het spel (de andere groepen in grijs ter vergelijking) en alle opdrachten. |
-| **Scorebord** | Het scorebord in grote letters en de punten in de loop van het spel, voor een beamer. |
+| **Scorebord** | De totalen van de inzendingen, het scorebord in grote letters en de punten in de loop van het spel, voor een beamer. |
 | **Diavoorstelling** | Alle foto's, video's en geluidsopnames achter elkaar, bijvoorbeeld op een beamer. Afgekeurde inzendingen worden overgeslagen. Kies een groep, een opdracht, alleen awesome of alleen favorieten, en of het scorebord tussendoor komt. |
-| **Gebeurtenissen** | Live elke Slack-gebeurtenis (bericht, bewerking, verwijdering, emoji erbij of eraf) met wat de app ermee deed: verwerkt, genegeerd met reden, of mislukt. Toont de laatste 500 sinds de start van de app; na een herstart begint de lijst leeg. |
+| **Gebeurtenissen** | Live elke Slack-gebeurtenis (bericht, bewerking, verwijdering, emoji erbij of eraf) met wat de app ermee deed: verwerkt, genegeerd met reden, of mislukt. Ook de verbinding met Slack (verbonden, weggevallen, vernieuwd), elke inhaalronde, en elke fout die de app logt. Valt de verbinding weg, dan staat er een rode balk bovenaan tot hij terug is. Toont de laatste 500 sinds de start van de app; na een herstart begint de lijst leeg. |
 | **Slack-simulator** | Nep-inzendingen en -reacties versturen om te testen. Alleen zichtbaar in simulatiemodus. |
 | **Configuratie** | Alle instellingen, de juryleden met hun namen, de **Beoordelingsregels**, en **Opnieuw opbouwen uit Slack** (zie hieronder). |
 | **Beheer** | Naar beheermodus gaan, de toegangssleutel bekijken en sleutels opnieuw aanmaken. |
@@ -138,7 +138,7 @@ Beoordelen gebeurt in Slack. Voor noodgevallen kan een status op de detailpagina
 
 **Punten in de loop van het spel.** Het **Dashboard** en de pagina **Scorebord** tonen per groep een lijn met de punten. De pagina van een groep toont die groep in kleur en de andere groepen in grijs. Een opdracht telt vanaf het moment waarop de inzending met de beste beoordeling in Slack is geplaatst, niet vanaf het moment van beoordelen. Zo blijft de lijn hetzelfde na **Opnieuw opbouwen uit Slack**. Een open inzending die later wordt goedgekeurd, verschijnt dus achteraf op het tijdstip van plaatsen. Elke groep houdt dezelfde kleur, op alfabetische volgorde van naam; vanaf de negende groep zijn de lijnen grijs.
 
-**Beamer.** De pagina **Scorebord** toont de stand in grote letters, met de resterende speeltijd en de grafiek. De knop rechtsboven zet hem op volledig scherm. In de **Diavoorstelling** kun je met **Scorebord tussendoor** elke 3, 5, 10 of 20 items 15 seconden de tussenstand tonen.
+**Beamer.** De pagina **Scorebord** toont dezelfde totalen als het **Dashboard** en de stand in grote letters, met de resterende speeltijd en de grafiek. De knop rechtsboven zet hem op volledig scherm. In de **Diavoorstelling** kun je met **Scorebord tussendoor** elke 3, 5, 10 of 20 items 15 seconden de tussenstand tonen.
 
 **Exporteren** (alleen in beheermodus), via de knop op het **Dashboard**:
 
@@ -184,7 +184,13 @@ Een bestandsnaam bestaat uit de afkorting van de groep, het opdrachtnummer en he
 
 Staan er meerdere bestanden in één bericht, dan krijgen ze een volgnummer in de volgorde van Slack: `CDW 16 14-32-05 (1).jpg`, `CDW 16 14-32-05 (2).jpg`, `CDW 16 14-32-05 (3).jpg`. Een bericht met één bestand krijgt geen volgnummer. Heeft een map toch al een bestand met dezelfde naam, dan krijgt het nieuwe bestand er een extra volgnummer bij, bijvoorbeeld `CDW 16 14-32-05 (2).jpg` of `CDW 16 14-32-05 (1) (2).jpg`.
 
-Een bestand wordt eerst onder een tijdelijke naam gedownload en pas na een geslaagde download hernoemd. Valt de verbinding halverwege weg, dan blijft er dus geen half bestand achter.
+Een bestand wordt eerst onder een tijdelijke naam gedownload en pas na een geslaagde download hernoemd. Valt de verbinding halverwege weg, dan blijft er dus geen half bestand achter. Een download die een minuut lang niets binnenkrijgt, wordt afgebroken, zodat één vastgelopen video de groep niet ophoudt. Een tijdelijk bestand dat na een crash achterbleef, wordt bij de volgende start opgeruimd.
+
+Lukt het opslaan in de database niet nadat een bestand is verplaatst, dan gaat het bestand terug naar waar het was. Ontbreekt een bestand toch, dan zoekt de app het in de andere statusmappen van de groep; hij maakt nooit een vervangend bestand. Bij de start meldt het logboek hoeveel inzendingen geen bestand meer op de schijf hebben.
+
+De groepsmappen komen uit de groepsnamen. Geven twee groepen dezelfde map, dan start de app niet en zegt het logboek welke groepen het zijn. Is het puntenbestand kapot, dan start de app ook niet. Het puntenbestand mag komma's of puntkomma's gebruiken, zoals Nederlandse Excel opslaat.
+
+`runtime-settings.json` en `access-keys.json` worden in één stap weggeschreven, zodat een stroomstoring nooit een half bestand achterlaat. Is een van beide toch onleesbaar, dan zet de app het opzij als `….corrupt-{tijd}` en begint opnieuw. `access-keys.json` is alleen leesbaar voor de gebruiker die de app draait.
 
 Geaccepteerde bestanden: alle afbeeldingen, video's en geluidsopnames, plus PDF en Word (`.doc`, `.docx`). SVG-bestanden worden geweigerd, omdat die scripts kunnen bevatten.
 
@@ -206,7 +212,7 @@ De app draait dan op <http://localhost:5231>. De database `scouting_dev.db` en d
 dotnet run --project src/ScoutingAutomation.AppHost
 ```
 
-Standaard staat de app in **simulatiemodus** (`Scouting:Slack:SimulationMode` = `true`). Er gaat dan niets naar Slack, en je kunt alles testen via de pagina **Slack-simulator**.
+Om zonder Slack te testen, zet je **simulatiemodus** aan met `Scouting:Slack:SimulationMode` = `true`, bijvoorbeeld in `appsettings.Development.json`. Er gaat dan niets naar Slack, en je kunt alles testen via de pagina **Slack-simulator**. Zonder die instelling staat simulatiemodus uit.
 
 Wil je opnieuw beginnen? Stop de app en verwijder `scouting_dev.db*` en de groepsmappen in `scouting_storage/`.
 
@@ -235,7 +241,7 @@ Alles staat onder `Scouting` in `src/ScoutingAutomation.Web/appsettings.json`. W
 | `TimeZone` | De tijdzone van het spel voor bestandsnamen en tijden op de pagina's (standaard `Europe/Amsterdam`). |
 | `EventStart` | De starttijd van het spel in de tijdzone van `TimeZone`, bijvoorbeeld `"2026-10-03T09:00"`. Slack-berichten van daarvoor worden stil genegeerd: geen inzending en geen feedback, ook niet bij inhalen of opnieuw opbouwen. Leeg (`null`) telt elk bericht mee. Ook in de app aan te passen. |
 | `EventEnd` | De eindtijd van het spel in de tijdzone van `TimeZone`, bijvoorbeeld `"2026-10-03T17:00"`. Inzendingen vanaf dat moment tellen niet. Leeg (`null`) betekent geen eindtijd. Ook in de app aan te passen. Zie **Eindtijd en eindbericht**. |
-| `Slack` | Simulatiemodus, verbindingsmethode (`SocketMode`) en de Slack-geheimen: bot-token, App-Level Token of Signing Secret. |
+| `Slack` | Simulatiemodus, verbindingsmethode (`SocketMode`) en de Slack-geheimen: bot-token, App-Level Token of Signing Secret. `SimulationMode` staat standaard uit; in simulatiemodus controleert de app de handtekening van Slack niet, dus zet hem nooit aan op een server die van buiten bereikbaar is. |
 
 Lijsten in `appsettings.json` hebben geen standaardwaarden in de code. Wat in het bestand staat, is dus precies wat de app gebruikt.
 
@@ -287,7 +293,7 @@ Slack stuurt een bericht of emoji maar één keer naar de app. Draaide de app ev
 2. registreert inzendingen die nog ontbreken, en geeft de groep de gewone feedback als er iets niet klopt. Een bericht dat al feedback kreeg, krijgt die niet nog een keer;
 3. zet de beoordelingen gelijk aan de emoji's die nu in Slack staan. Is een emoji weggehaald, dan wordt de inzending weer **Open**. Een **Status handmatig aanpassen** blijft staan zolang er in Slack geen beoordeling op het bericht staat.
 
-Er wordt niets weggegooid. Het logboek meldt wat er is ingehaald. Kan een kanaal niet worden gelezen, dan gaan de andere kanalen gewoon door. In handmatige modus wordt niet ingehaald, omdat de app dan alle bestanden opnieuw zou opslaan. Herbouw dan vanuit Slack.
+Er wordt niets weggegooid. **Gebeurtenissen** en het logboek melden wat er is ingehaald. Kan een kanaal of bericht niet worden gelezen, dan gaat de rest gewoon door. Voordat de app een beoordeling verandert, leest hij de emoji's op dat bericht opnieuw uit Slack. Zo draait het inhalen nooit een beoordeling terug die een jurylid net heeft geplaatst. Inhalen en live berichten van één kanaal wachten op elkaar, net als **Status handmatig aanpassen**. In handmatige modus wordt niet ingehaald, omdat de app dan alle bestanden opnieuw zou opslaan. Herbouw dan vanuit Slack.
 
 ## Herbouwen vanuit Slack
 
@@ -311,7 +317,7 @@ Zie **[docs/slack-koppelen.md](docs/slack-koppelen.md)** voor het aanmaken van d
 
 De app kan op twee manieren verbinden:
 
-- **Socket Mode** (aanbevolen): de app maakt zelf een verbinding met Slack. Er is geen publiek adres of HTTPS-certificaat nodig, dus dit werkt ook met alleen een IP-adres. Valt de verbinding weg, dan maakt de app zelf opnieuw verbinding.
+- **Socket Mode** (aanbevolen): de app maakt zelf een verbinding met Slack. Er is geen publiek adres of HTTPS-certificaat nodig, dus dit werkt ook met alleen een IP-adres. Valt de verbinding weg, dan maakt de app zelf opnieuw verbinding. Elke 15 seconden controleert de app de verbinding, zodat ook een verbinding die stil wegvalt (wifi weg, laptop in slaap) wordt opgemerkt. Met Socket Mode is het webhookadres `/api/slack/events` uitgeschakeld.
 - **Events API**: Slack stuurt berichten naar `https://<adres>/api/slack/events`. De app controleert dan bij elk verzoek de handtekening van Slack met het Signing Secret. Verzoeken zonder geldige handtekening, of ouder dan 5 minuten, worden geweigerd. Is er geen Signing Secret ingesteld, dan wordt alles geweigerd.
 
 De verbindingsstatus staat bovenaan elke pagina en op de pagina **Configuratie**.

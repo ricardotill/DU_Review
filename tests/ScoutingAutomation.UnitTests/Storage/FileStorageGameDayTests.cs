@@ -81,7 +81,7 @@ public class FileStorageGameDayTests : IDisposable
         var path = await _storage.SaveInitialFileAsync("De Wolven", "DWO 4.jpg", new MemoryStream(new byte[] { 1 }));
         await _storage.MoveToDeletedAsync("De Wolven", path);
 
-        await _storage.MoveAllToBackupAsync();
+        await _storage.MoveAllToBackupAsync(new[] { "De Wolven" });
 
         Directory.Exists(Path.Combine(_temp.Path, "_deleted", "de-wolven")).Should().BeTrue();
     }

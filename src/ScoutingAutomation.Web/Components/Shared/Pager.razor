@@ -1,0 +1,65 @@
+@* Page buttons under a list: the first and last page, and the pages around the current one. *@
+@if (PageCount > 1)
+{
+    <nav class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-3" aria-label="Pagina's">
+        <span class="text-secondary small">
+            @((Current - 1) * PageSize + 1)–@(Math.Min(Current * PageSize, TotalCount)) van @TotalCount
+        </span>
+        <div class="d-flex flex-wrap align-items-center gap-1">
+            <button class="btn btn-sm btn-scout-secondary" disabled="@(Current == 1)" @onclick="() => GoToAsync(Current - 1)" title="Vorige" aria-label="Vorige">
+                <i class="bi bi-chevron-left"></i>
+            </button>
+            @foreach (var number in Numbers())
+            {
+                if (number == null)
+                {
+                    <span class="text-secondary px-1">…</span>
+                }
+                else
+                {
+                    var target = number.Value;
+                    <button class="btn btn-sm @(target == Current ? "btn-scout-primary" : "btn-scout-secondary")" aria-current="@(target == Current ? "page" : null)" @onclick="() => GoToAsync(target)">@target</button>
+                }
+            }
+            <button class="btn btn-sm btn-scout-secondary" disabled="@(Current == PageCount)" @onclick="() => GoToAsync(Current + 1)" title="Volgende" aria-label="Volgende">
+                <i class="bi bi-chevron-right"></i>
+            </button>
+        </div>
+    </nav>
+}
+
+@code {
+    public const int DefaultPageSize = 50;
+
+    [Parameter, EditorRequired] public int TotalCount { get; set; }
+    [Parameter] public int PageSize { get; set; } = DefaultPageSize;
+    [Parameter] public int Page { get; set; } = 1;
+    [Parameter] public EventCallback<int> PageChanged { get; set; }
+
+    private int PageCount => PageCountFor(TotalCount, PageSize);
+
+    private int Current => Clamp(Page, TotalCount, PageSize);
+
+    /// <summary>The items on the page, also when the page no longer exists because the list got shorter.</summary>
+    public static List<T> Slice<T>(IReadOnlyCollection<T> items, int page, int pageSize = DefaultPageSize) =>
+        items.Skip((Clamp(page, items.Count, pageSize) - 1) * pageSize).Take(pageSize).ToList();
+
+    private static int PageCountFor(int totalCount, int pageSize) => Math.Max(1, (totalCount + pageSize - 1) / pageSize);
+
+    private static int Clamp(int page, int totalCount, int pageSize) => Math.Clamp(page, 1, PageCountFor(totalCount, pageSize));
+
+    /// <summary>Page numbers to show; null is a gap.</summary>
+    private IEnumerable<int?> Numbers()
+    {
+        int? previous = null;
+        for (var i = 1; i <= PageCount; i++)
+        {
+            if (i != 1 && i != PageCount && Math.Abs(i - Current) > 2) continue;
+            if (previous != null && i - previous > 1) yield return null;
+            yield return i;
+            previous = i;
+        }
+    }
+
+    private Task GoToAsync(int page) => PageChanged.InvokeAsync(page);
+}

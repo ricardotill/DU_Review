@@ -57,54 +57,7 @@
 }
 else
 {
-    <!-- Totals: counted per group and assignment, resubmissions merged -->
-    <div class="row g-3 mb-4">
-        <div class="col-lg col-md-4 col-6">
-            <div class="stat-card stat-total h-100">
-                <div class="stat-label">Ingezonden</div>
-                <div class="stat-value text-white">@stats.TotalSubmissions</div>
-                <div class="stat-caption">Opdrachten, per groep</div>
-            </div>
-        </div>
-        <div class="col-lg col-md-4 col-6">
-            <div class="stat-card stat-pending h-100">
-                <div class="stat-label">Open</div>
-                <div class="stat-value text-warning">@stats.PendingCount</div>
-                <div class="stat-caption">Wacht op beoordeling in Slack</div>
-            </div>
-        </div>
-        <div class="col-lg col-md-4 col-6">
-            <div class="stat-card stat-approved h-100">
-                <div class="stat-label">Goedgekeurd</div>
-                <div class="stat-value text-success">@stats.ApprovedCount</div>
-                <div class="stat-caption">@stats.OverallApprovalRate% incl. awesome</div>
-            </div>
-        </div>
-        <div class="col-lg col-md-4 col-6">
-            <div class="stat-card stat-awesome h-100">
-                <div class="stat-label">Awesome</div>
-                <div class="stat-value text-awesome">@stats.AwesomeCount</div>
-                <div class="stat-caption">Extra punten</div>
-            </div>
-        </div>
-        <div class="col-lg col-md-4 col-6">
-            <div class="stat-card stat-rejected h-100">
-                <div class="stat-label">Afgekeurd</div>
-                <div class="stat-value text-danger">@stats.RejectedCount</div>
-                <div class="stat-caption">Nog niet opnieuw ingezonden</div>
-            </div>
-        </div>
-        @if (stats.UnresolvedCount > 0)
-        {
-            <div class="col-lg col-md-4 col-6">
-                <a href="submissions" class="stat-card d-block h-100 text-decoration-none" style="border-left: 4px solid var(--status-rejected);">
-                    <div class="stat-label">Onopgelost</div>
-                    <div class="stat-value text-danger">@stats.UnresolvedCount</div>
-                    <div class="stat-caption">Oudere uploads zonder geldig nummer</div>
-                </a>
-            </div>
-        }
-    </div>
+    <SubmissionTotals Stats="stats" Class="mb-4" />
 
     <!-- Leaderboard -->
     <div class="glass-panel p-4 mb-4">
@@ -229,7 +182,13 @@ else
 
     protected override Task OnInitializedAsync() => ReloadAsync();
 
-    private void ToggleManualMode(ChangeEventArgs e) => Runtime.SetManualMode(e.Value is true);
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    // Stops all Slack processing: checked on the server, not only by who sees the switch
+    private async Task ToggleManualMode(ChangeEventArgs e)
+    {
+        if (await AdminActions.IsAdminAsync(AuthState)) Runtime.SetManualMode(e.Value is true);
+    }
 
     private void OnRuntimeChanged() => InvokeAsync(StateHasChanged);
 

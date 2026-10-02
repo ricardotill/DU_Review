@@ -19,6 +19,27 @@ public class LocalFileStorageService : IFileStorageService
             : options.Value.StorageRoot);
 
         Directory.CreateDirectory(_storageRoot);
+        RemoveLeftoverPartFiles();
+    }
+
+    /// <summary>
+    /// A download that was cut off by a crash leaves its ".part" file behind. Nothing can be in progress yet
+    /// when the storage starts, so every one of them is a leftover.
+    /// </summary>
+    private void RemoveLeftoverPartFiles()
+    {
+        try
+        {
+            foreach (var part in Directory.EnumerateFiles(_storageRoot, ".*.part", SearchOption.AllDirectories))
+            {
+                File.Delete(part);
+                _logger.LogInformation("Removed unfinished download {Path}", part);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(ex, "Could not remove unfinished downloads under {Root}", _storageRoot);
+        }
     }
 
     // macOS and Windows file systems ignore case by default, Linux does not
@@ -121,11 +142,17 @@ public class LocalFileStorageService : IFileStorageService
 
         if (!File.Exists(currentStoragePath))
         {
-            _logger.LogWarning("Source file not found at {CurrentPath} for group {Group}. Creating empty placeholder at target.", currentStoragePath, groupName);
-            var safeName = Path.GetFileName(currentStoragePath);
-            var newPath = EnsureInsideRoot(Path.Combine(targetDir, safeName));
-            File.WriteAllText(newPath, $"Simulated content for {safeName}");
-            return Task.FromResult(newPath);
+            // Never write a stand-in: it could overwrite a real file, and would hide that the file is gone.
+            // A file moved by an earlier step that did not get saved is found again in another status folder.
+            var found = FindInGroupFolders(groupName, Path.GetFileName(currentStoragePath));
+            if (found == null)
+            {
+                _logger.LogError("Submission file {Path} of group {Group} is missing; the status changes, the file cannot follow", currentStoragePath, groupName);
+                return Task.FromResult(currentStoragePath);
+            }
+
+            _logger.LogWarning("Submission file {Path} was found at {Found}", currentStoragePath, found);
+            currentStoragePath = found;
         }
 
         var fileName = Path.GetFileName(currentStoragePath);
@@ -139,6 +166,12 @@ public class LocalFileStorageService : IFileStorageService
 
         return Task.FromResult(destinationPath);
     }
+
+    /// <summary>The file with this exact name in one of the group's status folders, or null.</summary>
+    private string? FindInGroupFolders(string groupName, string fileName) =>
+        Enum.GetValues<SubmissionStatus>()
+            .Select(status => Path.Combine(GetStatusDirectoryPath(groupName, status), fileName))
+            .FirstOrDefault(File.Exists);
 
     public Task<string> RenameFileAsync(string storagePath, string newFileName, CancellationToken ct = default)
     {
@@ -154,6 +187,17 @@ public class LocalFileStorageService : IFileStorageService
         var newPath = MoveToAvailablePath(currentPath, directory, safeFileName);
         _logger.LogInformation("Renamed submission file {Source} to {Target}", currentPath, newPath);
         return Task.FromResult(newPath);
+    }
+
+    public Task<string> MoveToPathAsync(string storagePath, string targetPath, CancellationToken ct = default)
+    {
+        var currentPath = EnsureInsideRoot(storagePath);
+        var target = EnsureInsideRoot(targetPath);
+        if (string.Equals(currentPath, target, PathComparison)) return Task.FromResult(target);
+
+        var directory = Path.GetDirectoryName(target)!;
+        Directory.CreateDirectory(directory);
+        return Task.FromResult(MoveToAvailablePath(currentPath, directory, Path.GetFileName(target)));
     }
 
     public const string DeletedFolderName = "_deleted";
@@ -198,16 +242,46 @@ public class LocalFileStorageService : IFileStorageService
 
     public const string BackupFolderName = "_backup";
 
-    public Task<string> MoveAllToBackupAsync(CancellationToken ct = default)
+    public Task<string> MoveAllToBackupAsync(IReadOnlyCollection<string> groupNames, CancellationToken ct = default)
     {
         var backup = CreateBackupFolder();
-        foreach (var folder in Directory.GetDirectories(_storageRoot).Where(d => Path.GetFileName(d) is not (BackupFolderName or DeletedFolderName)))
+        // Only the app's own group folders: the storage root may be a shared folder with other things in it
+        foreach (var folder in groupNames.Select(FolderName).Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            Directory.Move(folder, Path.Combine(backup, Path.GetFileName(folder)));
+            var source = EnsureInsideRoot(Path.Combine(_storageRoot, folder));
+            if (Directory.Exists(source))
+            {
+                Directory.Move(source, Path.Combine(backup, folder));
+            }
         }
 
         _logger.LogInformation("Moved stored files to backup {Backup}", backup);
         return Task.FromResult(backup);
+    }
+
+    public Task RestoreBackupAsync(string backupFolder, CancellationToken ct = default)
+    {
+        var backup = EnsureInsideRoot(backupFolder);
+        foreach (var folder in Directory.GetDirectories(backup))
+        {
+            var target = Path.Combine(_storageRoot, Path.GetFileName(folder));
+            if (Directory.Exists(target))
+            {
+                // Recreated after the move: only empty status folders can be in it yet
+                if (Directory.EnumerateFiles(target, "*", SearchOption.AllDirectories).Any())
+                {
+                    _logger.LogError("Cannot restore {Folder} from backup {Backup}: the folder has files again", target, backup);
+                    continue;
+                }
+
+                Directory.Delete(target, recursive: true);
+            }
+
+            Directory.Move(folder, target);
+        }
+
+        _logger.LogWarning("Restored stored files from backup {Backup}", backup);
+        return Task.CompletedTask;
     }
 
     public Task<string> MoveGroupToBackupAsync(string groupName, CancellationToken ct = default)
@@ -250,7 +324,8 @@ public class LocalFileStorageService : IFileStorageService
             return Task.FromResult<Stream?>(null);
         }
 
-        Stream stream = new FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        // FileShare.Delete: on Windows, a review may move the file while a video plays or an export reads it
+        Stream stream = new FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
         return Task.FromResult<Stream?>(stream);
     }
 
@@ -286,12 +361,29 @@ public class LocalFileStorageService : IFileStorageService
             ? fullPath
             : throw new UnauthorizedAccessException($"Path '{path}' is outside the storage root.");
 
-    /// <summary>Turns a group name into one folder name; it can never be ".", ".." or contain separators.</summary>
-    private static string SanitizePath(string input)
+    private static string SanitizePath(string input) => FolderName(input);
+
+    private static readonly HashSet<string> WindowsDeviceNames = new(StringComparer.OrdinalIgnoreCase)
     {
-        var invalid = Path.GetInvalidFileNameChars();
-        var chars = input.Select(c => invalid.Contains(c) || c is '/' or '\\' ? '_' : c).ToArray();
-        var name = new string(chars).Trim().Replace(' ', '-').ToLowerInvariant().TrimStart('.');
-        return string.IsNullOrWhiteSpace(name) ? "_" : name;
+        "con", "prn", "aux", "nul",
+        "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9",
+        "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9"
+    };
+
+    // Characters Windows refuses, also on other systems, so the storage can be copied to a Windows share
+    private static readonly HashSet<char> InvalidFolderCharacters = new(Path.GetInvalidFileNameChars().Concat("\\/:*?\"<>|"));
+
+    /// <summary>
+    /// Turns a group name into one folder name. It can never be ".", "..", contain separators, start with "_"
+    /// (the app's own "_backup" and "_deleted" folders), end in a dot or space, or be a Windows device name.
+    /// </summary>
+    public static string FolderName(string groupName)
+    {
+        var chars = groupName.Select(c => InvalidFolderCharacters.Contains(c) || char.IsControl(c) ? '_' : c).ToArray();
+        var name = new string(chars).Trim().Replace(' ', '-').ToLowerInvariant().TrimStart('.').TrimEnd('.', ' ');
+        if (string.IsNullOrWhiteSpace(name)) return "group";
+        if (name.StartsWith('_')) name = "group" + name;
+        if (WindowsDeviceNames.Contains(name)) name += "_";
+        return name;
     }
 }

@@ -25,7 +25,11 @@
                     <div class="small text-white">@(Runtime.BlockAttemptsAfterApproval ? "Aan: een nieuwe poging wordt geweigerd" : "Uit: opnieuw insturen mag altijd, de beste telt")</div>
                 </NotAuthorized>
             </AuthorizeView>
-            <Origin Changed="Runtime.IsBlockAttemptsChanged" Reset="Runtime.ResetBlockAttemptsAfterApproval"
+            @if (blockError != null)
+            {
+                <div class="text-danger small mt-1">@blockError</div>
+            }
+            <Origin Changed="Runtime.IsBlockAttemptsChanged" Reset="ResetBlock"
                     Configured="@(ScoutingOptions.Value.BlockAttemptsAfterApproval ? "aan" : "uit")" />
             <div class="stat-caption mt-1">Het startbericht zegt wat er geldt via <code>{retryRule}</code>. Wat al in Slack staat, verandert niet.</div>
         </div>
@@ -69,8 +73,11 @@
 </div>
 
 @code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
     private int? minutesDraft;
     private string? error;
+    private string? blockError;
 
     protected override void OnInitialized()
     {
@@ -78,15 +85,17 @@
         Runtime.Changed += OnRuntimeChanged;
     }
 
-    private void OnBlockChanged(ChangeEventArgs e) => Runtime.SetBlockAttemptsAfterApproval(e.Value is true);
+    private async Task OnBlockChanged(ChangeEventArgs e) =>
+        blockError = await AdminActions.RunAsync(AuthState, () => Runtime.SetBlockAttemptsAfterApproval(e.Value is true));
 
-    private void SaveMinutes() => error = Runtime.SetReviewReminderMinutes(minutesDraft);
+    private async Task ResetBlock() => blockError = await AdminActions.RunAsync(AuthState, Runtime.ResetBlockAttemptsAfterApproval);
 
-    private void ResetMinutes()
+    private async Task SaveMinutes() => error = await AdminActions.RunAsync(AuthState, () => Runtime.SetReviewReminderMinutes(minutesDraft));
+
+    private async Task ResetMinutes()
     {
-        Runtime.ResetReviewReminder();
+        error = await AdminActions.RunAsync(AuthState, Runtime.ResetReviewReminder);
         minutesDraft = Runtime.ReviewReminderMinutes;
-        error = null;
     }
 
     private void OnRuntimeChanged() => InvokeAsync(StateHasChanged);

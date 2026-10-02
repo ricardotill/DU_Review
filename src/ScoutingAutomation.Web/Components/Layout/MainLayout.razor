@@ -47,7 +47,19 @@
         </div>
 
         <article class="content px-4 py-4" style="max-width: 1400px; margin: 0 auto;">
-            @Body
+            @* An error in one page shows a message there, instead of breaking the connection of the whole tab *@
+            <ErrorBoundary @ref="errorBoundary">
+                <ChildContent>
+                    @Body
+                </ChildContent>
+                <ErrorContent Context="exception">
+                    <div class="glass-panel p-4 page-error" role="alert">
+                        <h2 class="panel-title text-danger"><i class="bi bi-exclamation-octagon-fill"></i> Er ging iets mis op deze pagina</h2>
+                        <p class="text-secondary small mb-3">De rest van de app werkt nog. Probeer het opnieuw, of laad de pagina opnieuw.</p>
+                        <button type="button" class="btn btn-sm btn-scout-secondary" @onclick="() => errorBoundary?.Recover()">Opnieuw proberen</button>
+                    </div>
+                </ErrorContent>
+            </ErrorBoundary>
         </article>
     </main>
 </div>
@@ -59,3 +71,10 @@
     <a href="." class="reload">Herladen</a>
     <span class="dismiss">🗙</span>
 </div>
+
+@code {
+    private ErrorBoundary? errorBoundary;
+
+    // Going to another page starts with a clean slate
+    protected override void OnParametersSet() => errorBoundary?.Recover();
+}

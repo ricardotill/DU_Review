@@ -136,7 +136,11 @@ public class WorkflowEdgeCaseTests
         await Create().ProcessSlackMessageAsync(new SlackEventItemDto
         {
             Channel = "C1", User = "U_SCOUT", Text = "Opdracht 1", Ts = "1.0",
-            Files = new List<SlackFileItemDto> { new() { Name = "a.jpg", Size = 1 }, new() { Name = "b.jpg", Size = 1 } }
+            Files = new List<SlackFileItemDto>
+            {
+                new() { Name = "a.jpg", Size = 1, UrlPrivate = "https://files.slack.com/a.jpg" },
+                new() { Name = "b.jpg", Size = 1, UrlPrivate = "https://files.slack.com/b.jpg" }
+            }
         });
 
         added.Should().HaveCount(2);

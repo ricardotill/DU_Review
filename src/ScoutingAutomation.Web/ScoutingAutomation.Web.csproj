@@ -31,6 +31,9 @@
     <NpmAsset Include="node_modules/emoji-picker-element/index.js;node_modules/emoji-picker-element/picker.js;node_modules/emoji-picker-element/database.js" DestinationFolder="wwwroot/lib/emoji-picker-element" />
     <NpmAsset Include="node_modules/emoji-picker-element/i18n/nl.js" DestinationFolder="wwwroot/lib/emoji-picker-element/i18n" />
     <NpmAsset Include="node_modules/emoji-picker-element-data/nl/cldr/data.json" DestinationFolder="wwwroot/lib/emoji-picker-element-data/nl/cldr" />
+    <!-- Served by the app itself: no visit to Google for every page, and no outside host for the security policy to allow -->
+    <NpmAsset Include="node_modules/@fontsource-variable/outfit/files/outfit-latin-wght-normal.woff2;node_modules/@fontsource-variable/outfit/files/outfit-latin-ext-wght-normal.woff2" DestinationFolder="wwwroot/lib/fonts" />
+    <NpmAsset Include="node_modules/@fontsource-variable/plus-jakarta-sans/files/plus-jakarta-sans-latin-wght-normal.woff2;node_modules/@fontsource-variable/plus-jakarta-sans/files/plus-jakarta-sans-latin-ext-wght-normal.woff2" DestinationFolder="wwwroot/lib/fonts" />
   </ItemGroup>
 
   <Target Name="NpmInstall" Inputs="@(NpmManifest)" Outputs="node_modules/.install-stamp">

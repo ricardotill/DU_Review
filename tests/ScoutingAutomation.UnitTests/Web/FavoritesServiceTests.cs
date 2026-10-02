@@ -22,6 +22,32 @@ public class FavoritesServiceTests : BunitContext
     }
 
     [Fact]
+    public async Task Load_WhenTheScriptFails_ShouldStartWithoutFavoritesInsteadOfFailingEveryTime()
+    {
+        JSInterop.Setup<string>("duFavorites.get").SetException(new Microsoft.JSInterop.JSException("URIError: malformed URI sequence"));
+        var service = new FavoritesService(JSInterop.JSRuntime);
+
+        await service.EnsureLoadedAsync();
+        await service.EnsureLoadedAsync();
+
+        service.IsLoaded.Should().BeTrue();
+        service.Count.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Toggle_WhenTheCookieCannotBeWritten_ShouldKeepTheStarsAsTheyWere()
+    {
+        var favorite = Sub("1.0");
+        JSInterop.Setup<string>("duFavorites.get").SetResult("");
+        JSInterop.SetupVoid("duFavorites.set", _ => true).SetException(new Microsoft.JSInterop.JSException("cookies blocked"));
+        var service = new FavoritesService(JSInterop.JSRuntime);
+
+        (await service.ToggleAsync(favorite)).Should().BeTrue("the limit was not reached");
+
+        service.IsFavorite(favorite).Should().BeFalse();
+    }
+
+    [Fact]
     public async Task Load_ShouldReadTheCookieOnce()
     {
         var favorite = Sub("1.0");
@@ -35,7 +61,7 @@ public class FavoritesServiceTests : BunitContext
         await service.EnsureLoadedAsync();
 
         service.IsLoaded.Should().BeTrue();
-        service.Count.Should().Be(2);
+        service.Count.Should().Be(1, "\"other\" is not a key this app makes");
         service.IsFavorite(favorite).Should().BeTrue();
         service.IsFavorite(Sub("2.0")).Should().BeFalse();
         JSInterop.Invocations.Count(i => i.Identifier == "duFavorites.get").Should().Be(1);

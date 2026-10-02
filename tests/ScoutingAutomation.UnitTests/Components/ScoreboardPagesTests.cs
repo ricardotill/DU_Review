@@ -1,4 +1,5 @@
 using Bunit;
+using Microsoft.AspNetCore.Components.Web;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using ScoutingAutomation.Domain.Enums;
@@ -144,7 +145,7 @@ public class ScoreboardPagesTests : PageTestBase
     }
 
     [Fact]
-    public void Slideshow_ShouldShowTheScoreboardBetweenItems()
+    public async Task Slideshow_ShouldShowTheScoreboardBetweenItems()
     {
         Seed();
         var cut = Render<Slideshow>();
@@ -152,14 +153,15 @@ public class ScoreboardPagesTests : PageTestBase
         cut.Find("#slideshowScoreboard").Change("3");
         cut.FindAll("button").First(b => b.TextContent.Contains("Diavoorstelling starten")).Click();
 
-        cut.Find(".media video").TriggerEvent("onended", EventArgs.Empty);
-        cut.Find("button[aria-label=Volgende]").Click();
-        cut.Find(".media audio").TriggerEvent("onended", EventArgs.Empty);
+        // Awaited: on a busy machine an event that is only queued would show its result after the check
+        await cut.Find(".media video").TriggerEventAsync("onended", EventArgs.Empty);
+        await cut.Find("button[aria-label=Volgende]").ClickAsync(new MouseEventArgs());
+        await cut.Find(".media audio").TriggerEventAsync("onended", EventArgs.Empty);
 
         cut.Find(".scoreboard-slide").TextContent.Should().Contain("Tussenstand").And.Contain("De Wolven");
         cut.FindAll(".caption").Should().BeEmpty();
 
-        cut.Find("button[aria-label=Volgende]").Click();
+        await cut.Find("button[aria-label=Volgende]").ClickAsync(new MouseEventArgs());
 
         cut.FindAll(".scoreboard-slide").Should().BeEmpty();
         cut.Find(".position").TextContent.Should().Be("1 / 3", "after the last item the show loops to the first");

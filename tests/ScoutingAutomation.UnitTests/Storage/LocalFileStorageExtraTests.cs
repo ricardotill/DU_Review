@@ -46,14 +46,42 @@ public class LocalFileStorageExtraTests : IDisposable
     }
 
     [Fact]
-    public async Task MoveFileToStatusAsync_MissingSource_ShouldCreatePlaceholder()
+    public async Task MoveFileToStatusAsync_MissingSource_ShouldKeepThePathAndWriteNothing()
     {
         var missing = Path.Combine(_temp.Path, "de-wolven", "weg.jpg");
 
         var path = await _storage.MoveFileToStatusAsync("De Wolven", missing, SubmissionStatus.Approved);
 
-        path.Should().Be(Path.Combine(_temp.Path, "de-wolven", "approved", "weg.jpg"));
-        File.ReadAllText(path).Should().Contain("weg.jpg");
+        path.Should().Be(missing);
+        File.Exists(Path.Combine(_temp.Path, "de-wolven", "approved", "weg.jpg")).Should().BeFalse("a stand-in would hide that the file is gone");
+    }
+
+    [Fact]
+    public async Task MoveFileToStatusAsync_MissingSource_ShouldNeverOverwriteAFileWithTheSameName()
+    {
+        var real = Path.Combine(_temp.Path, "de-wolven", "approved", "DWO 4.jpg");
+        Directory.CreateDirectory(Path.GetDirectoryName(real)!);
+        await File.WriteAllBytesAsync(real, new byte[] { 1, 2, 3 });
+
+        await _storage.MoveFileToStatusAsync("De Wolven", Path.Combine(_temp.Path, "de-wolven", "DWO 4.jpg"), SubmissionStatus.Approved);
+
+        (await File.ReadAllBytesAsync(real)).Should().Equal(1, 2, 3);
+    }
+
+    [Fact]
+    public async Task MoveFileToStatusAsync_FileMovedEarlier_ShouldBeFoundInAnotherStatusFolder()
+    {
+        // A move whose database save failed: the file is in "rejected", the database still says the group folder
+        var stale = Path.Combine(_temp.Path, "de-wolven", "DWO 4.jpg");
+        var actual = Path.Combine(_temp.Path, "de-wolven", "rejected", "DWO 4.jpg");
+        Directory.CreateDirectory(Path.GetDirectoryName(actual)!);
+        await File.WriteAllBytesAsync(actual, new byte[] { 7 });
+
+        var path = await _storage.MoveFileToStatusAsync("De Wolven", stale, SubmissionStatus.Approved);
+
+        path.Should().Be(Path.Combine(_temp.Path, "de-wolven", "approved", "DWO 4.jpg"));
+        (await File.ReadAllBytesAsync(path)).Should().Equal(7);
+        File.Exists(actual).Should().BeFalse();
     }
 
     [Fact]

@@ -11,9 +11,13 @@ using ScoutingAutomation.Infrastructure.Services;
 using ScoutingAutomation.Web.Auth;
 using ScoutingAutomation.Web.Components;
 using ScoutingAutomation.Web.Export;
+using ScoutingAutomation.Web.Security;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.Http.Features;
+using Microsoft.Data.Sqlite;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -22,6 +26,19 @@ CultureInfo.DefaultThreadCurrentCulture = CultureInfo.DefaultThreadCurrentUICult
 
 // Aspire service defaults (OpenTelemetry, HealthChecks, ServiceDiscovery)
 builder.AddServiceDefaults();
+
+// Relative paths are taken from the app's folder, not from wherever it was started: otherwise a start from another
+// folder silently gets an empty database, new keys and no assignments next to the full storage folder
+string FromContentRoot(string path) => Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, path));
+foreach (var (key, fallback) in new[]
+         {
+             ("Scouting:StorageRoot", "./scouting_storage"), ("Scouting:AssignmentPointsFile", "./opdrachtenpunten.csv"),
+             ("Scouting:RuntimeSettingsFile", "./runtime-settings.json"), ("Scouting:KeysFile", "./access-keys.json")
+         })
+{
+    var value = builder.Configuration[key];
+    builder.Configuration[key] = FromContentRoot(string.IsNullOrWhiteSpace(value) ? fallback : value);
+}
 
 // Add services to the container
 builder.Services.AddRazorComponents()
@@ -33,6 +50,7 @@ var configConnectionString = builder.Configuration.GetConnectionString("scouting
 var connectionString = !string.IsNullOrWhiteSpace(aspireConnectionString) ? aspireConnectionString : configConnectionString;
 var isAspire = !string.IsNullOrWhiteSpace(aspireConnectionString) || !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ASPIRE_RESOURCE_NAME"));
 
+var databaseDescription = "PostgreSQL via Aspire";
 if (isAspire && !string.IsNullOrWhiteSpace(connectionString) && !connectionString.Contains("Data Source=", StringComparison.OrdinalIgnoreCase))
 {
     // PostgreSQL registered via Aspire component
@@ -45,6 +63,11 @@ else
         ? connectionString
         : "Data Source=scouting_dev.db";
 
+    // A relative database file is in the folder the app is started from; logged in full at startup,
+    // so a start from another folder (with an empty database) is easy to spot
+    var dataSource = new SqliteConnectionStringBuilder(sqliteConnection).DataSource;
+    databaseDescription = $"SQLite {(dataSource == ":memory:" ? dataSource : Path.GetFullPath(dataSource))}";
+
     builder.Services.AddDbContext<ScoutingDbContext>(options =>
     {
         options.UseSqlite(sqliteConnection);
@@ -55,6 +78,13 @@ else
 builder.Services.AddScoutingInfrastructure(builder.Configuration);
 builder.Services.AddScoped<ScoutingAutomation.Web.Favorites.FavoritesService>();
 builder.Services.AddScoped<ScoutingAutomation.Web.Notifications.NotificationPreferences>();
+
+// Behind a reverse proxy that handles HTTPS: the login cookie is still marked Secure, and the login limiter sees
+// the visitor's address instead of the proxy's. Only proxies on this machine are trusted (the default).
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+});
 
 // One shared access key, plus an admin key: see Auth/KeyAuth.cs
 builder.Services.AddAuthentication(KeyAuth.Scheme)
@@ -81,6 +111,15 @@ if (!GameTime.Configure(scoutingSettings.TimeZone))
     app.Logger.LogWarning("Unknown time zone '{TimeZone}' in Scouting:TimeZone: using the server's time zone {Local}", scoutingSettings.TimeZone, TimeZoneInfo.Local.Id);
 }
 
+app.Logger.LogInformation("Database {Database}; storage {Storage}, settings {Settings}, keys {Keys}, assignment points {Points}",
+    databaseDescription, scoutingSettings.StorageRoot, scoutingSettings.RuntimeSettingsFile, scoutingSettings.KeysFile, scoutingSettings.AssignmentPointsFile);
+
+if (scoutingSettings.Slack.SimulationMode && !app.Environment.IsDevelopment())
+{
+    // Simulation does not check Slack's signature: anyone who can reach the app could post fake reviews
+    app.Logger.LogCritical("Scouting:Slack:SimulationMode is on outside Development: Slack requests are not verified and nothing reaches Slack");
+}
+
 var runtimeSettings = app.Services.GetRequiredService<RuntimeSettingsService>();
 if (runtimeSettings.EventStart is { } eventStart)
 {
@@ -93,7 +132,9 @@ if (runtimeSettings.EventEnd is { } eventEnd)
 }
 
 // Configure the HTTP request pipeline
+app.UseForwardedHeaders();
 app.MapDefaultEndpoints();
+app.UseSecurityHeaders();
 
 if (!app.Environment.IsDevelopment())
 {
@@ -115,10 +156,17 @@ using (var scope = app.Services.CreateScope())
         var initializer = scope.ServiceProvider.GetRequiredService<DatabaseInitializer>();
         await initializer.InitializeAsync();
     }
+    catch (StartupConfigurationException ex)
+    {
+        // Waiting does not fix a wrong setting: stop with a clear message instead of failing every Slack event
+        scope.ServiceProvider.GetRequiredService<ILogger<Program>>().LogCritical(ex, "The app cannot start: {Problem}", ex.Message);
+        throw;
+    }
     catch (Exception ex)
     {
+        // The app keeps running (e.g. a database server that is not up yet); its health check and pages show the problem
         var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-        logger.LogError(ex, "Failed to initialize database. If Postgres is unavailable, set 'UseSqlite': 'true' in appsettings.");
+        logger.LogCritical(ex, "Could not prepare the database. Check that it is reachable and that the connection string is right");
     }
 }
 
@@ -134,72 +182,90 @@ if (!slackSettings.SimulationMode && !slackSettings.SocketMode && string.IsNullO
     app.Logger.LogError("Scouting:Slack:SigningSecret is not set while SimulationMode is off: all Slack requests will be rejected");
 }
 
-// FR-001 / Slack Events Webhook Endpoint
-api.MapPost("/slack/events", async (
-    HttpRequest request,
-    ISlackRequestVerifier verifier,
-    ISlackEventDispatcher dispatcher,
-    ILogger<Program> logger) =>
+// FR-001 / Slack Events Webhook Endpoint. With Socket Mode, events come over the app's own connection:
+// the public endpoint is then not needed, and not offered.
+if (slackSettings.SimulationMode || !slackSettings.SocketMode)
 {
-    if (request.ContentLength > MaxSlackBodyBytes)
+    api.MapPost("/slack/events", async (
+        HttpRequest request,
+        ISlackRequestVerifier verifier,
+        ISlackEventDispatcher dispatcher,
+        ILogger<Program> logger) =>
     {
-        return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
-    }
+        if (request.ContentLength > MaxSlackBodyBytes)
+        {
+            return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+        }
 
-    // The signature covers the exact bytes Slack sent, so read the raw body before parsing
-    using var buffer = new MemoryStream();
-    await request.Body.CopyToAsync(buffer);
-    if (buffer.Length > MaxSlackBodyBytes)
-    {
-        return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
-    }
-    var body = buffer.ToArray();
+        // Also for a body without a length (chunked): Kestrel stops reading past the limit instead of buffering 30 MB
+        if (request.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit)
+        {
+            limit.MaxRequestBodySize = MaxSlackBodyBytes + 1;
+        }
 
-    var verification = verifier.Verify(
-        request.Headers["X-Slack-Request-Timestamp"],
-        request.Headers["X-Slack-Signature"],
-        body);
-    if (!verification.IsAllowed())
-    {
-        logger.LogWarning("Rejected Slack request from {RemoteIp}: {Reason}", request.HttpContext.Connection.RemoteIpAddress, verification);
-        return Results.Unauthorized();
-    }
+        // The signature covers the exact bytes Slack sent, so read the raw body before parsing
+        using var buffer = new MemoryStream();
+        try
+        {
+            await request.Body.CopyToAsync(buffer);
+        }
+        catch (BadHttpRequestException ex) when (ex.StatusCode == StatusCodes.Status413PayloadTooLarge)
+        {
+            return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+        }
+        if (buffer.Length > MaxSlackBodyBytes)
+        {
+            return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+        }
+        var body = buffer.ToArray();
 
-    SlackEventEnvelopeDto? envelope;
-    try
-    {
-        envelope = JsonSerializer.Deserialize<SlackEventEnvelopeDto>(body, JsonSerializerOptions.Web);
-    }
-    catch (JsonException)
-    {
-        return Results.BadRequest("Invalid JSON");
-    }
+        var verification = verifier.Verify(
+            request.Headers["X-Slack-Request-Timestamp"],
+            request.Headers["X-Slack-Signature"],
+            body);
+        if (!verification.IsAllowed())
+        {
+            logger.LogWarning("Rejected Slack request from {RemoteIp}: {Reason}", request.HttpContext.Connection.RemoteIpAddress, verification);
+            return Results.Unauthorized();
+        }
 
-    if (envelope == null)
-    {
-        return Results.BadRequest("Empty payload");
-    }
+        SlackEventEnvelopeDto? envelope;
+        try
+        {
+            envelope = JsonSerializer.Deserialize<SlackEventEnvelopeDto>(body, JsonSerializerOptions.Web);
+        }
+        catch (JsonException)
+        {
+            return Results.BadRequest("Invalid JSON");
+        }
 
-    // 1. URL Verification Challenge from Slack
-    if (envelope.Type == "url_verification" && !string.IsNullOrWhiteSpace(envelope.Challenge))
-    {
-        logger.LogInformation("Responding to Slack url_verification challenge");
-        return Results.Text(envelope.Challenge, "text/plain");
-    }
+        if (envelope == null)
+        {
+            return Results.BadRequest("Empty payload");
+        }
 
-    // 2. Event Callback
-    // Not tied to the request: Slack may stop waiting after 3 seconds, but a half-processed upload is worse
-    var result = await dispatcher.DispatchAsync(envelope, CancellationToken.None);
-    if (result != null)
-    {
-        return Results.Ok(result);
-    }
+        // 1. URL Verification Challenge from Slack
+        if (envelope.Type == "url_verification" && !string.IsNullOrWhiteSpace(envelope.Challenge))
+        {
+            logger.LogInformation("Responding to Slack url_verification challenge");
+            return Results.Text(envelope.Challenge, "text/plain");
+        }
 
-    return Results.Ok(new { status = "ignored", envelopeType = envelope.Type });
-});
+        // 2. Event Callback
+        // Not tied to the request: Slack may stop waiting after 3 seconds, but a half-processed upload is worse
+        var result = await dispatcher.DispatchAsync(envelope, CancellationToken.None);
+        if (result != null)
+        {
+            return Results.Ok(result);
+        }
+
+        return Results.Ok(new { status = "ignored", envelopeType = envelope.Type });
+    });
+}
 
 // File Preview & Download Endpoint
 api.MapGet("/files/{id:guid}", async (
+    HttpRequest request,
     Guid id,
     ISubmissionRepository repository,
     IFileStorageService fileStorage) =>
@@ -216,8 +282,11 @@ api.MapGet("/files/{id:guid}", async (
         return Results.NotFound("File stream not available on disk");
     }
 
-    // Range requests let browsers seek in videos and audio
-    return Results.File(stream, submission.ContentType, submission.FileName, enableRangeProcessing: true);
+    // The type comes from the file's extension, not from what Slack reported: an uploaded page or script is never
+    // served as one. The sandbox policy keeps anything that is opened directly from running scripts in the app.
+    var http = request.HttpContext;
+    http.Response.Headers.ContentSecurityPolicy = "sandbox; default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'";
+    return Results.File(stream, SafeContentType.For(submission.FileName), submission.FileName, enableRangeProcessing: true);
 }).RequireAuthorization();
 
 api.MapExportEndpoints();

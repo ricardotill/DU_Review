@@ -5,3 +5,12 @@
 .event-detail {
     min-width: 12rem;
 }
+
+/* Connection changes, catch-ups and app errors stand apart from the Slack events */
+.event-notice td {
+    font-style: italic;
+}
+
+.event-failed td:first-child {
+    box-shadow: inset 3px 0 0 var(--status-rejected);
+}

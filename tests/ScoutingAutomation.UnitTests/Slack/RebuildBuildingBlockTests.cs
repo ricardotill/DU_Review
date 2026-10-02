@@ -134,7 +134,7 @@ public class SlackHistoryClientTests
         var act = () => Create(handler).GetChannelMessagesAsync("C1", DateTimeOffset.UnixEpoch);
 
         await act.Should().ThrowAsync<HttpRequestException>();
-        handler.Requests.Should().HaveCount(6);
+        handler.Requests.Should().HaveCount(5);
     }
 
     [Fact]
@@ -253,15 +253,42 @@ public class StorageBackupAndRepositoryTests : IDisposable
         await storage.SaveInitialFileAsync("De Wolven", "a.jpg", new MemoryStream(new byte[] { 1 }));
         await storage.EnsureFolderStructureAsync("De Bosuilen");
 
-        var first = await storage.MoveAllToBackupAsync();
+        var groups = new[] { "De Wolven", "De Bosuilen" };
+        var first = await storage.MoveAllToBackupAsync(groups);
         await storage.SaveInitialFileAsync("De Wolven", "b.jpg", new MemoryStream(new byte[] { 2 }));
-        var second = await storage.MoveAllToBackupAsync();
+        var second = await storage.MoveAllToBackupAsync(groups);
 
         File.Exists(Path.Combine(first, "de-wolven", "a.jpg")).Should().BeTrue();
         Directory.Exists(Path.Combine(first, "de-bosuilen", "approved")).Should().BeTrue();
         File.Exists(Path.Combine(second, "de-wolven", "b.jpg")).Should().BeTrue();
         second.Should().NotBe(first);
         Directory.GetDirectories(_temp.Path).Select(Path.GetFileName).Should().Equal("_backup");
+    }
+
+    [Fact]
+    public async Task MoveAllToBackupAsync_ShouldLeaveFoldersThatAreNoGroupAlone()
+    {
+        var storage = new LocalFileStorageService(Options.Create(new ScoutingSettings { StorageRoot = _temp.Path }), NullLogger<LocalFileStorageService>.Instance);
+        await storage.SaveInitialFileAsync("De Wolven", "a.jpg", new MemoryStream(new byte[] { 1 }));
+        Directory.CreateDirectory(Path.Combine(_temp.Path, "Foto's organisatie"));
+
+        await storage.MoveAllToBackupAsync(new[] { "De Wolven" });
+
+        Directory.Exists(Path.Combine(_temp.Path, "Foto's organisatie")).Should().BeTrue("the storage root may be a shared folder");
+    }
+
+    [Fact]
+    public async Task RestoreBackupAsync_ShouldPutGroupFoldersBack()
+    {
+        var storage = new LocalFileStorageService(Options.Create(new ScoutingSettings { StorageRoot = _temp.Path }), NullLogger<LocalFileStorageService>.Instance);
+        var path = await storage.SaveInitialFileAsync("De Wolven", "a.jpg", new MemoryStream(new byte[] { 1 }));
+        var backup = await storage.MoveAllToBackupAsync(new[] { "De Wolven" });
+        await storage.EnsureFolderStructureAsync("De Wolven");
+
+        await storage.RestoreBackupAsync(backup);
+
+        File.Exists(path).Should().BeTrue();
+        Directory.GetDirectories(backup).Should().BeEmpty();
     }
 
     [Fact]

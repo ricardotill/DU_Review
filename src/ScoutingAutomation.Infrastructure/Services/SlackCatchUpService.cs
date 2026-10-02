@@ -33,6 +33,8 @@ public class SlackCatchUpService : BackgroundService, ISlackCatchUpService
     private readonly IOptions<ScoutingSettings> _options;
     private readonly SlackProcessingGate _gate;
     private readonly RuntimeSettingsService _runtime;
+    private readonly SlackChannelLocks _channels;
+    private readonly SlackEventLog? _eventLog;
     private readonly ILogger<SlackCatchUpService> _logger;
     private readonly object _lock = new();
     private CancellationToken _stopping = CancellationToken.None;
@@ -44,8 +46,12 @@ public class SlackCatchUpService : BackgroundService, ISlackCatchUpService
         IOptions<ScoutingSettings> options,
         SlackProcessingGate gate,
         RuntimeSettingsService runtime,
-        ILogger<SlackCatchUpService> logger)
+        ILogger<SlackCatchUpService> logger,
+        SlackChannelLocks? channels = null,
+        SlackEventLog? eventLog = null)
     {
+        _eventLog = eventLog;
+        _channels = channels ?? new SlackChannelLocks();
         _scopeFactory = scopeFactory;
         _options = options;
         _gate = gate;
@@ -152,9 +158,9 @@ public class SlackCatchUpService : BackgroundService, ISlackCatchUpService
             {
                 messages = await history.GetChannelMessagesAsync(group.SlackChannelId, since, ct);
             }
-            catch (Exception ex) when (ex is SlackApiException or HttpRequestException)
+            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
             {
-                // One unreadable channel must not stop the others
+                // One unreadable channel must not stop the others, whatever went wrong
                 var error = ex is SlackApiException slack ? slack.Error : ex.Message;
                 _logger.LogWarning(ex, "Catch-up could not read the channel of {Group}: {Error}", group.Name, error);
                 errors.Add($"{group.Name}: {error}");
@@ -164,17 +170,35 @@ public class SlackCatchUpService : BackgroundService, ISlackCatchUpService
             foreach (var message in messages.Where(m => SlackRebuildService.IsCandidate(m, _runtime, botUserId)))
             {
                 checkedCount++;
-                var result = await workflow.ProcessMissedMessageAsync(message, ct);
-                added += result.CreatedSubmissionIds.Count;
 
-                if (await workflow.SyncReviewAsync(message.Channel!, message.Ts!, message.Reactions, ct))
+                // Live events of this channel wait meanwhile, and this waits for one in progress
+                using var turn = await _channels.EnterAsync(group.SlackChannelId, ct);
+                try
                 {
-                    reviews++;
+                    var result = await workflow.ProcessMissedMessageAsync(message, ct);
+                    added += result.CreatedSubmissionIds.Count;
+
+                    // The history was read a while ago: the workflow reads the reactions again before changing a review
+                    if (await workflow.SyncReviewAsync(message.Channel!, message.Ts!, message.Reactions, ct))
+                    {
+                        reviews++;
+                    }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+                {
+                    // One message that fails must not stop the rest of the catch-up
+                    _logger.LogWarning(ex, "Catch-up could not process message {Ts} of {Group}", message.Ts, group.Name);
+                    errors.Add($"{group.Name}: bericht {message.Ts}: {ex.Message}");
                 }
             }
         }
 
         LastResult = new CatchUpResult(DateTimeOffset.UtcNow, checkedCount, added, reviews, errors);
+        var summary = added > 0 || reviews > 0
+            ? $"{added} gemiste inzending(en) en {reviews} beoordeling(en) bijgewerkt, {checkedCount} bericht(en) nagekeken"
+            : $"Niets gemist in {checkedCount} bericht(en)";
+        _eventLog?.AddNotice(SlackEventKind.CatchUp, errors.Count > 0 ? SlackEventOutcome.Failed : SlackEventOutcome.Processed,
+            errors.Count > 0 ? $"{summary}. Problemen: {string.Join("; ", errors)}" : summary, "Bijwerken uit Slack");
         if (added > 0 || reviews > 0)
         {
             _logger.LogWarning("Catch-up found missed Slack activity: {Added} new submission(s), {Reviews} review(s) updated, {Checked} message(s) checked",

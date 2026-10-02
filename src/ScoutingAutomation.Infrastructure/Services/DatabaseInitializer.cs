@@ -88,8 +88,25 @@ public class DatabaseInitializer
             throw;
         }
 
+        // Read before anything changes: a broken points file stops the start, with nothing half done
+        var pointsFile = Path.GetFullPath(_options.Value.AssignmentPointsFile);
+        IReadOnlyList<Assignment>? configuredAssignments = null;
+        if (File.Exists(pointsFile))
+        {
+            using var reader = new StreamReader(pointsFile);
+            try
+            {
+                configuredAssignments = AssignmentPointsCsvReader.Read(reader);
+            }
+            catch (FormatException ex)
+            {
+                throw new StartupConfigurationException($"Het puntenbestand {pointsFile} klopt niet: {ex.Message}", ex);
+            }
+        }
+
         // FR-003: Synchronize Groups from appsettings.json
         var configuredGroups = _options.Value.Groups;
+        EnsureDistinctFolders(configuredGroups);
         if (configuredGroups != null && configuredGroups.Count > 0)
         {
             foreach (var cfg in configuredGroups)
@@ -116,18 +133,18 @@ public class DatabaseInitializer
                 await _fileStorage.EnsureFolderStructureAsync(cfg.Name, ct);
             }
             await _context.SaveChangesAsync(ct);
+
+            // Kept, as submissions may point to them, but they get no new submissions
+            var channels = configuredGroups.Select(g => g.SlackChannelId).ToHashSet();
+            foreach (var old in await _context.Groups.Where(g => !channels.Contains(g.SlackChannelId)).ToListAsync(ct))
+            {
+                _logger.LogWarning("Group {Group} ({Channel}) is in the database but no longer in the settings", old.Name, old.SlackChannelId);
+            }
         }
 
         // Synchronize Assignments and their points from the CSV file
-        var pointsFile = Path.GetFullPath(_options.Value.AssignmentPointsFile);
-        if (File.Exists(pointsFile))
+        if (configuredAssignments != null)
         {
-            IReadOnlyList<Assignment> configuredAssignments;
-            using (var reader = new StreamReader(pointsFile))
-            {
-                configuredAssignments = AssignmentPointsCsvReader.Read(reader);
-            }
-
             var existingAssignments = await _context.Assignments.ToDictionaryAsync(a => a.Number, ct);
             foreach (var cfg in configuredAssignments)
             {
@@ -144,6 +161,14 @@ public class DatabaseInitializer
 
             await _context.SaveChangesAsync(ct);
             _logger.LogInformation("Synchronized {Count} assignments from {File}", configuredAssignments.Count, pointsFile);
+
+            var numbers = configuredAssignments.Select(a => a.Number).ToHashSet();
+            var removed = existingAssignments.Keys.Where(n => !numbers.Contains(n)).Order().ToList();
+            if (removed.Count > 0)
+            {
+                // Still valid: submissions may already count for them. Delete them from the database by hand if they must go.
+                _logger.LogWarning("Assignments {Numbers} are in the database but no longer in {File}; they still count", string.Join(", ", removed), pointsFile);
+            }
         }
         else
         {
@@ -219,6 +244,41 @@ public class DatabaseInitializer
                 await _context.SaveChangesAsync(ct);
                 _logger.LogInformation("Finished seeding demo submissions");
             }
+        }
+
+        await ReportMissingFilesAsync(ct);
+    }
+
+    /// <summary>Two groups whose names give the same folder would mix their files: the start is stopped.</summary>
+    private static void EnsureDistinctFolders(IReadOnlyCollection<GroupConfig>? groups)
+    {
+        var clash = (groups ?? Array.Empty<GroupConfig>())
+            .GroupBy(g => LocalFileStorageService.FolderName(g.Name), StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault(g => g.Count() > 1);
+        if (clash != null)
+        {
+            throw new StartupConfigurationException(
+                $"De groepen {string.Join(" en ", clash.Select(g => $"'{g.Name}'"))} krijgen dezelfde map '{clash.Key}'; geef ze een andere naam");
+        }
+    }
+
+    /// <summary>
+    /// Submissions whose file is not on disk: moved or deleted by hand, or left behind by a crash. They are
+    /// only reported; the files can be put back, or the group rebuilt from Slack.
+    /// </summary>
+    private async Task ReportMissingFilesAsync(CancellationToken ct)
+    {
+        var paths = await _context.Submissions.Select(s => new { s.Id, s.StoragePath }).ToListAsync(ct);
+        var missing = new List<string>();
+        foreach (var submission in paths)
+        {
+            if (!await _fileStorage.FileExistsAsync(submission.StoragePath, ct)) missing.Add(submission.StoragePath);
+        }
+
+        if (missing.Count > 0)
+        {
+            _logger.LogWarning("{Count} of {Total} submissions have no file on disk, e.g. {Examples}",
+                missing.Count, paths.Count, string.Join("; ", missing.Take(10)));
         }
     }
 }

@@ -1,6 +1,6 @@
 # Handleiding DU Review
 
-Laatst bijgewerkt: 1 oktober 2026
+Laatst bijgewerkt: 2 oktober 2026
 
 ## Zo werkt het
 
@@ -113,11 +113,13 @@ Na 5 verkeerde sleutels binnen een minuut moet je even wachten voordat je het op
 | **Opdrachten** | Alle opdrachten. Per opdracht zie je de inzendingen van alle groepen naast elkaar, desgewenst alleen de open inzendingen. Daar start je ook een diavoorstelling van die opdracht. |
 | **Groepen** | Alle groepen. Per groep zie je score, plaats, de punten in de loop van het spel naast die van de andere groepen, en alle opdrachten. |
 | **Bericht sturen** | Een bericht van de bot in de Slack-kanalen van de groepen. Zie [Bericht sturen](#bericht-sturen). |
-| **Scorebord** | Het scorebord in grote letters met de punten in de loop van het spel, voor een beamer. Werkt zichzelf bij. |
+| **Scorebord** | De totalen van de inzendingen en het scorebord in grote letters, met de punten in de loop van het spel, voor een beamer. Werkt zichzelf bij. |
 | **Diavoorstelling** | Alle foto's, video's en geluidsopnames achter elkaar, bijvoorbeeld op een beamer. Afgekeurde inzendingen worden overgeslagen. Kies een groep, een opdracht, alleen awesome of alleen favorieten, herhalen, door elkaar, het aantal seconden per foto, en of het scorebord tussendoor komt. |
 | **Gebeurtenissen** | Alles wat er live uit Slack binnenkomt, en wat de app ermee deed. Zie [Gebeurtenissen](#gebeurtenissen). |
 | **Configuratie** | De instellingen en de juryleden. Voor de organisatie. |
 | **Beheer** | Naar beheermodus gaan. Voor de organisatie. |
+
+Lange lijsten op **Te beoordelen**, **Inzendingen** en **Gebeurtenissen** staan op pagina's van 50. Kies een ander filter, dan begin je weer op de eerste pagina.
 
 Klik op een inzending voor de detailpagina: het bestand, wie het plaatste, het bericht, en de hele beoordelingsgeschiedenis met namen van juryleden.
 
@@ -133,11 +135,19 @@ Op **Gebeurtenissen** zie je live alles wat Slack naar de app stuurt: nieuwe ber
 
 - **Verwerkt**: de app heeft er iets mee gedaan, bijvoorbeeld een inzending geregistreerd of een beoordeling toegepast. Met de pijl open je de inzending.
 - **Genegeerd**: er hoefde niets te gebeuren, bijvoorbeeld een bericht zonder bestand of een emoji van iemand die geen jurylid is. De toelichting zegt waarom.
-- **Mislukt**: de app kon de gebeurtenis niet verwerken. Kijk dan in het logboek.
+- **Mislukt**: de app kon de gebeurtenis niet verwerken. Ook een bericht waarvan een bestand niet kon worden gedownload staat op **Mislukt**; de toelichting noemt het bestand.
+
+Daarnaast staan hier, schuin gedrukt, meldingen van de app zelf:
+
+- **Verbinding**: de verbinding met Slack is er (**Verwerkt**), is weggevallen of mislukt (**Mislukt**, met de reden), of wordt door Slack vernieuwd (**Info**). Is de laatste verbindingsmelding een fout, dan staat bovenaan de pagina een rode balk. Die verdwijnt zodra de app weer verbonden is.
+- **Bijwerken**: na elke nieuwe verbinding leest de app terug wat hij miste. De toelichting zegt wat er is bijgewerkt, of dat er niets werd gemist. Kon een kanaal of bericht niet worden gelezen, dan staat de melding op **Mislukt**.
+- **Fout in de app**: elke fout die de app tegenkomt, bijvoorbeeld een startbericht dat niet kon worden geplaatst, een mislukte herbouw, een volle schijf of een bestand dat ontbreekt.
 
 Filter op soort, resultaat en groep. Met **Pauzeren** zet je de lijst stil om rustig te lezen; nieuwe gebeurtenissen worden geteld en verschijnen als je hervat.
 
-De pagina toont de laatste 500 gebeurtenissen sinds de app is gestart. Na een herstart begint de lijst leeg. Wat de app bij het inhalen of opnieuw opbouwen uit Slack leest, staat hier niet; dat staat in het logboek.
+De lijst toont 50 gebeurtenissen per pagina, de nieuwste eerst. Pauzeer als je door oudere pagina's bladert; anders schuiven nieuwe gebeurtenissen de lijst steeds een stukje op.
+
+De pagina toont de laatste 500 gebeurtenissen sinds de app is gestart. Na een herstart begint de lijst leeg.
 
 ### Bericht sturen
 
@@ -262,10 +272,11 @@ Doe de generale repetitie een paar dagen vóór het spel, op dezelfde server en 
 ### Op de ochtend van het spel
 
 - [ ] Start de app en controleer bovenaan de pagina de Slack-status: **Verbonden met Slack**.
+- [ ] Kijk op **Gebeurtenissen**: er staat **Verbonden met Slack** en een **Bijwerken**-melding, en geen **Fout in de app**. Houd deze pagina tijdens het spel ergens open.
 - [ ] **Handmatige modus** staat uit (geen melding bovenaan).
 - [ ] Plaats in elk kanaal een testbericht met een foto en `Opdracht 1`. Controleer dat het op het dashboard verschijnt, en verwijder het daarna in Slack.
 - [ ] Deel de toegangssleutel met de jury en de mensen bij het scorebord.
-- [ ] Zet de slideshow of het dashboard klaar op de beamer.
+- [ ] Zet de diavoorstelling of het dashboard klaar op de beamer.
 - [ ] Na de starttijd: elk groepskanaal heeft het startbericht. Op **Configuratie** > **Startbericht in Slack** staat per groep **Geplaatst om …**. Mist er een, of is er geen starttijd ingesteld, klik dan in beheermodus op **Startbericht nu sturen**.
 - [ ] Na de eindtijd: elk groepskanaal heeft het eindbericht (**Configuratie** > **Eindbericht in Slack**), en bovenaan de app staat **Spel afgelopen**.
 
@@ -301,7 +312,7 @@ Doe de generale repetitie een paar dagen vóór het spel, op dezelfde server en 
 
 - Maak een kopie van de map `scouting_storage` voordat je iets opruimt.
 - Download de uitslag en de bestanden via **Exporteren** op het **Dashboard** (beheermodus): de scores als CSV, en de awesome of alle goedgekeurde bestanden als ZIP. Per groep kan dat ook met **Downloaden** op de pagina van de groep.
-- Gebruik de favorieten en de slideshow voor de prijsuitreiking.
+- Gebruik de favorieten en de diavoorstelling voor de prijsuitreiking.
 
 ## Problemen oplossen
 
@@ -309,12 +320,12 @@ Begin altijd bij de Slack-status bovenaan de pagina en het logboek van de app. D
 
 | Wat je ziet | Wat je doet |
 | --- | --- |
-| Een inzending verschijnt niet op het dashboard | Staat er een opdrachtnummer in het bericht? Zit er een bestand bij? Is de bot lid van het kanaal? Zie je een ❓ of ⚠️ van de bot, lees dan de thread. |
+| Een inzending verschijnt niet op het dashboard | Staat er een opdrachtnummer in het bericht? Zit er een bestand bij? Is de bot lid van het kanaal? Zie je een ❓ of ⚠️ van de bot, lees dan de thread. Op de pagina **Gebeurtenissen** zie je wat de app met het bericht deed. |
 | De bot reageert met ❓ | Het nummer ontbreekt of de opdracht bestaat niet. De groep bewerkt het bericht en zet het juiste nummer erin. |
 | De bot reageert met ⚠️ "kon niet worden opgehaald" | De download mislukte, vaak door een slechte verbinding. De groep plaatst het bestand opnieuw. |
 | De emoji van een jurylid doet niets | Staat het jurylid op **Configuratie**? Is het een beoordelings-emoji (zie de tabel bij de jury)? Staat **Handmatige modus** uit? |
 | De status is anders dan het laatste emoji | Dat klopt als juryleden het oneens zijn: de beste beoordeling telt. Haal de emoji weg die niet meer moet tellen. |
-| Bovenaan staat een rode melding **Slack: error** of **Slack: connecting** | De app heeft geen verbinding met Slack. Controleer het internet van de server en het logboek. Na herstel haalt de app vanzelf in wat hij miste. |
+| Bovenaan staat een rode melding **Slack: fout** of **Slack: verbinden** | De app heeft geen verbinding met Slack. Controleer het internet van de server en het logboek. Na herstel haalt de app vanzelf in wat hij miste. |
 | De app is herstart of was een tijd weg | Wacht op **Verbonden met Slack**. De app haalt de berichten van vandaag vanzelf in. Ontbreekt er daarna nog iets, gebruik dan **Opnieuw opbouwen uit Slack**. |
 | Iemand kan niet meer inloggen | Is de toegangssleutel net vernieuwd? Geef de nieuwe sleutel. Na 5 foute pogingen binnen een minuut even wachten. |
 | Een handmatige aanpassing is verdwenen | Er is opnieuw opgebouwd uit Slack, of een jurylid heeft daarna een emoji gezet. Slack is leidend; zet de emoji in Slack. |

@@ -24,29 +24,47 @@ public interface ISlackHistoryClient
 public class SlackHistoryClient : ISlackHistoryClient
 {
     private const int PageSize = 200;
-    private const int MaxRateLimitRetries = 5;
+    private const int MaxAttempts = 5;
+
+    /// <summary>The longest wait for one rate limit; Slack asks for a few seconds up to a minute.</summary>
+    private static readonly TimeSpan MaxRetryAfter = TimeSpan.FromSeconds(60);
 
     private readonly HttpClient _httpClient;
     private readonly IOptions<ScoutingSettings> _options;
     private readonly ILogger<SlackHistoryClient> _logger;
+    private readonly RuntimeSettingsService? _runtime;
+    private readonly SlackLinks? _links;
+    private readonly Func<TimeSpan, CancellationToken, Task> _wait;
 
-    public SlackHistoryClient(HttpClient httpClient, IOptions<ScoutingSettings> options, ILogger<SlackHistoryClient> logger)
+    /// <param name="runtime">The reviewers; threads with only their replies are not read.</param>
+    /// <param name="links">The bot's user ID; threads with only the bot's feedback are not read.</param>
+    /// <param name="wait">Waits between attempts; tests pass one that does not really wait.</param>
+    public SlackHistoryClient(HttpClient httpClient, IOptions<ScoutingSettings> options, ILogger<SlackHistoryClient> logger,
+        RuntimeSettingsService? runtime = null, SlackLinks? links = null, Func<TimeSpan, CancellationToken, Task>? wait = null)
     {
         _httpClient = httpClient;
         _options = options;
         _logger = logger;
+        _runtime = runtime;
+        _links = links;
+        _wait = wait ?? Task.Delay;
     }
+
+    /// <summary>Time for reading one page.</summary>
+    public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(30);
 
     public async Task<IReadOnlyList<SlackEventItemDto>> GetChannelMessagesAsync(string channelId, DateTimeOffset oldest, CancellationToken ct = default)
     {
         var oldestTs = SlackTimestamp.FromDateTimeOffset(oldest);
-        var messages = await GetAllPagesAsync("conversations.history", $"channel={channelId}&oldest={oldestTs}", ct);
+        var channel = Uri.EscapeDataString(channelId);
+        var messages = await GetAllPagesAsync("conversations.history", $"channel={channel}&oldest={oldestTs}", ct);
 
-        // History only returns thread parents; replies need their own call per thread
+        // History only returns thread parents; replies need their own call per thread. Slack limits that call
+        // more strictly, so threads with only the bot's feedback or the jury's remarks are skipped: those are no submissions.
         var replies = new List<SlackEventItemDto>();
-        foreach (var parent in messages.Where(m => m.ReplyCount > 0 && m.ThreadTs == m.Ts))
+        foreach (var parent in messages.Where(m => m.ReplyCount > 0 && m.ThreadTs == m.Ts && !OnlyIgnoredRepliers(m)))
         {
-            var thread = await GetAllPagesAsync("conversations.replies", $"channel={channelId}&ts={parent.Ts}", ct);
+            var thread = await GetAllPagesAsync("conversations.replies", $"channel={channel}&ts={Uri.EscapeDataString(parent.Ts!)}", ct);
             replies.AddRange(thread.Where(m => m.Ts != parent.Ts));
         }
 
@@ -57,6 +75,10 @@ public class SlackHistoryClient : ISlackHistoryClient
             .OrderBy(m => decimal.Parse(m.Ts!, CultureInfo.InvariantCulture))
             .ToList();
     }
+
+    private bool OnlyIgnoredRepliers(SlackEventItemDto parent) =>
+        parent.ReplyUsers is { Count: > 0 } users
+        && users.All(u => (_links?.BotUserId != null && u == _links.BotUserId) || (_runtime?.IsReviewer(u) ?? false));
 
     private async Task<List<SlackEventItemDto>> GetAllPagesAsync(string method, string query, CancellationToken ct)
     {
@@ -74,30 +96,60 @@ public class SlackHistoryClient : ISlackHistoryClient
         return all;
     }
 
+    /// <summary>
+    /// Reads one page. Reading is safe to repeat, so a rate limit, a network error, a server error or a timeout is
+    /// tried again a few times; after that it throws, and the caller skips this channel.
+    /// </summary>
     private async Task<SlackHistoryResponseDto> GetPageAsync(string method, string url, CancellationToken ct)
     {
-        for (var attempt = 0; ; attempt++)
+        for (var attempt = 1; ; attempt++)
         {
-            using var request = new HttpRequestMessage(HttpMethod.Get, url);
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.Value.Slack.BotToken);
-            using var response = await _httpClient.SendAsync(request, ct);
-
-            if (response.StatusCode == HttpStatusCode.TooManyRequests && attempt < MaxRateLimitRetries)
+            TimeSpan wait;
+            try
             {
-                var wait = response.Headers.RetryAfter?.Delta ?? TimeSpan.FromSeconds(1);
-                _logger.LogInformation("Slack rate limit on {Method}, waiting {Wait}", method, wait);
-                await Task.Delay(wait, ct);
-                continue;
+                using var request = new HttpRequestMessage(HttpMethod.Get, url);
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.Value.Slack.BotToken);
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                timeout.CancelAfter(RequestTimeout);
+                using var response = await SendAsync(request, timeout.Token, ct);
+
+                if (attempt < MaxAttempts && (response.StatusCode == HttpStatusCode.TooManyRequests || (int)response.StatusCode >= 500))
+                {
+                    var retryAfter = response.Headers.RetryAfter?.Delta ?? TimeSpan.FromSeconds(attempt);
+                    wait = retryAfter > MaxRetryAfter ? MaxRetryAfter : retryAfter;
+                    _logger.LogInformation("Slack answered {Method} with HTTP {Status}, waiting {Wait}", method, (int)response.StatusCode, wait);
+                }
+                else
+                {
+                    response.EnsureSuccessStatusCode();
+                    var page = await response.Content.ReadFromJsonAsync<SlackHistoryResponseDto>(timeout.Token);
+                    if (page is not { Ok: true })
+                    {
+                        throw new SlackApiException(method, page?.Error ?? "unknown");
+                    }
+
+                    return page;
+                }
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TimeoutException && attempt < MaxAttempts)
+            {
+                wait = TimeSpan.FromSeconds(attempt);
+                _logger.LogInformation(ex, "Reading {Method} failed (attempt {Attempt}), retrying", method, attempt);
             }
 
-            response.EnsureSuccessStatusCode();
-            var page = await response.Content.ReadFromJsonAsync<SlackHistoryResponseDto>(ct);
-            if (page is not { Ok: true })
-            {
-                throw new SlackApiException(method, page?.Error ?? "unknown");
-            }
+            await _wait(wait, ct);
+        }
+    }
 
-            return page;
+    private async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken timeout, CancellationToken ct)
+    {
+        try
+        {
+            return await _httpClient.SendAsync(request, timeout);
+        }
+        catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
+        {
+            throw new TimeoutException($"Slack did not answer within {RequestTimeout.TotalSeconds:0} s", ex);
         }
     }
 }

@@ -11,6 +11,9 @@ public sealed class GroupMessageSender
 {
     public const int MaxLength = RuntimeSettingsService.MaxSlackTextLength;
 
+    /// <summary>The error of a channel that was not tried because sending was stopped.</summary>
+    public const string Cancelled = "cancelled";
+
     /// <summary>The largest picture that can be sent, in bytes.</summary>
     public const long MaxPictureBytes = 20 * 1024 * 1024;
 
@@ -96,10 +99,25 @@ public sealed class GroupMessageSender
         var results = new List<AnnouncementPostResult>();
         foreach (var group in groups.Where(g => groupIds.Contains(g.Id) && !string.IsNullOrWhiteSpace(g.SlackChannelId)))
         {
+            // Stopped halfway: what was posted is still reported, so a resend only goes to the rest
+            if (ct.IsCancellationRequested)
+            {
+                results.Add(new AnnouncementPostResult(group.Name, group.SlackChannelId, Posted: false, Skipped: false, Cancelled));
+                continue;
+            }
+
             // Slack has no way to share one upload in several channels with an error per channel, so each gets its own
-            var error = picture == null
-                ? await _slack.PostMessageAsync(group.SlackChannelId, text!, ct)
-                : await _slack.PostFileAsync(group.SlackChannelId, picture.Content, SafeFileName(picture.FileName), text, ct);
+            string? error;
+            try
+            {
+                error = picture == null
+                    ? await _slack.PostMessageAsync(group.SlackChannelId, text!, ct)
+                    : await _slack.PostFileAsync(group.SlackChannelId, picture.Content, SafeFileName(picture.FileName), text, ct);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                error = Cancelled;
+            }
             if (error == null)
             {
                 _logger.LogInformation("Posted a jury message for {Group} in {Channel}", group.Name, group.SlackChannelId);

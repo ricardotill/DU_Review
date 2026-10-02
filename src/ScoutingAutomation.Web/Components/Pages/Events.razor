@@ -7,7 +7,7 @@
 
 <PageTitle>Gebeurtenissen - DU Review</PageTitle>
 
-<PageHeader Title="Gebeurtenissen" Subtitle="@($"Alle Slack-gebeurtenissen live, de laatste {SlackEventLog.Capacity} sinds de start van de app.")">
+<PageHeader Title="Gebeurtenissen" Subtitle="@($"Alle Slack-gebeurtenissen, de verbinding met Slack en fouten in de app, live. De laatste {SlackEventLog.Capacity} sinds de start van de app.")">
     <Actions>
         <button class="btn btn-sm btn-scout-secondary d-flex align-items-center gap-1 align-self-center pause-toggle" @onclick="TogglePause">
             <i class="bi @(paused ? "bi-play-fill" : "bi-pause-fill")"></i>
@@ -28,11 +28,19 @@
     </Actions>
 </PageHeader>
 
+@if (LatestConnectionProblem is { } problem)
+{
+    <div class="alert alert-danger d-flex align-items-center gap-2 connection-problem" role="alert">
+        <i class="bi bi-wifi-off"></i>
+        <span>Om @problem.ReceivedAt.ToGameTime().ToString("HH:mm:ss"): @problem.Detail</span>
+    </div>
+}
+
 <div class="glass-panel p-3 mb-4">
     <div class="row g-2 align-items-end">
         <div class="col-md-4 col-6">
             <label class="form-label text-secondary small fw-semibold mb-1">Soort</label>
-            <select class="form-select form-select-dark" @bind="kindFilter">
+            <select class="form-select form-select-dark" @bind="kindFilter" @bind:after="FirstPage">
                 <option value="">Alle soorten</option>
                 @foreach (var kind in Enum.GetValues<SlackEventKind>())
                 {
@@ -42,7 +50,7 @@
         </div>
         <div class="col-md-4 col-6">
             <label class="form-label text-secondary small fw-semibold mb-1">Resultaat</label>
-            <select class="form-select form-select-dark" @bind="outcomeFilter">
+            <select class="form-select form-select-dark" @bind="outcomeFilter" @bind:after="FirstPage">
                 <option value="">Alle resultaten</option>
                 @foreach (var outcome in Enum.GetValues<SlackEventOutcome>())
                 {
@@ -52,7 +60,7 @@
         </div>
         <div class="col-md-4 col-12">
             <label class="form-label text-secondary small fw-semibold mb-1">Groep</label>
-            <select class="form-select form-select-dark" @bind="channelFilter">
+            <select class="form-select form-select-dark" @bind="channelFilter" @bind:after="FirstPage">
                 <option value="">Alle groepen</option>
                 @foreach (var g in groups)
                 {
@@ -69,7 +77,12 @@
         <span class="text-secondary fw-normal small ms-1">nieuwste eerst</span>
     </h2>
 
-    @if (Visible.Count == 0)
+    @{
+        var visible = Visible;
+        var shown = Pager.Slice(visible, page);
+    }
+
+    @if (visible.Count == 0)
     {
         <div class="empty-state">
             <i class="bi bi-activity"></i>
@@ -93,13 +106,13 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var e in Visible)
+                    @foreach (var e in shown)
                     {
-                        <tr @key="e.Id">
+                        <tr @key="e.Id" class="@(IsNotice(e.Kind) ? "event-notice" : "") @(e.Outcome == SlackEventOutcome.Failed ? "event-failed" : "")">
                             <td class="text-white-50 text-nowrap" title="@($"Verwerkt in {e.Duration.TotalMilliseconds:F0} ms")">@e.ReceivedAt.ToGameTime().ToString("HH:mm:ss")</td>
                             <td class="text-nowrap"><i class="bi @KindIcon(e.Kind) me-1"></i>@KindLabel(e.Kind)</td>
                             <td class="text-white">@GroupName(e.Channel)</td>
-                            <td class="text-white-50" title="@e.User">@Runtime.DisplayName(e.User)</td>
+                            <td class="text-white-50" title="@e.User">@(e.User == null ? "–" : Runtime.DisplayName(e.User))</td>
                             <td class="text-white-50 event-content">
                                 @if (e.Reaction != null)
                                 {
@@ -114,7 +127,7 @@
                                     <span class="small text-muted"><i class="bi bi-paperclip"></i> @e.FileCount @(e.FileCount == 1 ? "bestand" : "bestanden")</span>
                                 }
                             </td>
-                            <td><span class="badge @OutcomeBadge(e.Outcome)">@OutcomeLabel(e.Outcome)</span></td>
+                            <td><span class="badge @OutcomeBadge(e.Outcome)">@OutcomeLabel(e)</span></td>
                             <td class="text-white-50 small event-detail">@e.Detail</td>
                             <td class="text-end">
                                 @if (e.SubmissionIds.Count == 1)
@@ -129,6 +142,8 @@
                 </tbody>
             </table>
         </div>
+
+        <Pager TotalCount="visible.Count" @bind-Page="page" />
     }
 </div>
 
@@ -139,9 +154,13 @@
     private Dictionary<string, string> groupNames = new();
     private bool paused;
 
+    private int page = 1;
+
     private string? kindFilter;
     private string? outcomeFilter;
     private string? channelFilter;
+
+    private void FirstPage() => page = 1;
 
     private List<SlackEventLogEntry> Visible => entries
         .Where(e => !Enum.TryParse<SlackEventKind>(kindFilter, out var kind) || e.Kind == kind)
@@ -194,6 +213,14 @@
         }
     }
 
+    /// <summary>
+    /// The newest connection entry, when it is a failure: the connection is down until a newer entry says otherwise.
+    /// </summary>
+    private SlackEventLogEntry? LatestConnectionProblem =>
+        entries.FirstOrDefault(e => e.Kind == SlackEventKind.Connection) is { Outcome: SlackEventOutcome.Failed } failed ? failed : null;
+
+    private static bool IsNotice(SlackEventKind kind) => kind is SlackEventKind.Connection or SlackEventKind.CatchUp or SlackEventKind.System;
+
     private string GroupName(string? channel) =>
         channel == null ? "–" : groupNames.GetValueOrDefault(channel) ?? $"#{channel}";
 
@@ -203,7 +230,10 @@
         SlackEventKind.Edited => "Bewerkt",
         SlackEventKind.Deleted => "Verwijderd",
         SlackEventKind.ReactionAdded => "Emoji geplaatst",
-        _ => "Emoji weggehaald"
+        SlackEventKind.ReactionRemoved => "Emoji weggehaald",
+        SlackEventKind.Connection => "Verbinding",
+        SlackEventKind.CatchUp => "Bijwerken",
+        _ => "Fout in de app"
     };
 
     private static string KindIcon(SlackEventKind kind) => kind switch
@@ -212,7 +242,10 @@
         SlackEventKind.Edited => "bi-pencil text-secondary",
         SlackEventKind.Deleted => "bi-trash text-danger",
         SlackEventKind.ReactionAdded => "bi-emoji-smile text-warning",
-        _ => "bi-emoji-neutral text-secondary"
+        SlackEventKind.ReactionRemoved => "bi-emoji-neutral text-secondary",
+        SlackEventKind.Connection => "bi-wifi text-info",
+        SlackEventKind.CatchUp => "bi-arrow-repeat text-info",
+        _ => "bi-exclamation-octagon text-danger"
     };
 
     private static string OutcomeLabel(SlackEventOutcome outcome) => outcome switch
@@ -221,6 +254,10 @@
         SlackEventOutcome.Ignored => "Genegeerd",
         _ => "Mislukt"
     };
+
+    // A connection that Slack refreshes is nothing ignored, just worth knowing
+    private static string OutcomeLabel(SlackEventLogEntry entry) =>
+        IsNotice(entry.Kind) && entry.Outcome == SlackEventOutcome.Ignored ? "Info" : OutcomeLabel(entry.Outcome);
 
     private static string OutcomeBadge(SlackEventOutcome outcome) => outcome switch
     {

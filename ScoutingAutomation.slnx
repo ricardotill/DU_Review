@@ -4,6 +4,7 @@
   </Folder>
   <Folder Name="/SolutionFolder/">
     <File Path="README.md" />
+    <File Path="run-gameday.sh" />
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/ScoutingAutomation.AppHost/ScoutingAutomation.AppHost.csproj" />

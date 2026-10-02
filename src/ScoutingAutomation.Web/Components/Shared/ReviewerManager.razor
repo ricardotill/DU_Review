@@ -40,7 +40,7 @@
                         </button>
                         @if (!configured)
                         {
-                            <button type="button" class="btn btn-sm btn-link text-danger p-0 remove-reviewer" aria-label="@reviewer verwijderen" @onclick="() => Runtime.RemoveReviewer(reviewer)">
+                            <button type="button" class="btn btn-sm btn-link text-danger p-0 remove-reviewer" aria-label="@reviewer verwijderen" @onclick="() => Remove(reviewer)">
                                 <i class="bi bi-trash"></i>
                             </button>
                         }
@@ -88,6 +88,8 @@
 </AuthorizeView>
 
 @code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
     private string newReviewer = "";
     private string? editing;
     private string editName = "";
@@ -100,7 +102,7 @@
     private async Task Add()
     {
         var id = newReviewer.Trim();
-        var error = Runtime.AddReviewer(id);
+        var error = await AdminActions.RunAsync(AuthState, () => Runtime.AddReviewer(id));
         if (error != null)
         {
             Show(error, problem: true);
@@ -108,8 +110,25 @@
         }
 
         newReviewer = "";
-        var problem = NameFetcher.CanFetch ? await NameFetcher.FetchAsync(id) : null;
+        string? problem;
+        try
+        {
+            problem = NameFetcher.CanFetch ? await NameFetcher.FetchAsync(id) : null;
+        }
+        catch (Exception ex) when (ex is IOException or HttpRequestException or TimeoutException)
+        {
+            problem = $"De naam kon niet uit Slack worden gehaald: {ex.Message}";
+        }
+
         Show(problem ?? $"{Runtime.DisplayName(id)} is nu jurylid.", problem != null);
+    }
+
+    private async Task Remove(string reviewer)
+    {
+        if (await AdminActions.RunAsync(AuthState, () => Runtime.RemoveReviewer(reviewer)) is { } error)
+        {
+            Show(error, problem: true);
+        }
     }
 
     private void StartEdit(string reviewer)
@@ -118,9 +137,11 @@
         editName = Runtime.NameOf(reviewer) ?? "";
     }
 
-    private void SaveName()
+    private async Task SaveName()
     {
-        var error = Runtime.SetReviewerName(editing!, editName);
+        if (editing == null) return;
+        var reviewer = editing;
+        var error = await AdminActions.RunAsync(AuthState, () => Runtime.SetReviewerName(reviewer, editName));
         if (error != null)
         {
             Show(error, problem: true);
@@ -133,9 +154,28 @@
 
     private async Task FetchAll()
     {
+        if (fetching) return;
+        if (!await AdminActions.IsAdminAsync(AuthState))
+        {
+            Show(AdminActions.NotAdmin, problem: true);
+            return;
+        }
+
         fetching = true;
-        var result = await NameFetcher.FetchAllAsync();
-        fetching = false;
+        ReviewerNameFetchResult result;
+        try
+        {
+            result = await NameFetcher.FetchAllAsync();
+        }
+        catch (Exception ex) when (ex is IOException or HttpRequestException or TimeoutException or UnauthorizedAccessException)
+        {
+            Show($"Namen ophalen is mislukt: {ex.Message}", problem: true);
+            return;
+        }
+        finally
+        {
+            fetching = false;
+        }
 
         var summary = $"{result.Updated} naam/namen opgehaald uit Slack" + (result.KeptManual > 0 ? $", {result.KeptManual} zoals ingevuld gehouden" : "") + ".";
         Show(result.Problems.Count == 0 ? summary : $"{summary} {string.Join(" ", result.Problems)}", result.Problems.Count > 0);

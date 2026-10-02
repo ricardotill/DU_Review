@@ -13,7 +13,7 @@
     <div class="row g-2 align-items-end">
         <div class="col-md-4 col-6">
             <label class="form-label text-secondary small fw-semibold mb-1" for="queueGroup">Groep</label>
-            <select class="form-select form-select-dark" id="queueGroup" @bind="selectedGroupId">
+            <select class="form-select form-select-dark" id="queueGroup" @bind="selectedGroupId" @bind:after="FirstPage">
                 <option value="">Alle groepen</option>
                 @foreach (var g in groups)
                 {
@@ -23,7 +23,7 @@
         </div>
         <div class="col-md-4 col-6">
             <label class="form-label text-secondary small fw-semibold mb-1" for="queueAssignment">Opdracht</label>
-            <select class="form-select form-select-dark" id="queueAssignment" @bind="selectedAssignmentNumber">
+            <select class="form-select form-select-dark" id="queueAssignment" @bind="selectedAssignmentNumber" @bind:after="FirstPage">
                 <option value="">Alle opdrachten</option>
                 @foreach (var number in queue.Select(i => i.AssignmentNumber).OfType<int>().Distinct().Order())
                 {
@@ -46,11 +46,15 @@
         <span class="text-secondary fw-normal small ms-1">oudste eerst</span>
     </h2>
 
+    @{
+        var toReview = ToReview;
+    }
+
     @if (!loaded)
     {
         <div class="empty-state"><div class="spinner-border text-success" role="status"></div></div>
     }
-    else if (ToReview.Count == 0)
+    else if (toReview.Count == 0)
     {
         <div class="empty-state">
             <i class="bi bi-check2-circle"></i>
@@ -60,11 +64,13 @@
     else
     {
         <div class="d-flex flex-column gap-2">
-            @foreach (var item in ToReview)
+            @foreach (var item in Pager.Slice(toReview, page))
             {
                 @Row(item)
             }
         </div>
+
+        <Pager TotalCount="toReview.Count" @bind-Page="page" />
     }
 </div>
 
@@ -93,6 +99,9 @@
     private string? selectedGroupId;
     private string? selectedAssignmentNumber;
     private Timer? refresh;
+    private int page = 1;
+
+    private void FirstPage() => page = 1;
 
     private IEnumerable<ReviewQueueItem> Filtered => queue
         .Where(i => !Guid.TryParse(selectedGroupId, out var groupId) || i.Group?.Id == groupId)

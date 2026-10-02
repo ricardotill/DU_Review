@@ -37,7 +37,7 @@
                 <div class="row g-2 align-items-end mb-2">
                     <div class="col-md-5">
                         <label class="form-label text-secondary small fw-semibold mb-1">Berichten vanaf</label>
-                        <input type="datetime-local" class="form-control form-control-dark" @bind="since" disabled="@IsRunning" />
+                        <input type="datetime-local" class="form-control form-control-dark" min="@MinTime" max="@MaxTime" @bind="since" disabled="@IsRunning" />
                     </div>
                     <div class="col-md-4">
                         <label class="form-label text-secondary small fw-semibold mb-1">Typ OPBOUWEN om te bevestigen</label>
@@ -49,6 +49,10 @@
                         </button>
                     </div>
                 </div>
+                @if (startError != null)
+                {
+                    <div class="text-danger small mt-2 start-error">@startError</div>
+                }
 
                 @if (progress.State != RebuildState.Idle)
                 {
@@ -118,6 +122,11 @@
 </div>
 
 @code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private static readonly string MinTime = RuntimeSettingsService.MinEventTime.ToString("yyyy-MM-ddTHH:mm");
+    private static readonly string MaxTime = RuntimeSettingsService.MaxEventTime.AddMinutes(-1).ToString("yyyy-MM-ddTHH:mm");
+
     /// <summary>The one group to rebuild; null rebuilds all groups.</summary>
     [Parameter]
     public Group? Group { get; set; }
@@ -125,6 +134,7 @@
     private RebuildProgress progress = new();
     private DateTime since;
     private string confirmation = "";
+    private string? startError;
 
     private bool IsRunning => progress.State == RebuildState.Running;
 
@@ -138,8 +148,23 @@
         RebuildService.Changed += OnProgressChanged;
     }
 
-    private void Start()
+    private async Task Start()
     {
+        // Replaces every submission: checked on the server, not only by who sees the button
+        if (!await AdminActions.IsAdminAsync(AuthState))
+        {
+            startError = AdminActions.NotAdmin;
+            return;
+        }
+
+        // A typo such as year 0001 cannot be converted to a point in time
+        if (!RuntimeSettingsService.IsValidEventTime(since))
+        {
+            startError = $"Kies een tijd tussen {RuntimeSettingsService.MinEventTime.Year} en {RuntimeSettingsService.MaxEventTime.Year}.";
+            return;
+        }
+
+        startError = null;
         // The chosen time is in the game's time zone
         var start = GameTime.FromGameTime(since);
         RebuildService.TryStart(start, Group?.Id);

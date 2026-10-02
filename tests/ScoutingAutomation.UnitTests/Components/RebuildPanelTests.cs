@@ -15,10 +15,43 @@ public class RebuildPanelTests : BunitContext
     private readonly FakeRebuildService _service = new();
     private readonly ScoutingSettings _settings = new();
 
+    private readonly Bunit.TestDoubles.BunitAuthorizationContext _auth;
+
     public RebuildPanelTests()
     {
         Services.AddSingleton<ISlackRebuildService>(_service);
         Services.AddSingleton(_ => TestRuntime.For(Options.Create(_settings)));
+        // The panel is only shown to admins, and starting a rebuild is checked on the server too
+        _auth = AddAuthorization();
+        _auth.SetAuthorized("Admin");
+        _auth.SetRoles(ScoutingAutomation.Web.Auth.KeyAuth.AdminRole);
+    }
+
+    [Fact]
+    public void Start_ByATabThatIsNoLongerAdmin_ShouldNotRebuild()
+    {
+        var cut = Render<RebuildPanel>();
+        cut.Find("input[type=text]").Input("OPBOUWEN");
+
+        // E.g. the admin key was regenerated while the tab was open; the button is still on screen
+        _auth.SetRoles();
+        cut.Find("button").Click();
+
+        _service.StartedWith.Should().BeNull();
+        cut.Find(".start-error").TextContent.Should().Contain("beheermodus");
+    }
+
+    [Fact]
+    public void Start_WithATimeOutsideTheAllowedYears_ShouldExplainInsteadOfFailing()
+    {
+        var cut = Render<RebuildPanel>();
+        cut.Find("input[type=datetime-local]").Change("0001-01-01T00:00:00");
+        cut.Find("input[type=text]").Input("OPBOUWEN");
+
+        cut.Find("button").Click();
+
+        _service.StartedWith.Should().BeNull();
+        cut.Find(".start-error").TextContent.Should().Contain("2000");
     }
 
     [Fact]

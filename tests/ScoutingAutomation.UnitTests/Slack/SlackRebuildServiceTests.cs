@@ -289,6 +289,7 @@ public class SlackRebuildServiceTests : IDisposable
     [Fact]
     public async Task UnexpectedFailure_ShouldStillFailCleanly()
     {
+        // E.g. a timeout of the HTTP pipeline: any failure reading a channel is a channel problem, and nothing changes
         _history.Setup(h => h.GetChannelMessagesAsync(It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("boom"));
 
@@ -296,8 +297,8 @@ public class SlackRebuildServiceTests : IDisposable
         await Service.Completion;
 
         Service.Progress.State.Should().Be(RebuildState.Failed);
-        Service.Progress.Error.Should().Be("boom");
-        Service.Progress.ChannelProblems.Should().BeEmpty();
+        Service.Progress.Error.Should().Contain("niets veranderd");
+        Service.Progress.ChannelProblems.Should().OnlyContain(p => p.Error == "boom");
     }
 
     [Fact]

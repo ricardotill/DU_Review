@@ -99,4 +99,23 @@ public class EventsPageTests : PageTestBase
 
         events.WaitForAssertion(() => Rows(events).Should().ContainSingle().Which.Should().Contain("Bericht"));
     }
+
+    [Fact]
+    public void ManyEvents_ShouldPageAndFilterBackToFirstPage()
+    {
+        for (var i = 0; i < 60; i++)
+        {
+            Log.Add(Entry(SlackEventKind.Message, SlackEventOutcome.Ignored, "C1", $"event {i}"));
+        }
+
+        var cut = Render<Events>();
+
+        Rows(cut).Should().HaveCount(50);
+        cut.FindAll("nav button").Single(b => b.TextContent == "2").Click();
+        Rows(cut).Should().HaveCount(10);
+        Rows(cut)[^1].Should().Contain("event 0");
+
+        cut.FindAll("select")[1].Change(nameof(SlackEventOutcome.Ignored));
+        Rows(cut).Should().HaveCount(50);
+    }
 }

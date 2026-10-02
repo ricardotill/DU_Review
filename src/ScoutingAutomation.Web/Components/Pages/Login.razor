@@ -45,7 +45,8 @@
     private async Task LogInAsync()
     {
         var client = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-        if (Limiter.IsBlocked(client))
+        // Counted before the key is checked: attempts sent at the same moment cannot all get through
+        if (!Limiter.TryAttempt(client))
         {
             error = "Te veel verkeerde sleutels. Wacht een minuut en probeer het opnieuw.";
             return;
@@ -54,7 +55,6 @@
         var admin = Keys.IsAdminKey(Input.Key);
         if (!admin && !Keys.IsAccessKey(Input.Key))
         {
-            Limiter.RecordFailure(client);
             error = "Deze sleutel klopt niet.";
             return;
         }

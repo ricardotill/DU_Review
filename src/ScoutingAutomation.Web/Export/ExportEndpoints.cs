@@ -83,23 +83,46 @@ public static class ExportEndpoints
         if (http.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpBodyControlFeature>() is { } body) body.AllowSynchronousIO = true;
         var ct = http.RequestAborted;
         var logger = loggers.CreateLogger(typeof(ExportEndpoints));
-        await using var zip = await ZipArchive.CreateAsync(http.Response.Body, ZipArchiveMode.Create, leaveOpen: true, entryNameEncoding: null, ct);
-        var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var submission in files)
+        try
         {
-            await using var source = await storage.OpenReadStreamAsync(submission.StoragePath, ct);
-            if (source == null)
+            await using var zip = await ZipArchive.CreateAsync(http.Response.Body, ZipArchiveMode.Create, leaveOpen: true, entryNameEncoding: null, ct);
+            var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var missing = new List<string>();
+            foreach (var submission in files)
             {
-                logger.LogWarning("Export skipped {Submission}: file {Path} not found", submission.Id, submission.StoragePath);
-                continue;
+                await using var source = await storage.OpenReadStreamAsync(submission.StoragePath, ct);
+                if (source == null)
+                {
+                    logger.LogWarning("Export skipped {Submission}: file {Path} not found", submission.Id, submission.StoragePath);
+                    missing.Add($"{submission.Group?.Name}, opdracht {submission.AssignmentNumber}: {Path.GetFileName(submission.StoragePath)}");
+                    continue;
+                }
+
+                var entry = zip.CreateEntry(EntryName(submission, used), Compression(submission.ContentType));
+                entry.LastWriteTime = submission.CreatedAt.ToGameTime();
+                await using var target = await entry.OpenAsync(ct);
+                await source.CopyToAsync(target, ct);
             }
 
-            var entry = zip.CreateEntry(EntryName(submission, used), Compression(submission.ContentType));
-            entry.LastWriteTime = submission.CreatedAt.ToGameTime();
-            await using var target = await entry.OpenAsync(ct);
-            await source.CopyToAsync(target, ct);
+            // Said in the download itself: otherwise a missing file is only noticed much later, if at all
+            if (missing.Count > 0)
+            {
+                var list = zip.CreateEntry(MissingListName, CompressionLevel.Optimal);
+                await using var writer = new StreamWriter(await list.OpenAsync(ct), new UTF8Encoding(true));
+                await writer.WriteAsync("Deze bestanden staan niet meer op de schijf en zitten niet in de download:\r\n" + string.Join("\r\n", missing) + "\r\n");
+            }
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            // The download has started, so its status can no longer change. Breaking the connection makes the browser
+            // report a failed download, instead of saving a ZIP that silently stops halfway.
+            logger.LogError(ex, "Export of the files failed halfway; the download was broken off");
+            http.Abort();
         }
     }
+
+    /// <summary>The list in the ZIP of files that could not be found.</summary>
+    public const string MissingListName = "ONTBREKENDE BESTANDEN.txt";
 
     /// <summary>"{group}/{awesome|approved}/{stored file name}", with a number added if two files end up with the same name.</summary>
     private static string EntryName(Submission submission, HashSet<string> used)
@@ -135,6 +158,8 @@ public static class ExportEndpoints
     private static string Field(string? value)
     {
         if (string.IsNullOrEmpty(value)) return "";
+        // Excel runs a cell that starts with = + - or @ as a formula; a quote in front keeps it text
+        if (value[0] is '=' or '+' or '-' or '@') value = "'" + value;
         return value.IndexOfAny([';', '"', '\n', '\r']) >= 0 ? $"\"{value.Replace("\"", "\"\"")}\"" : value;
     }
 

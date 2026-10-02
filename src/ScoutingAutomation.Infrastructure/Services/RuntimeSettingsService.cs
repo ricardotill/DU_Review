@@ -23,6 +23,13 @@ public partial class RuntimeSettingsService
     /// <summary>The longest wait that can be set for a reminder: four hours.</summary>
     public const int MaxReminderMinutes = 240;
 
+    /// <summary>Event times outside these years are refused: they are typing mistakes, and dates near year 1 cannot be converted between time zones.</summary>
+    public static readonly DateTime MinEventTime = new(2000, 1, 1);
+    public static readonly DateTime MaxEventTime = new(2100, 1, 1);
+
+    /// <summary>Whether an event time can be used; null (no time) can.</summary>
+    public static bool IsValidEventTime(DateTime? value) => value is not { } v || (v >= MinEventTime && v < MaxEventTime);
+
     private readonly object _lock = new();
     private readonly string _file;
     private readonly IOptions<ScoutingSettings> _options;
@@ -63,13 +70,21 @@ public partial class RuntimeSettingsService
     /// <summary>The start of the event in the game's time zone, as it is set.</summary>
     public DateTime? EventStartGameTime
     {
-        get { lock (_lock) return _eventStart != null ? _eventStart.Value : _options.Value.EventStart; }
+        get { lock (_lock) return _eventStart != null ? _eventStart.Value : ValidOrNull(_options.Value.EventStart, "EventStart"); }
     }
 
     /// <summary>The end of the event in the game's time zone, as it is set.</summary>
     public DateTime? EventEndGameTime
     {
-        get { lock (_lock) return _eventEnd != null ? _eventEnd.Value : _options.Value.EventEnd; }
+        get { lock (_lock) return _eventEnd != null ? _eventEnd.Value : ValidOrNull(_options.Value.EventEnd, "EventEnd"); }
+    }
+
+    private DateTime? ValidOrNull(DateTime? value, string setting)
+    {
+        if (IsValidEventTime(value)) return value;
+
+        _logger.LogError("Scouting:{Setting} {Value} is not between {Min} and {Max}; it is ignored", setting, value, MinEventTime.Year, MaxEventTime.Year);
+        return null;
     }
 
     /// <summary>Whether the start of the event was changed in the app.</summary>
@@ -102,6 +117,11 @@ public partial class RuntimeSettingsService
     {
         // Seconds are not shown in the app; a stray value would make the boundary unclear
         value = value is { } v ? DateTime.SpecifyKind(v.AddTicks(-(v.Ticks % TimeSpan.TicksPerMinute)), DateTimeKind.Unspecified) : null;
+        if (!IsValidEventTime(value))
+        {
+            return $"Kies een tijd tussen {MinEventTime.Year} en {MaxEventTime.Year}.";
+        }
+
         lock (_lock)
         {
             var start = isEnd ? EventStartGameTime : value;
@@ -545,13 +565,13 @@ public partial class RuntimeSettingsService
     public bool TryClaimManualDownload(string channel, string messageTs, string fileName) =>
         _manualDownloads.TryAdd($"{channel}|{messageTs}|{fileName}", 0);
 
+    /// <summary>Forgets a claim of <see cref="TryClaimManualDownload"/>, after the download failed, so it is tried again.</summary>
+    public void ReleaseManualDownload(string channel, string messageTs, string fileName) =>
+        _manualDownloads.TryRemove($"{channel}|{messageTs}|{fileName}", out _);
+
     private void Load()
     {
-        _addedReviewers = new List<string>();
-        _names = new Dictionary<string, SavedName>(StringComparer.OrdinalIgnoreCase);
-        _gameStartPosted = new Dictionary<string, DateTimeOffset>(StringComparer.OrdinalIgnoreCase);
-        _gameEndPosted = new Dictionary<string, DateTimeOffset>(StringComparer.OrdinalIgnoreCase);
-        _texts = new Dictionary<SlackText, string>();
+        ResetToDefaults();
         if (!File.Exists(_file)) return;
 
         try
@@ -573,8 +593,13 @@ public partial class RuntimeSettingsService
                 _gameEndPosted[channel] = at;
             }
 
-            _eventStart = saved?.EventStart;
-            _eventEnd = saved?.EventEnd;
+            // A time that cannot be used would stop every message and the app's start: it is dropped
+            _eventStart = IsValidEventTime(saved?.EventStart?.Value) ? saved?.EventStart : null;
+            _eventEnd = IsValidEventTime(saved?.EventEnd?.Value) ? saved?.EventEnd : null;
+            if (_eventStart != saved?.EventStart || _eventEnd != saved?.EventEnd)
+            {
+                _logger.LogError("{File} has an event time outside {Min}-{Max}; the time from appsettings is used", _file, MinEventTime.Year, MaxEventTime.Year);
+            }
 
             foreach (var (key, text) in saved?.SlackTexts ?? new Dictionary<string, string>())
             {
@@ -589,24 +614,50 @@ public partial class RuntimeSettingsService
                 _reminder = reminder;
             }
         }
-        catch (JsonException ex)
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
         {
-            // A damaged file must not stop the app; the reviewers from appsettings still apply
-            _logger.LogError(ex, "Could not read {File}; reviewers and names set in the app are not loaded", _file);
-            _addedReviewers = new List<string>();
+            // A damaged file must not stop the app; the reviewers from appsettings still apply.
+            // It is set aside rather than overwritten, so what was in it can still be recovered.
+            var aside = ex is JsonException ? DurableFile.Quarantine(_file, _logger) : null;
+            _logger.LogError(ex, "Could not read {File}; settings made in the app are not loaded{Aside}", _file,
+                aside == null ? "" : $" (kept as {aside})");
+            ResetToDefaults();
         }
     }
 
+    private void ResetToDefaults()
+    {
+        _addedReviewers = new List<string>();
+        _names = new Dictionary<string, SavedName>(StringComparer.OrdinalIgnoreCase);
+        _gameStartPosted = new Dictionary<string, DateTimeOffset>(StringComparer.OrdinalIgnoreCase);
+        _gameEndPosted = new Dictionary<string, DateTimeOffset>(StringComparer.OrdinalIgnoreCase);
+        _texts = new Dictionary<SlackText, string>();
+        _eventStart = null;
+        _eventEnd = null;
+        _blockAttempts = null;
+        _reminder = null;
+    }
+
+    /// <summary>
+    /// Writes the settings to the file. When that fails (disk full, no rights), the settings in memory go back to
+    /// what the file holds and the exception is thrown: the app never shows a change that a restart would lose.
+    /// </summary>
     private void Save()
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(_file)!);
-        var temp = _file + ".tmp";
         var settings = new SavedSettings { Reviewers = _addedReviewers, ReviewerNames = _names, GameStartPosted = _gameStartPosted,
             GameEndPosted = _gameEndPosted, EventStart = _eventStart, EventEnd = _eventEnd,
             SlackTexts = _texts.ToDictionary(t => t.Key.ToString(), t => t.Value),
             BlockAttemptsAfterApproval = _blockAttempts, ReviewReminder = _reminder };
-        File.WriteAllText(temp, JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true }));
-        File.Move(temp, _file, overwrite: true);
+        try
+        {
+            DurableFile.WriteAllText(_file, JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true }));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogError(ex, "Could not save {File}; the change is undone", _file);
+            Load();
+            throw;
+        }
     }
 
     [GeneratedRegex("^[A-Za-z0-9_.-]{2,50}$")]

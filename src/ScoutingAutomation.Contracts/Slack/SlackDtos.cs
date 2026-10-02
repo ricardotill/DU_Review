@@ -76,6 +76,10 @@ public class SlackEventItemDto
     [JsonPropertyName("reply_count")]
     public int ReplyCount { get; set; }
 
+    /// <summary>Who replied in the thread of this message; only set on a thread parent.</summary>
+    [JsonPropertyName("reply_users")]
+    public List<string>? ReplyUsers { get; set; }
+
     [JsonPropertyName("reactions")]
     public List<SlackMessageReactionDto>? Reactions { get; set; }
 }

@@ -1,6 +1,7 @@
 using Bunit;
 using FluentAssertions;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 using ScoutingAutomation.Domain.Enums;
 using ScoutingAutomation.Web.Components.Pages;
@@ -93,22 +94,25 @@ public class SlideshowPageTests : PageTestBase
     }
 
     [Fact]
-    public void Keyboard_ShouldNavigateAndEscapeShouldStop()
+    public async Task Keyboard_ShouldNavigateAndEscapeShouldStop()
     {
         Seed();
         var cut = RenderSlideshow();
         Start(cut);
+        // Awaited: on a busy machine the page may still be finishing earlier work, and a key that is
+        // only queued would show its result after the check
+        Task Press(string key) => cut.Find(".stage").KeyDownAsync(new KeyboardEventArgs { Key = key });
 
-        cut.Find(".stage").KeyDown(key: "ArrowRight");
+        await Press("ArrowRight");
         cut.Find(".position").TextContent.Should().Be("2 / 3");
 
-        cut.Find(".stage").KeyDown(key: "ArrowLeft");
+        await Press("ArrowLeft");
         cut.Find(".position").TextContent.Should().Be("1 / 3");
 
-        cut.Find(".stage").KeyDown(key: " ");
+        await Press(" ");
         cut.Find("button[aria-label=Afspelen]").Should().NotBeNull();
 
-        cut.Find(".stage").KeyDown(key: "Escape");
+        await Press("Escape");
         cut.FindAll(".stage").Should().BeEmpty();
     }
 

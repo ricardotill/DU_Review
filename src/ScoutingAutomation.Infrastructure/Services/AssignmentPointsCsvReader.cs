@@ -4,6 +4,7 @@ namespace ScoutingAutomation.Infrastructure.Services;
 
 /// <summary>
 /// Reads assignment points from a CSV with the header "Opdracht,standaard,awesome".
+/// Commas or semicolons both work (Dutch Excel saves with semicolons), and empty fields at the end of a line are ignored.
 /// </summary>
 public static class AssignmentPointsCsvReader
 {
@@ -12,13 +13,6 @@ public static class AssignmentPointsCsvReader
         var assignments = new List<Assignment>();
         var seenNumbers = new HashSet<int>();
         var lineNumber = 0;
-
-        // Skip header
-        if (reader.ReadLine() == null)
-        {
-            return assignments;
-        }
-        lineNumber++;
 
         string? line;
         while ((line = reader.ReadLine()) != null)
@@ -29,13 +23,25 @@ public static class AssignmentPointsCsvReader
                 continue;
             }
 
-            var parts = line.Split(',');
+            var parts = Split(line);
+
+            // The first line is the header, unless it already holds an assignment: then nothing may be skipped
+            if (lineNumber == 1 && !int.TryParse(parts[0], out _))
+            {
+                continue;
+            }
+
             if (parts.Length != 3
-                || !int.TryParse(parts[0].Trim(), out var number)
-                || !int.TryParse(parts[1].Trim(), out var standardPoints)
-                || !int.TryParse(parts[2].Trim(), out var awesomePoints))
+                || !int.TryParse(parts[0], out var number)
+                || !int.TryParse(parts[1], out var standardPoints)
+                || !int.TryParse(parts[2], out var awesomePoints))
             {
                 throw new FormatException($"Invalid assignment points on line {lineNumber}: '{line}'");
+            }
+
+            if (number < 0 || standardPoints < 0 || awesomePoints < 0)
+            {
+                throw new FormatException($"Negative number on line {lineNumber}: '{line}'");
             }
 
             if (!seenNumbers.Add(number))
@@ -52,5 +58,17 @@ public static class AssignmentPointsCsvReader
         }
 
         return assignments;
+    }
+
+    private static string[] Split(string line)
+    {
+        var separator = line.Contains(';') && !line.Contains(',') ? ';' : ',';
+        var parts = line.Split(separator).Select(p => p.Trim()).ToList();
+        while (parts.Count > 1 && parts[^1].Length == 0)
+        {
+            parts.RemoveAt(parts.Count - 1);
+        }
+
+        return parts.ToArray();
     }
 }

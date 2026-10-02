@@ -36,7 +36,10 @@ public sealed class FakeSlackApi : HttpMessageHandler
     /// <summary>Called before conversations.history answers; a test can hold the request open with it.</summary>
     public Func<string, Task>? BeforeHistory { get; set; }
 
-    /// <summary>Reactions returned by reactions.get, per "channel/ts". Without an entry, the message has none.</summary>
+    /// <summary>
+    /// Reactions returned by reactions.get, per "channel/ts". Without an entry, the reactions of the message in
+    /// <see cref="History"/> are returned, as Slack would; a message in neither has none.
+    /// </summary>
     public ConcurrentDictionary<string, object[]> Reactions { get; } = new();
 
     /// <summary>Names returned by users.info, per user ID. Unknown users give "user_not_found".</summary>
@@ -134,7 +137,7 @@ public sealed class FakeSlackApi : HttpMessageHandler
                 return Json(new { ok = true, messages = Replies.GetValueOrDefault(Arg("ts")) ?? Array.Empty<object>() });
 
             case "reactions.get":
-                return Json(new { ok = true, type = "message", message = new { reactions = Reactions.GetValueOrDefault(Key(Arg("channel"), Arg("timestamp"))) ?? Array.Empty<object>() } });
+                return Json(new { ok = true, type = "message", message = new { reactions = Reactions.GetValueOrDefault(Key(Arg("channel"), Arg("timestamp"))) ?? HistoryReactions(Arg("channel"), Arg("timestamp")) } });
 
             case "reactions.add":
                 return _botReactions.TryAdd((Arg("channel"), Arg("timestamp"), Arg("name")), 0)
@@ -197,6 +200,20 @@ public sealed class FakeSlackApi : HttpMessageHandler
         }
 
         return args;
+    }
+
+    private object HistoryReactions(string channel, string ts)
+    {
+        foreach (var message in History.GetValueOrDefault(channel) ?? Array.Empty<object>())
+        {
+            var json = System.Text.Json.JsonSerializer.SerializeToElement(message);
+            if (json.TryGetProperty("ts", out var t) && t.GetString() == ts && json.TryGetProperty("reactions", out var reactions))
+            {
+                return reactions;
+            }
+        }
+
+        return Array.Empty<object>();
     }
 
     private static HttpResponseMessage Json(object body) =>

@@ -104,6 +104,9 @@ public class SlackRebuildService : ISlackRebuildService
         _logger = logger;
     }
 
+    /// <summary>How long a rebuild waits for live events in progress to finish.</summary>
+    public TimeSpan DrainTimeout { get; init; } = TimeSpan.FromMinutes(3);
+
     public RebuildProgress Progress { get; private set; } = new();
 
     public event Action? Changed;
@@ -139,7 +142,19 @@ public class SlackRebuildService : ISlackRebuildService
                 throw new InvalidOperationException("Opnieuw opbouwen kan alleen met Slack verbonden (SimulationMode uit) en met een bot-token");
             }
 
-            using (await _gate.CloseAsync())
+            // A live event stuck on a stalled download would otherwise keep the rebuild waiting forever
+            using var drain = new CancellationTokenSource(DrainTimeout);
+            IDisposable paused;
+            try
+            {
+                paused = await _gate.CloseAsync(drain.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                throw new TimeoutException($"Live verwerking was na {DrainTimeout.TotalMinutes:0} minuten nog bezig; probeer het later opnieuw");
+            }
+
+            using (paused)
             {
                 await using var scope = _scopeFactory.CreateAsyncScope();
                 await RebuildAsync(scope.ServiceProvider, since, groupId);
@@ -195,7 +210,7 @@ public class SlackRebuildService : ISlackRebuildService
                 messages.AddRange(channelMessages.Select(m => (group, m)));
                 Update(p => p with { ChannelsRead = p.ChannelsRead + 1, MessagesFound = messages.Count });
             }
-            catch (Exception ex) when (ex is SlackApiException or HttpRequestException)
+            catch (Exception ex)
             {
                 var error = ex is SlackApiException slack ? slack.Error : ex.Message;
                 _logger.LogError(ex, "Could not read Slack channel {Channel} of group {Group}: {Error}", group.SlackChannelId, group.Name, error);
@@ -212,18 +227,26 @@ public class SlackRebuildService : ISlackRebuildService
         // 2. Back up and clear the current data
         Update(p => p with { Step = "Back-up maken" });
         var existing = await submissions.SearchSubmissionsAsync(new SubmissionFilter { GroupId = onlyGroup?.Id });
-        string backup;
-        if (onlyGroup != null)
+        var backup = onlyGroup != null
+            ? await _storage.MoveGroupToBackupAsync(onlyGroup.Name)
+            : await _storage.MoveAllToBackupAsync(groups.Select(g => g.Name).ToList());
+        try
         {
-            backup = await _storage.MoveGroupToBackupAsync(onlyGroup.Name);
             await WriteBackupAsync(backup, existing);
-            await submissions.DeleteByGroupAsync(onlyGroup.Id);
+            if (onlyGroup != null)
+            {
+                await submissions.DeleteByGroupAsync(onlyGroup.Id);
+            }
+            else
+            {
+                await submissions.DeleteAllAsync();
+            }
         }
-        else
+        catch
         {
-            backup = await _storage.MoveAllToBackupAsync();
-            await WriteBackupAsync(backup, existing);
-            await submissions.DeleteAllAsync();
+            // The files go back where the submissions still point to; nothing is lost
+            await _storage.RestoreBackupAsync(backup);
+            throw;
         }
 
         foreach (var group in groups)

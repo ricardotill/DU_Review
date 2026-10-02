@@ -19,6 +19,15 @@ public class SlackSocketModeService : BackgroundService
     private static readonly TimeSpan MinReconnectDelay = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan MaxReconnectDelay = TimeSpan.FromSeconds(30);
 
+    /// <summary>
+    /// How often the connection is checked. A connection dropped without a goodbye (Wi-Fi gone, laptop asleep, NAT timeout)
+    /// otherwise looks open forever: no events arrive, and no catch-up runs.
+    /// </summary>
+    internal static readonly TimeSpan KeepAlive = TimeSpan.FromSeconds(15);
+
+    /// <summary>A connection that lasted this long was healthy: a failure after it starts the back-off again.</summary>
+    private static readonly TimeSpan HealthyConnection = TimeSpan.FromMinutes(1);
+
     private readonly IOptions<ScoutingSettings> _options;
     private readonly ISlackSocketConnector _connector;
     private readonly IServiceScopeFactory _scopeFactory;
@@ -58,18 +67,25 @@ public class SlackSocketModeService : BackgroundService
             return;
         }
 
-        var queue = new SlackEventQueue(envelope => ProcessEventAsync(envelope, stoppingToken));
+        var queue = new SlackEventQueue(
+            envelope => ProcessEventAsync(envelope, stoppingToken),
+            // The events page already shows the failed event itself: logged under its own ID, so it does not show twice
+            (envelope, ex) => _logger.LogError(EventLogLoggerProvider.AlreadyShown, ex, "Failed to process Slack event {EventType}", envelope.Event?.Type));
 
         var delay = MinReconnectDelay;
         while (!stoppingToken.IsCancellationRequested)
         {
+            var connectedAt = DateTimeOffset.UtcNow;
             try
             {
                 _status.Set(SlackConnectionState.Connecting);
                 var url = await _connector.OpenConnectionAsync(slack.AppToken, stoppingToken);
 
                 using var socket = new ClientWebSocket();
+                socket.Options.KeepAliveInterval = KeepAlive;
+                socket.Options.KeepAliveTimeout = KeepAlive;
                 await socket.ConnectAsync(url, stoppingToken);
+                connectedAt = DateTimeOffset.UtcNow;
                 await ReceiveAsync(socket, queue, stoppingToken);
 
                 // A normal disconnect (Slack refreshes connections regularly): reconnect quickly
@@ -81,13 +97,15 @@ public class SlackSocketModeService : BackgroundService
             }
             catch (Exception ex)
             {
+                if (DateTimeOffset.UtcNow - connectedAt > HealthyConnection) delay = MinReconnectDelay;
                 _logger.LogWarning(ex, "Slack Socket Mode connection failed, retrying in {Delay}", delay);
                 _status.Set(SlackConnectionState.Error, ex.Message);
             }
 
             try
             {
-                await Task.Delay(delay, stoppingToken);
+                // A little randomness, so a restart of Slack's side does not have every app reconnect at once
+                await Task.Delay(delay + TimeSpan.FromMilliseconds(Random.Shared.Next(0, 250)), stoppingToken);
             }
             catch (OperationCanceledException)
             {
@@ -97,7 +115,8 @@ public class SlackSocketModeService : BackgroundService
             delay = TimeSpan.FromTicks(Math.Min(delay.Ticks * 2, MaxReconnectDelay.Ticks));
         }
 
-        // Finishes the events already received, e.g. a download in progress
+        // Waits for the lanes to end. Events still queued are not processed any more, as the app is stopping;
+        // Slack keeps them in the channels, and the catch-up after the next start picks them up.
         await queue.CompleteAsync();
     }
 
@@ -116,6 +135,7 @@ public class SlackSocketModeService : BackgroundService
                 if (result.MessageType == WebSocketMessageType.Close)
                 {
                     _logger.LogInformation("Slack closed the Socket Mode connection: {Status}", result.CloseStatusDescription);
+                    _status.Closed($"Slack sloot de verbinding ({result.CloseStatusDescription ?? "zonder reden"})");
                     return;
                 }
 
@@ -139,6 +159,11 @@ public class SlackSocketModeService : BackgroundService
                 await socket.SendAsync(Encoding.UTF8.GetBytes(ack), WebSocketMessageType.Text, endOfMessage: true, ct);
             }
 
+            if (received.Error != null)
+            {
+                _logger.LogWarning("Ignored unreadable Slack event in envelope {EnvelopeId}: {Error}", received.EnvelopeId, received.Error);
+            }
+
             if (received.Event != null)
             {
                 queue.Enqueue(received.Event);
@@ -156,6 +181,7 @@ public class SlackSocketModeService : BackgroundService
             if (received.IsDisconnect)
             {
                 _logger.LogInformation("Slack asked to reconnect: {Reason}", received.DisconnectReason);
+                _status.Closed($"Slack vroeg om opnieuw te verbinden ({received.DisconnectReason ?? "zonder reden"})");
                 await socket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "reconnecting", ct);
                 return;
             }
@@ -169,12 +195,9 @@ public class SlackSocketModeService : BackgroundService
             await using var scope = _scopeFactory.CreateAsyncScope();
             await scope.ServiceProvider.GetRequiredService<ISlackEventDispatcher>().DispatchAsync(envelope, ct);
         }
-        catch (Exception ex)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            if (!ct.IsCancellationRequested)
-            {
-                _logger.LogError(ex, "Failed to process Slack event {EventType}", envelope.Event?.Type);
-            }
+            // The app is stopping
         }
     }
 }

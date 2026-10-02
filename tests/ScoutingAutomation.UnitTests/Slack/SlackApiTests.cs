@@ -29,7 +29,6 @@ public class SlackClientTests
     [Theory]
     [InlineData(true, "xoxb-test", "https://files.slack.com/a.jpg")]
     [InlineData(false, null, "https://files.slack.com/a.jpg")]
-    [InlineData(false, "xoxb-test", "sim://a.jpg")]
     public async Task DownloadFileAsync_SimulatedCases_ShouldNotCallSlack(bool simulation, string? token, string url)
     {
         var handler = FakeHttpHandler.Json("{}");
@@ -105,12 +104,19 @@ public class SlackClientTests
     [Theory]
     [InlineData("""{"ok":false,"error":"missing_scope"}""", HttpStatusCode.OK)]
     [InlineData("""{"ok":false}""", HttpStatusCode.OK)]
-    [InlineData("oops", HttpStatusCode.InternalServerError)]
-    public async Task AddReactionAsync_OtherFailures_ShouldNotThrowAndReturnTrue(string response, HttpStatusCode status)
+    public async Task AddReactionAsync_LastingFailures_ShouldNotThrowAndReturnTrue(string response, HttpStatusCode status)
     {
         var added = await Create(FakeHttpHandler.Json(response, status)).AddReactionAsync("C1", "1.0", "warning");
 
         added.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task AddReactionAsync_PassingFailure_ShouldReturnFalseSoTheReplyWaitsForTheNextTry()
+    {
+        var added = await Create(FakeHttpHandler.Json("oops", HttpStatusCode.InternalServerError)).AddReactionAsync("C1", "1.0", "warning");
+
+        added.Should().BeFalse("without the emoji, the catch-up would post the same reply again each time");
     }
 
     [Theory]

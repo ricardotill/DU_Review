@@ -250,7 +250,11 @@ public class SlackSettings
     public string? SigningSecret { get; set; }
     /// <summary>App-level token (xapp-...) with connections:write, used for Socket Mode.</summary>
     public string? AppToken { get; set; }
-    public bool SimulationMode { get; set; } = true;
+    /// <summary>
+    /// Nothing goes to Slack and Slack's signature is not checked: for trying the app out only. Off unless set,
+    /// so a missing or broken Slack section never leaves the webhook open to fake reviews.
+    /// </summary>
+    public bool SimulationMode { get; set; }
 
     /// <summary>
     /// Receive events over an outgoing WebSocket instead of HTTP, so no public HTTPS address is needed.

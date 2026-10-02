@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using Microsoft.JSInterop;
 using ScoutingAutomation.Domain.Entities;
 
@@ -9,7 +10,7 @@ namespace ScoutingAutomation.Web.Favorites;
 /// Favorite submissions of this browser, kept in the "du_favorites" cookie.
 /// One instance per browser tab; every star on the page shares it.
 /// </summary>
-public class FavoritesService
+public partial class FavoritesService
 {
     /// <summary>A cookie holds about 4 KB; 300 keys of 11 characters stay well within it.</summary>
     public const int MaxFavorites = 300;
@@ -39,7 +40,10 @@ public class FavoritesService
         return Convert.ToBase64String(hash, 0, 8).TrimEnd('=').Replace('+', '-').Replace('/', '_');
     }
 
-    /// <summary>Reads the cookie once. Only call after the first render: JavaScript is not available before.</summary>
+    /// <summary>
+    /// Reads the cookie once. Only call after the first render: JavaScript is not available before.
+    /// Never throws: when the cookie cannot be read, there are no favorites, and a lost connection is tried again next time.
+    /// </summary>
     public Task EnsureLoadedAsync() => _loading ??= LoadAsync();
 
     public bool IsFavorite(Submission submission) => _keys.Contains(KeyFor(submission));
@@ -49,24 +53,55 @@ public class FavoritesService
     {
         await EnsureLoadedAsync();
         var key = KeyFor(submission);
-        if (!_keys.Remove(key))
+        var keys = new HashSet<string>(_keys, StringComparer.Ordinal);
+        if (!keys.Remove(key))
         {
-            if (_keys.Count >= MaxFavorites) return false;
-            _keys.Add(key);
+            if (keys.Count >= MaxFavorites) return false;
+            keys.Add(key);
         }
 
-        await _js.InvokeVoidAsync("duFavorites.set", string.Join('.', _keys));
+        // Changed only when the cookie took it, so the stars never show what the browser does not keep
+        try
+        {
+            await _js.InvokeVoidAsync("duFavorites.set", string.Join('.', keys));
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or TaskCanceledException or InvalidOperationException)
+        {
+            return true;
+        }
+
+        _keys = keys;
         Changed?.Invoke();
         return true;
     }
 
     private async Task LoadAsync()
     {
-        var cookie = await _js.InvokeAsync<string>("duFavorites.get");
+        string? cookie;
+        try
+        {
+            cookie = await _js.InvokeAsync<string>("duFavorites.get");
+        }
+        catch (JSException)
+        {
+            // The script failed: no favorites, rather than pages that stop working
+            cookie = "";
+        }
+        catch (Exception ex) when (ex is JSDisconnectedException or TaskCanceledException or InvalidOperationException)
+        {
+            // Not connected (yet): the next call tries again
+            _loading = null;
+            return;
+        }
+
+        // Only keys this app makes; anything else in the cookie is ignored
         _keys = new HashSet<string>(
-            (cookie ?? "").Split('.', StringSplitOptions.RemoveEmptyEntries).Take(MaxFavorites),
+            (cookie ?? "").Split('.', StringSplitOptions.RemoveEmptyEntries).Where(k => KeyPattern().IsMatch(k)).Take(MaxFavorites),
             StringComparer.Ordinal);
         IsLoaded = true;
         Changed?.Invoke();
     }
+
+    [GeneratedRegex("^[A-Za-z0-9_-]{11}$")]
+    private static partial Regex KeyPattern();
 }

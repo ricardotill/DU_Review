@@ -10,7 +10,10 @@ namespace ScoutingAutomation.Infrastructure.Extensions;
 
 public static class ServiceCollectionExtensions
 {
-    /// <summary>Time for one Slack call, including downloading a large video over a slow network.</summary>
+    /// <summary>
+    /// Outer limit for one Slack call. SlackClient sets shorter limits itself: per Web API call, and per read of a
+    /// download, so a large video over a slow network still gets through while a stalled one is given up.
+    /// </summary>
     public static readonly TimeSpan SlackClientTimeout = TimeSpan.FromMinutes(30);
 
     public static IServiceCollection AddScoutingInfrastructure(this IServiceCollection services, IConfiguration configuration)
@@ -25,6 +28,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IFileStorageService, LocalFileStorageService>();
         services.AddSingleton<ISubmissionChangeNotifier, SubmissionChangeNotifier>();
         services.AddSingleton<SlackEventLog>();
+        services.AddSingleton<Microsoft.Extensions.Logging.ILoggerProvider, EventLogLoggerProvider>();
         services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<ISlackRequestVerifier, SlackRequestVerifier>();
         services.AddScoped<ISlackEventDispatcher, SlackEventDispatcher>();
@@ -48,9 +52,14 @@ public static class ServiceCollectionExtensions
 #pragma warning disable EXTEXP0001
         services.AddHttpClient<ISlackClient, SlackClient>(http => http.Timeout = SlackClientTimeout)
             .RemoveAllResilienceHandlers();
+        // Also not the app-wide handler: its 30 s total and circuit breaker end a whole catch-up on one slow channel.
+        // SlackHistoryClient retries reads itself, waiting as long as Slack's rate limit asks.
+        services.AddHttpClient<ISlackHistoryClient, SlackHistoryClient>()
+            .RemoveAllResilienceHandlers();
 #pragma warning restore EXTEXP0001
-        services.AddHttpClient<ISlackHistoryClient, SlackHistoryClient>();
         services.AddSingleton<SlackProcessingGate>();
+        services.AddSingleton<SlackChannelLocks>();
+        services.AddSingleton<SlackOwnUploads>();
         services.AddSingleton<RuntimeSettingsService>();
         services.AddScoped<ReviewerNameFetcher>();
         services.AddScoped<GroupMessageSender>();

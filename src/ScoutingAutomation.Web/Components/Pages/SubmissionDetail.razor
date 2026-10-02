@@ -180,7 +180,7 @@ else
 
                         <div class="mb-2">
                             <label class="form-label text-secondary small fw-semibold mb-1">Reden (verplicht)</label>
-                            <textarea class="form-control form-control-dark" rows="2" placeholder="Waarom wordt dit buiten Slack aangepast?"
+                            <textarea class="form-control form-control-dark" rows="2" maxlength="@SubmissionWorkflowService.MaxOverrideReasonLength" placeholder="Waarom wordt dit buiten Slack aangepast?"
                                       @bind="overrideReason" @bind:event="oninput"></textarea>
                         </div>
 
@@ -207,6 +207,8 @@ else
 }
 
 @code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
     [Parameter]
     public Guid Id { get; set; }
 
@@ -225,9 +227,11 @@ else
     private string overrideReason = string.Empty;
     private bool overrideConfirmed;
     private string? overrideError;
+    private bool overriding;
 
     private bool CanOverride =>
-        submission != null
+        !overriding
+        && submission != null
         && overrideStatus.HasValue
         && overrideStatus != submission.Status
         && overrideConfirmed
@@ -249,10 +253,18 @@ else
 
     private async Task OverrideStatusAsync()
     {
+        // A double click would add the override twice
         if (!CanOverride) return;
+        overriding = true;
 
         try
         {
+            if (!await AdminActions.IsAdminAsync(AuthState))
+            {
+                overrideError = AdminActions.NotAdmin;
+                return;
+            }
+
             var submissionId = submission!.Id;
             var newStatus = overrideStatus!.Value;
             await RunInNewScopeAsync(services =>
@@ -265,6 +277,10 @@ else
         catch (Exception ex)
         {
             overrideError = $"Aanpassen mislukt: {ex.Message}";
+        }
+        finally
+        {
+            overriding = false;
         }
     }
 

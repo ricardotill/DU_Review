@@ -38,13 +38,19 @@ else
         <div class="stat-caption mt-1">
             <i class="bi bi-pencil-square text-info me-1"></i>Aangepast in de app.
             <AuthorizeView Roles="@KeyAuth.AdminRole">
-                <button type="button" class="btn btn-sm btn-link text-secondary p-0 align-baseline reset-text" @onclick="() => Runtime.ResetText(Kind)">Terug naar appsettings</button>
+                <button type="button" class="btn btn-sm btn-link text-secondary p-0 align-baseline reset-text" @onclick="Reset">Terug naar appsettings</button>
             </AuthorizeView>
         </div>
+    }
+    @if (error != null)
+    {
+        <div class="text-danger small mt-1">@error</div>
     }
 }
 
 @code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
     [Parameter, EditorRequired]
     public SlackText Kind { get; set; }
 
@@ -88,18 +94,23 @@ else
 
     private async Task Save()
     {
+        if (saving) return;
         saving = true;
         try
         {
             // Read from the editor itself, so the last keystrokes are never lost
             if (touched && composer != null) draft = await composer.GetMrkdwnAsync();
         }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or TaskCanceledException)
+        {
+            // The editor could not be read: what was typed so far is saved
+        }
         finally
         {
             saving = false;
         }
 
-        error = Runtime.SetText(Kind, draft);
+        error = await AdminActions.RunAsync(AuthState, () => Runtime.SetText(Kind, draft));
         if (error != null) return;
 
         editing = false;
@@ -112,6 +123,8 @@ else
         draft = text;
         return DraftChanged.InvokeAsync(draft);
     }
+
+    private async Task Reset() => error = await AdminActions.RunAsync(AuthState, () => Runtime.ResetText(Kind));
 
     private void Cancel()
     {

@@ -17,7 +17,7 @@
             <div class="small text-white mb-2 event-start">@Format(Runtime.EventStartGameTime)</div>
             <AuthorizeView Roles="@KeyAuth.AdminRole">
                 <form class="d-flex gap-2 align-items-start" @onsubmit="SaveStart">
-                    <input type="datetime-local" class="form-control form-control-dark form-control-sm start-input" aria-label="Starttijd" step="60" @bind="startDraft" />
+                    <input type="datetime-local" class="form-control form-control-dark form-control-sm start-input" aria-label="Starttijd" step="60" min="@MinTime" max="@MaxTime" @bind="startDraft" />
                     <button type="submit" class="btn btn-sm btn-scout-secondary text-nowrap save-start"><i class="bi bi-check-lg me-1"></i> Opslaan</button>
                 </form>
                 @if (startError != null)
@@ -25,6 +25,10 @@
                     <div class="text-danger small mt-1">@startError</div>
                 }
             </AuthorizeView>
+            @if (resetError != null)
+            {
+                <div class="text-danger small mt-1">@resetError</div>
+            }
             <Origin Changed="Runtime.IsEventStartChanged" Reset="ResetStart" Configured="@Format(ScoutingOptions.Value.EventStart)" />
         </div>
 
@@ -33,7 +37,7 @@
             <div class="small text-white mb-2 event-end">@Format(Runtime.EventEndGameTime)</div>
             <AuthorizeView Roles="@KeyAuth.AdminRole">
                 <form class="d-flex gap-2 align-items-start" @onsubmit="SaveEnd">
-                    <input type="datetime-local" class="form-control form-control-dark form-control-sm end-input" aria-label="Eindtijd" step="60" @bind="endDraft" />
+                    <input type="datetime-local" class="form-control form-control-dark form-control-sm end-input" aria-label="Eindtijd" step="60" min="@MinTime" max="@MaxTime" @bind="endDraft" />
                     <button type="submit" class="btn btn-sm btn-scout-secondary text-nowrap save-end"><i class="bi bi-check-lg me-1"></i> Opslaan</button>
                 </form>
                 @if (endError != null)
@@ -48,10 +52,16 @@
 </div>
 
 @code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private static readonly string MinTime = RuntimeSettingsService.MinEventTime.ToString("yyyy-MM-ddTHH:mm");
+    private static readonly string MaxTime = RuntimeSettingsService.MaxEventTime.AddMinutes(-1).ToString("yyyy-MM-ddTHH:mm");
+
     private DateTime? startDraft;
     private DateTime? endDraft;
     private string? startError;
     private string? endError;
+    private string? resetError;
 
     protected override void OnInitialized()
     {
@@ -62,20 +72,20 @@
 
     private static string Format(DateTime? time) => time?.ToString("dd-MM-yyyy HH:mm") ?? "geen";
 
-    private void SaveStart() => startError = Runtime.SetEventStart(startDraft);
+    private async Task SaveStart() => startError = await AdminActions.RunAsync(AuthState, () => Runtime.SetEventStart(startDraft));
 
-    private void SaveEnd() => endError = Runtime.SetEventEnd(endDraft);
+    private async Task SaveEnd() => endError = await AdminActions.RunAsync(AuthState, () => Runtime.SetEventEnd(endDraft));
 
-    private void ResetStart()
+    private async Task ResetStart()
     {
-        Runtime.ResetEventStart();
+        resetError = await AdminActions.RunAsync(AuthState, Runtime.ResetEventStart);
         startDraft = Runtime.EventStartGameTime;
         startError = null;
     }
 
-    private void ResetEnd()
+    private async Task ResetEnd()
     {
-        Runtime.ResetEventEnd();
+        resetError = await AdminActions.RunAsync(AuthState, Runtime.ResetEventEnd);
         endDraft = Runtime.EventEndGameTime;
         endError = null;
     }
