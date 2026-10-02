@@ -44,7 +44,7 @@ else
                 {
                     <circle class="marker" cx="@F(chart.X(point.At))" cy="@F(chart.Y(point.Total))" r="4" fill="@series.Color" />
                     <circle class="hit" cx="@F(chart.X(point.At))" cy="@F(chart.Y(point.Total))" r="12">
-                        <title>@series.Name · @point.At.ToGameTime().ToString("HH:mm") · opdracht @point.AssignmentNumber +@point.Points → @point.Total punten</title>
+                        <title>@series.Name · @point.At.ToGameTime().ToString("HH:mm") · @What(point) @Signed(point.Points) → @point.Total punten</title>
                     </circle>
                 }
             }
@@ -77,8 +77,8 @@ else
                             <tr>
                                 <td>@row.p.At.ToGameTime().ToString("HH:mm")</td>
                                 <td>@row.Name</td>
-                                <td>#@row.p.AssignmentNumber</td>
-                                <td class="text-end">+@row.p.Points</td>
+                                <td>@(row.p.Label ?? $"#{row.p.AssignmentNumber}")</td>
+                                <td class="text-end">@Signed(row.p.Points)</td>
                                 <td class="text-end">@row.p.Total</td>
                             </tr>
                         }
@@ -110,7 +110,12 @@ else
 
     private static string F(double value) => value.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
 
-    private sealed record ChartPoint(DateTimeOffset At, int AssignmentNumber, int Points, int Total);
+    private sealed record ChartPoint(DateTimeOffset At, int AssignmentNumber, int Points, int Total, string? Label = null);
+
+    private static string What(ChartPoint point) => point.Label ?? $"opdracht {point.AssignmentNumber}";
+
+    // Hand-entered points can be taken away again; a real minus sign reads better than a hyphen
+    private static string Signed(int points) => points < 0 ? $"\u2212{-points}" : $"+{points}";
 
     private sealed record ChartSeries(Guid GroupId, string Name, string Color, List<ChartPoint> Points, string Path)
     {
@@ -142,7 +147,8 @@ else
         if (to < events[^1].At) to = events[^1].At;
         if (to - from < TimeSpan.FromMinutes(10)) to = from + TimeSpan.FromMinutes(10);
 
-        var maxScore = Math.Max(1, events.GroupBy(e => e.GroupId).Max(g => g.Sum(e => e.Points)));
+        // The highest the line gets, not the end total: points taken away later must not cut off a peak
+        var maxScore = Math.Max(1, events.GroupBy(e => e.GroupId).Max(g => RunningTotals(g).Max()));
         var yStep = NiceStep(maxScore / 4.0);
         var yMax = (int)Math.Ceiling(maxScore / (double)yStep) * yStep;
 
@@ -155,7 +161,7 @@ else
         {
             var total = 0;
             var points = events.Where(e => e.GroupId == group.GroupId)
-                .Select(e => new ChartPoint(e.At, e.AssignmentNumber, e.Points, total += e.Points))
+                .Select(e => new ChartPoint(e.At, e.AssignmentNumber, e.Points, total += e.Points, e.Label))
                 .ToList();
 
             var path = new System.Text.StringBuilder($"M{F(X(from))},{F(Y(0))}");
@@ -196,6 +202,15 @@ else
         }
 
         return labels;
+    }
+
+    private static IEnumerable<int> RunningTotals(IEnumerable<ScoreEvent> events)
+    {
+        var total = 0;
+        foreach (var e in events)
+        {
+            yield return total += e.Points;
+        }
     }
 
     // 1, 2 or 5 times a power of ten

@@ -1,5 +1,8 @@
+using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ScoutingAutomation.Contracts.Slack;
+using ScoutingAutomation.Domain.Interfaces;
 
 namespace ScoutingAutomation.Infrastructure.Services;
 
@@ -20,6 +23,7 @@ public class SlackEventDispatcher : ISlackEventDispatcher
     private readonly SlackEventLog _eventLog;
     private readonly TimeProvider _time;
     private readonly ILogger<SlackEventDispatcher> _logger;
+    private readonly IServiceScopeFactory? _scopes;
 
     public SlackEventDispatcher(
         ISubmissionWorkflowService workflowService,
@@ -27,8 +31,10 @@ public class SlackEventDispatcher : ISlackEventDispatcher
         SlackEventLog eventLog,
         TimeProvider time,
         ILogger<SlackEventDispatcher> logger,
-        SlackChannelLocks? channels = null)
+        SlackChannelLocks? channels = null,
+        IServiceScopeFactory? scopes = null)
     {
+        _scopes = scopes;
         _workflowService = workflowService;
         _gate = gate;
         _channels = channels ?? new SlackChannelLocks();
@@ -121,12 +127,61 @@ public class SlackEventDispatcher : ISlackEventDispatcher
                 _ => (SlackEventOutcome.Processed, "", (IReadOnlyList<Guid>)Array.Empty<Guid>())
             };
             AddToLog(ev, kind, started, outcome, detail, ids);
+            await TrackAsync(ev, kind, outcome == SlackEventOutcome.Failed ? detail : null);
             return result;
         }
         catch (Exception ex)
         {
             AddToLog(ev, kind, started, SlackEventOutcome.Failed, $"Fout: {ex.Message}", Array.Empty<Guid>());
+            await TrackAsync(ev, kind, ex.Message);
             throw;
+        }
+    }
+
+    /// <summary>
+    /// The same event, delivered again or run again from the events page, has the same key. Reactions share one key
+    /// per message: running one again reads the message's reactions as Slack shows them now.
+    /// </summary>
+    public static string FailedEventKey(SlackEventItemDto ev, SlackEventKind kind) => kind switch
+    {
+        SlackEventKind.ReactionAdded or SlackEventKind.ReactionRemoved => $"Reaction:{ev.Item?.Channel}:{ev.Item?.Ts}",
+        SlackEventKind.Deleted => $"Deleted:{ev.Channel}:{ev.DeletedTs ?? ev.Message?.Ts}",
+        SlackEventKind.Edited => $"Edited:{ev.Channel}:{ev.Message?.Ts}",
+        _ => $"{kind}:{ev.Channel}:{ev.Ts}"
+    };
+
+    /// <summary>
+    /// Keeps a failed event for running it again, or marks an earlier failure of it as resolved.
+    /// Uses its own scope: after a failed save the workflow's database context may still hold the broken changes.
+    /// </summary>
+    private async Task TrackAsync(SlackEventItemDto ev, SlackEventKind kind, string? error)
+    {
+        if (_scopes == null) return;
+
+        var key = FailedEventKey(ev, kind);
+        try
+        {
+            await using var scope = _scopes.CreateAsyncScope();
+            var failures = scope.ServiceProvider.GetRequiredService<IFailedSlackEventRepository>();
+            if (error == null)
+            {
+                await failures.MarkResolvedAsync(key);
+                return;
+            }
+
+            var reacted = kind is SlackEventKind.ReactionAdded or SlackEventKind.ReactionRemoved;
+            await failures.RecordFailureAsync(
+                key,
+                kind.ToString(),
+                reacted ? ev.Item?.Channel : ev.Channel,
+                reacted ? ev.Item?.Ts : ev.Ts ?? ev.DeletedTs ?? ev.Message?.Ts,
+                JsonSerializer.Serialize(ev),
+                error);
+        }
+        catch (Exception ex)
+        {
+            // Never hides what happened to the event itself
+            _logger.LogError(ex, "Could not keep track of failed Slack event {Key}", key);
         }
     }
 

@@ -1,0 +1,157 @@
+@using Microsoft.Extensions.Logging
+@using ScoutingAutomation.Domain.Exceptions
+@inject IServiceScopeFactory ScopeFactory
+@inject ISubmissionChangeNotifier ChangeNotifier
+@inject ILogger<BonusPointsPanel> Logger
+
+@* Points earned outside Slack, entered by hand: one field per category per group. *@
+<AuthorizeView Roles="@KeyAuth.AdminRole">
+    <div class="glass-panel p-4 bonus-points">
+        <h2 class="panel-title"><i class="bi bi-trophy text-warning"></i> Extra punten</h2>
+        <p class="text-secondary small">
+            Punten voor @BonusCategory.Adventurers.Label() en @BonusCategory.TravelAgency.Label(). Ze tellen mee in de score en de stand,
+            en blijven staan bij opnieuw opbouwen uit Slack.
+        </p>
+
+        @if (rows.Count == 0)
+        {
+            <div class="text-secondary small">Nog geen groepen.</div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="custom-table">
+                    <thead>
+                        <tr>
+                            <th>Groep</th>
+                            <th style="width: 10rem;">@BonusCategory.Adventurers.Label()</th>
+                            <th style="width: 10rem;">@BonusCategory.TravelAgency.Label()</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in rows)
+                        {
+                            <tr @key="row.GroupId">
+                                <td class="text-white">@row.Name</td>
+                                <td><input type="number" min="0" max="@BonusPointsChange.MaxPoints" step="1" class="form-control form-control-dark form-control-sm adventurers"
+                                           aria-label="@($"{BonusCategory.Adventurers.Label()} voor {row.Name}")" @bind="row.Adventurers" /></td>
+                                <td><input type="number" min="0" max="@BonusPointsChange.MaxPoints" step="1" class="form-control form-control-dark form-control-sm travel-agency"
+                                           aria-label="@($"{BonusCategory.TravelAgency.Label()} voor {row.Name}")" @bind="row.TravelAgency" /></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="d-flex align-items-center gap-3 mt-3">
+                <button class="btn btn-scout-primary btn-sm save-bonus" disabled="@saving" @onclick="SaveAsync">
+                    <i class="bi bi-check2 me-1"></i> Opslaan
+                </button>
+                @if (message != null)
+                {
+                    <span class="small bonus-message @(messageIsError ? "text-danger" : "text-success")" role="status">@message</span>
+                }
+            </div>
+        }
+    </div>
+</AuthorizeView>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private sealed class Row
+    {
+        public Guid GroupId { get; init; }
+        public string Name { get; init; } = "";
+
+        /// <summary>As loaded: a save checks nobody changed them since.</summary>
+        public int SavedAdventurers { get; init; }
+        public int SavedTravelAgency { get; init; }
+
+        public int? Adventurers { get; set; }
+        public int? TravelAgency { get; set; }
+
+        public bool IsChanged => Adventurers != SavedAdventurers || TravelAgency != SavedTravelAgency;
+    }
+
+    private List<Row> rows = new();
+    private bool saving;
+    private string? message;
+    private bool messageIsError;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        // A fresh scope: the circuit's own DbContext would live as long as the tab
+        await using var scope = ScopeFactory.CreateAsyncScope();
+        var groups = await scope.ServiceProvider.GetRequiredService<IGroupRepository>().GetAllAsync();
+        rows = groups
+            .Select(g => new Row
+            {
+                GroupId = g.Id, Name = g.Name,
+                SavedAdventurers = g.AdventurersPoints, SavedTravelAgency = g.TravelAgencyPoints,
+                Adventurers = g.AdventurersPoints, TravelAgency = g.TravelAgencyPoints
+            })
+            .ToList();
+    }
+
+    private static bool IsValid(int? points) => points is >= 0 and <= BonusPointsChange.MaxPoints;
+
+    private async Task SaveAsync()
+    {
+        // An empty field or a typo saves nothing: half a pubquiz result on the scoreboard would mislead
+        var invalid = rows.FirstOrDefault(r => !IsValid(r.Adventurers) || !IsValid(r.TravelAgency));
+        if (invalid != null)
+        {
+            (message, messageIsError) = ($"Vul voor {invalid.Name} hele getallen van 0 tot en met {BonusPointsChange.MaxPoints} in. Er is niets opgeslagen.", true);
+            return;
+        }
+
+        // Only what this tab changed: rows left alone never undo what another admin entered meanwhile
+        var changes = rows
+            .Where(r => r.IsChanged)
+            .Select(r => new BonusPointsChange(r.GroupId, r.SavedAdventurers, r.SavedTravelAgency, r.Adventurers!.Value, r.TravelAgency!.Value))
+            .ToList();
+        if (changes.Count == 0)
+        {
+            (message, messageIsError) = ("Niets gewijzigd.", false);
+            return;
+        }
+
+        saving = true;
+        try
+        {
+            var error = await AdminActions.RunTaskAsync(AuthState, async () =>
+            {
+                await using var scope = ScopeFactory.CreateAsyncScope();
+                await scope.ServiceProvider.GetRequiredService<IGroupRepository>().SetBonusPointsAsync(changes);
+                return null;
+            });
+
+            if (error != null)
+            {
+                (message, messageIsError) = (error, true);
+                return;
+            }
+
+            ChangeNotifier.NotifyChanged();
+            (message, messageIsError) = ("Opgeslagen.", false);
+            await LoadAsync();
+        }
+        catch (BonusPointsConflictException ex)
+        {
+            (message, messageIsError) = (ex.Message, true);
+            await LoadAsync();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Logger.LogError(ex, "Saving bonus points failed");
+            (message, messageIsError) = ($"Dat is mislukt: {ex.Message}. Er is niets opgeslagen.", true);
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+}

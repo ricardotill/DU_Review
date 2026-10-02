@@ -10,11 +10,16 @@ public class ScoutingDbContext : DbContext
     }
 
     public const string UniqueFileIndexName = "IX_Submissions_SlackFile";
+    public const string FailedEventKeyIndexName = "IX_FailedSlackEvents_EventKey";
+    public const string FailedEventStatusIndexName = "IX_FailedSlackEvents_Status";
+    public const string BonusEntryGroupIndexName = "IX_BonusPointsEntries_GroupId";
 
     public DbSet<Group> Groups => Set<Group>();
     public DbSet<Assignment> Assignments => Set<Assignment>();
     public DbSet<Submission> Submissions => Set<Submission>();
     public DbSet<Review> Reviews => Set<Review>();
+    public DbSet<FailedSlackEvent> FailedSlackEvents => Set<FailedSlackEvent>();
+    public DbSet<BonusPointsEntry> BonusPointsEntries => Set<BonusPointsEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -86,6 +91,37 @@ public class ScoutingDbContext : DbContext
                   .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasIndex(r => r.SubmissionId);
+        });
+
+        // FailedSlackEvent
+        modelBuilder.Entity<FailedSlackEvent>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedOnAdd();
+            entity.Property(e => e.EventKey).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Kind).IsRequired().HasMaxLength(30);
+            entity.Property(e => e.ChannelId).HasMaxLength(50);
+            entity.Property(e => e.MessageTs).HasMaxLength(50);
+            entity.Property(e => e.PayloadJson).IsRequired();
+            entity.Property(e => e.Error).IsRequired().HasMaxLength(2000);
+            entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(20);
+            entity.HasIndex(e => e.EventKey).IsUnique().HasDatabaseName(FailedEventKeyIndexName);
+            entity.HasIndex(e => e.Status).HasDatabaseName(FailedEventStatusIndexName);
+        });
+
+        // BonusPointsEntry
+        modelBuilder.Entity<BonusPointsEntry>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedOnAdd();
+            entity.Property(e => e.Category).HasConversion<string>().HasMaxLength(20);
+
+            entity.HasOne(e => e.Group)
+                  .WithMany()
+                  .HasForeignKey(e => e.GroupId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(e => e.GroupId).HasDatabaseName(BonusEntryGroupIndexName);
         });
     }
 }

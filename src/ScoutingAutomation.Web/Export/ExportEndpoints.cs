@@ -29,7 +29,7 @@ public static class ExportEndpoints
 
         // Semicolons and a BOM: what Dutch Excel expects when the file is double-clicked
         var csv = new StringBuilder();
-        csv.Append("Plaats;Groep;Afkorting;Punten;Opdrachten;Open;Goedgekeurd;Awesome;Afgekeurd;Laatste upload\r\n");
+        csv.Append("Plaats;Groep;Afkorting;Punten;Avonturiers;Reisbureau;Opdrachten;Open;Goedgekeurd;Awesome;Afgekeurd;Laatste upload\r\n");
         foreach (var g in stats.GroupStatistics.OrderBy(g => g.Rank).ThenBy(g => g.GroupName))
         {
             csv.AppendJoin(';',
@@ -37,6 +37,8 @@ public static class ExportEndpoints
                 Field(g.GroupName),
                 Field(groupsById.GetValueOrDefault(g.GroupId)?.Abbreviation),
                 g.Score,
+                g.AdventurersPoints,
+                g.TravelAgencyPoints,
                 g.TotalSubmissions,
                 g.PendingCount,
                 g.ApprovedCount,

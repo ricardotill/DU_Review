@@ -37,16 +37,11 @@
 
 .beamer-body {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
     gap: 2rem;
-    align-items: start;
 }
 
 @media (max-width: 991.98px) {
-    .beamer-body {
-        grid-template-columns: minmax(0, 1fr);
-    }
-
     .beamer-header {
         padding-right: 0;
         padding-top: 4rem;

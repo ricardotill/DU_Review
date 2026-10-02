@@ -37,8 +37,12 @@ public class DatabaseInitializer
 
         if (_context.Database.IsSqlite())
         {
-            await AddSqliteColumnAsync("SubmitterName", "TEXT NULL", ct);
-            await AddSqliteColumnAsync("SlackFileId", "TEXT NULL", ct);
+            await AddSqliteColumnAsync("Submissions", "SubmitterName", "TEXT NULL", ct);
+            await AddSqliteColumnAsync("Submissions", "SlackFileId", "TEXT NULL", ct);
+            await AddSqliteColumnAsync("Groups", "AdventurersPoints", "INTEGER NOT NULL DEFAULT 0", ct);
+            await AddSqliteColumnAsync("Groups", "AdventurersPointsUpdatedAt", "TEXT NULL", ct);
+            await AddSqliteColumnAsync("Groups", "TravelAgencyPoints", "INTEGER NOT NULL DEFAULT 0", ct);
+            await AddSqliteColumnAsync("Groups", "TravelAgencyPointsUpdatedAt", "TEXT NULL", ct);
         }
         else if (_context.Database.IsNpgsql())
         {
@@ -46,6 +50,14 @@ public class DatabaseInitializer
                 "ALTER TABLE \"Submissions\" ADD COLUMN IF NOT EXISTS \"SubmitterName\" character varying(100) NULL", ct);
             await _context.Database.ExecuteSqlRawAsync(
                 "ALTER TABLE \"Submissions\" ADD COLUMN IF NOT EXISTS \"SlackFileId\" character varying(50) NULL", ct);
+            await _context.Database.ExecuteSqlRawAsync(
+                "ALTER TABLE \"Groups\" ADD COLUMN IF NOT EXISTS \"AdventurersPoints\" integer NOT NULL DEFAULT 0", ct);
+            await _context.Database.ExecuteSqlRawAsync(
+                "ALTER TABLE \"Groups\" ADD COLUMN IF NOT EXISTS \"AdventurersPointsUpdatedAt\" timestamp with time zone NULL", ct);
+            await _context.Database.ExecuteSqlRawAsync(
+                "ALTER TABLE \"Groups\" ADD COLUMN IF NOT EXISTS \"TravelAgencyPoints\" integer NOT NULL DEFAULT 0", ct);
+            await _context.Database.ExecuteSqlRawAsync(
+                "ALTER TABLE \"Groups\" ADD COLUMN IF NOT EXISTS \"TravelAgencyPointsUpdatedAt\" timestamp with time zone NULL", ct);
         }
         else
         {
@@ -56,20 +68,91 @@ public class DatabaseInitializer
         await _context.Database.ExecuteSqlRawAsync(
             $"CREATE UNIQUE INDEX IF NOT EXISTS \"{ScoutingDbContext.UniqueFileIndexName}\" ON \"Submissions\" " +
             "(\"SlackChannelId\", \"SlackMessageId\", \"SlackFileId\") WHERE \"SlackFileId\" IS NOT NULL", ct);
+
+        await AddFailedSlackEventsTableAsync(ct);
+        await AddBonusPointsEntriesTableAsync(ct);
     }
 
-    private async Task AddSqliteColumnAsync(string column, string definition, CancellationToken ct)
+    /// <summary>Added after the first release: a database created before it has no such table.</summary>
+    private async Task AddFailedSlackEventsTableAsync(CancellationToken ct)
+    {
+        var sql = _context.Database.IsSqlite()
+            ? """
+              CREATE TABLE IF NOT EXISTS "FailedSlackEvents" (
+                  "Id" TEXT NOT NULL CONSTRAINT "PK_FailedSlackEvents" PRIMARY KEY,
+                  "EventKey" TEXT NOT NULL,
+                  "Kind" TEXT NOT NULL,
+                  "ChannelId" TEXT NULL,
+                  "MessageTs" TEXT NULL,
+                  "PayloadJson" TEXT NOT NULL,
+                  "Error" TEXT NOT NULL,
+                  "Attempts" INTEGER NOT NULL,
+                  "Status" TEXT NOT NULL,
+                  "CreatedAt" TEXT NOT NULL,
+                  "UpdatedAt" TEXT NOT NULL)
+              """
+            : """
+              CREATE TABLE IF NOT EXISTS "FailedSlackEvents" (
+                  "Id" uuid NOT NULL CONSTRAINT "PK_FailedSlackEvents" PRIMARY KEY,
+                  "EventKey" character varying(200) NOT NULL,
+                  "Kind" character varying(30) NOT NULL,
+                  "ChannelId" character varying(50) NULL,
+                  "MessageTs" character varying(50) NULL,
+                  "PayloadJson" text NOT NULL,
+                  "Error" character varying(2000) NOT NULL,
+                  "Attempts" integer NOT NULL,
+                  "Status" character varying(20) NOT NULL,
+                  "CreatedAt" timestamp with time zone NOT NULL,
+                  "UpdatedAt" timestamp with time zone NOT NULL)
+              """;
+        await _context.Database.ExecuteSqlRawAsync(sql, ct);
+        await _context.Database.ExecuteSqlRawAsync(
+            $"CREATE UNIQUE INDEX IF NOT EXISTS \"{ScoutingDbContext.FailedEventKeyIndexName}\" ON \"FailedSlackEvents\" (\"EventKey\")", ct);
+        await _context.Database.ExecuteSqlRawAsync(
+            $"CREATE INDEX IF NOT EXISTS \"{ScoutingDbContext.FailedEventStatusIndexName}\" ON \"FailedSlackEvents\" (\"Status\")", ct);
+    }
+
+    /// <summary>Added after the first release: a database created before it has no such table.</summary>
+    private async Task AddBonusPointsEntriesTableAsync(CancellationToken ct)
+    {
+        var sql = _context.Database.IsSqlite()
+            ? """
+              CREATE TABLE IF NOT EXISTS "BonusPointsEntries" (
+                  "Id" TEXT NOT NULL CONSTRAINT "PK_BonusPointsEntries" PRIMARY KEY,
+                  "GroupId" TEXT NOT NULL,
+                  "Category" TEXT NOT NULL,
+                  "Delta" INTEGER NOT NULL,
+                  "Total" INTEGER NOT NULL,
+                  "ChangedAt" TEXT NOT NULL,
+                  CONSTRAINT "FK_BonusPointsEntries_Groups_GroupId" FOREIGN KEY ("GroupId") REFERENCES "Groups" ("Id") ON DELETE CASCADE)
+              """
+            : """
+              CREATE TABLE IF NOT EXISTS "BonusPointsEntries" (
+                  "Id" uuid NOT NULL CONSTRAINT "PK_BonusPointsEntries" PRIMARY KEY,
+                  "GroupId" uuid NOT NULL,
+                  "Category" character varying(20) NOT NULL,
+                  "Delta" integer NOT NULL,
+                  "Total" integer NOT NULL,
+                  "ChangedAt" timestamp with time zone NOT NULL,
+                  CONSTRAINT "FK_BonusPointsEntries_Groups_GroupId" FOREIGN KEY ("GroupId") REFERENCES "Groups" ("Id") ON DELETE CASCADE)
+              """;
+        await _context.Database.ExecuteSqlRawAsync(sql, ct);
+        await _context.Database.ExecuteSqlRawAsync(
+            $"CREATE INDEX IF NOT EXISTS \"{ScoutingDbContext.BonusEntryGroupIndexName}\" ON \"BonusPointsEntries\" (\"GroupId\")", ct);
+    }
+
+    private async Task AddSqliteColumnAsync(string table, string column, string definition, CancellationToken ct)
     {
         var exists = await _context.Database
-            .SqlQueryRaw<long>("SELECT COUNT(*) AS \"Value\" FROM pragma_table_info('Submissions') WHERE name = {0}", column)
+            .SqlQueryRaw<long>("SELECT COUNT(*) AS \"Value\" FROM pragma_table_info({0}) WHERE name = {1}", table, column)
             .SingleAsync(ct);
         if (exists == 0)
         {
-            // Column names come from this class, never from input
+            // Table and column names come from this class, never from input
 #pragma warning disable EF1002
-            await _context.Database.ExecuteSqlRawAsync($"ALTER TABLE \"Submissions\" ADD COLUMN \"{column}\" {definition}", ct);
+            await _context.Database.ExecuteSqlRawAsync($"ALTER TABLE \"{table}\" ADD COLUMN \"{column}\" {definition}", ct);
 #pragma warning restore EF1002
-            _logger.LogInformation("Added column {Column} to Submissions", column);
+            _logger.LogInformation("Added column {Column} to {Table}", column, table);
         }
     }
 

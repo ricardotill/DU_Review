@@ -87,6 +87,29 @@ public class ScoreboardPagesTests : PageTestBase
     }
 
     [Fact]
+    public void ScoreChart_PointsTakenAway_ShouldShowAStepDownAndKeepThePeakOnTheAxis()
+    {
+        var group = Guid.NewGuid();
+        var start = DateTimeOffset.UtcNow.AddHours(-2);
+        var stats = new Domain.Models.SubmissionStatistics
+        {
+            GroupStatistics = { new Domain.Models.GroupStatistic { GroupId = group, GroupName = "De Wolven", Score = 6 } },
+            ScoreEvents =
+            {
+                new Domain.Models.ScoreEvent(group, 0, start, 10, "Avonturiers"),
+                new Domain.Models.ScoreEvent(group, 0, start.AddHours(1), -4, "Avonturiers")
+            }
+        };
+
+        var cut = Render<ScoreChart>(p => p.Add(c => c.Stats, stats));
+
+        cut.FindAll("circle.hit title").Select(t => t.TextContent).Should().Contain(t => t.Contains("Avonturiers \u22124 → 6 punten"));
+        cut.FindAll("details tbody tr").Last().TextContent.Should().Contain("\u22124");
+        cut.FindAll("text.axis[text-anchor=end]").Select(t => t.TextContent).Should().Contain("10", "the line reached 10 before points were taken away");
+        cut.FindAll(".legend-item").Select(i => i.TextContent.Trim()).Should().Equal("De Wolven 6");
+    }
+
+    [Fact]
     public void ScoreChart_WithHighlight_ShouldShowOneGroupInColorAndTheOthersAsContext()
     {
         Seed();

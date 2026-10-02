@@ -1,6 +1,4 @@
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 using ScoutingAutomation.Domain.Entities;
 using ScoutingAutomation.Domain.Enums;
 using ScoutingAutomation.Domain.Exceptions;
@@ -137,6 +135,75 @@ public class SubmissionRepository : ISubmissionRepository
             assignmentsByNumber.TryGetValue(o.AssignmentNumber, out var assignment) ? assignment.PointsFor(o.Status) : 0);
     }
 
+    /// <summary>Points entered by hand, on the chart at each change.</summary>
+    private static IEnumerable<ScoreEvent> BonusEvents(IEnumerable<Group> groups, IReadOnlyCollection<BonusPointsEntry> history)
+    {
+        foreach (var group in groups)
+        {
+            foreach (var e in CategoryEvents(group, BonusCategory.Adventurers, group.AdventurersPoints,
+                         group.AdventurersPointsUpdatedAt, history))
+            {
+                yield return e;
+            }
+
+            foreach (var e in CategoryEvents(group, BonusCategory.TravelAgency, group.TravelAgencyPoints,
+                         group.TravelAgencyPointsUpdatedAt, history))
+            {
+                yield return e;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Changes this close together are one step on the chart: a typo fixed a minute later (100, then 10)
+    /// must not draw a spike that squashes every other line on the beamer.
+    /// </summary>
+    public static readonly TimeSpan BonusMergeWindow = TimeSpan.FromMinutes(5);
+
+    private static IEnumerable<ScoreEvent> CategoryEvents(
+        Group group, BonusCategory category, int current, DateTimeOffset? updatedAt, IReadOnlyCollection<BonusPointsEntry> history)
+    {
+        var steps = history
+            .Where(h => h.GroupId == group.Id && h.Category == category)
+            .OrderBy(h => h.ChangedAt)
+            .Select(h => (At: h.ChangedAt, Points: h.Delta))
+            .ToList();
+
+        // The current value on the group is what the scoreboard shows, so the chart follows it whatever the history says.
+        // Points from before the history was kept go before the first change; a surplus in the history (which should not
+        // happen) is taken off at the last change, so the line never dips below zero on the way.
+        var missing = current - steps.Sum(h => h.Points);
+        if (missing > 0)
+        {
+            steps.Insert(0, (steps.Count > 0 ? steps[0].At : updatedAt ?? group.CreatedAt, missing));
+        }
+        else if (missing < 0)
+        {
+            steps.Add((steps[^1].At, missing));
+        }
+
+        var label = category.Label();
+        DateTimeOffset? bucketAt = null;
+        var bucketPoints = 0;
+        foreach (var step in steps)
+        {
+            if (bucketAt != null && step.At - bucketAt.Value >= BonusMergeWindow)
+            {
+                if (bucketPoints != 0) yield return new ScoreEvent(group.Id, 0, bucketAt.Value, bucketPoints, label);
+                bucketAt = null;
+                bucketPoints = 0;
+            }
+
+            bucketAt ??= step.At;
+            bucketPoints += step.Points;
+        }
+
+        if (bucketAt != null && bucketPoints != 0)
+        {
+            yield return new ScoreEvent(group.Id, 0, bucketAt.Value, bucketPoints, label);
+        }
+    }
+
     public async Task<SubmissionStatistics> GetStatisticsAsync(CancellationToken ct = default)
     {
         var submissions = await _context.Submissions
@@ -164,6 +231,7 @@ public class SubmissionRepository : ISubmissionRepository
         // Group Stats
         var assignmentsByNumber = assignments.ToDictionary(a => a.Number);
         var groups = await _context.Groups.AsNoTracking().ToListAsync(ct);
+        var bonusHistory = await _context.BonusPointsEntries.AsNoTracking().ToListAsync(ct);
         foreach (var group in groups)
         {
             var groupOutcomes = outcomes.Where(o => o.GroupId == group.Id).ToList();
@@ -171,7 +239,9 @@ public class SubmissionRepository : ISubmissionRepository
             {
                 GroupId = group.Id,
                 GroupName = group.Name,
-                Score = CalculateScore(groupOutcomes, assignmentsByNumber),
+                Score = CalculateScore(groupOutcomes, assignmentsByNumber) + group.AdventurersPoints + group.TravelAgencyPoints,
+                AdventurersPoints = group.AdventurersPoints,
+                TravelAgencyPoints = group.TravelAgencyPoints,
                 TotalSubmissions = groupOutcomes.Count,
                 PendingCount = CountStatus(groupOutcomes, SubmissionStatus.Pending),
                 ApprovedCount = CountStatus(groupOutcomes, SubmissionStatus.Approved),
@@ -188,6 +258,7 @@ public class SubmissionRepository : ISubmissionRepository
                 o.AchievedAt,
                 assignmentsByNumber.TryGetValue(o.AssignmentNumber, out var assignment) ? assignment.PointsFor(o.Status) : 0))
             .Where(e => e.Points > 0)
+            .Concat(BonusEvents(groups, bonusHistory))
             .OrderBy(e => e.At)
             .ToList();
 
@@ -240,7 +311,7 @@ public class SubmissionRepository : ISubmissionRepository
         {
             await _context.SaveChangesAsync(ct);
         }
-        catch (DbUpdateException ex) when (IsUniqueViolation(ex))
+        catch (DbUpdateException ex) when (DbErrors.IsUniqueViolation(ex))
         {
             // Not saved: stop tracking it, or the next save would try again
             _context.Entry(submission).State = EntityState.Detached;
@@ -248,13 +319,6 @@ public class SubmissionRepository : ISubmissionRepository
                 $"File {submission.SlackFileId} of message {submission.SlackMessageId} is already registered", ex);
         }
     }
-
-    private static bool IsUniqueViolation(DbUpdateException ex) => ex.InnerException switch
-    {
-        SqliteException sqlite => sqlite.SqliteExtendedErrorCode == 2067, // SQLITE_CONSTRAINT_UNIQUE
-        PostgresException postgres => postgres.SqlState == PostgresErrorCodes.UniqueViolation,
-        _ => false
-    };
 
     public async Task UpdateAsync(Submission submission, CancellationToken ct = default)
     {

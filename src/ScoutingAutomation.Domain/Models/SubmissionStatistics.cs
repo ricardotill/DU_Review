@@ -34,13 +34,17 @@ public class SubmissionStatistics
     public List<ScoreEvent> ScoreEvents { get; set; } = new();
 }
 
-public sealed record ScoreEvent(Guid GroupId, int AssignmentNumber, DateTimeOffset At, int Points);
+/// <param name="Label">The bonus category for points entered by hand; null for an assignment.</param>
+public sealed record ScoreEvent(Guid GroupId, int AssignmentNumber, DateTimeOffset At, int Points, string? Label = null);
 
 public class GroupStatistic
 {
     public Guid GroupId { get; set; }
     public string GroupName { get; set; } = string.Empty;
+    /// <summary>Assignment points plus the points entered by hand.</summary>
     public int Score { get; set; }
+    public int AdventurersPoints { get; set; }
+    public int TravelAgencyPoints { get; set; }
 
     /// <summary>Leaderboard position by score; equal scores share a rank (1, 1, 3).</summary>
     public int Rank { get; set; }

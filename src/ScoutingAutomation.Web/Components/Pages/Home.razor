@@ -76,12 +76,8 @@ else
                             <th style="width: 3rem;">#</th>
                             <th>Groep</th>
                             <th class="text-center">Score</th>
-                            <th class="text-center">Opdrachten</th>
-                            <th class="text-center">Open</th>
-                            <th class="text-center">Goedgekeurd</th>
-                            <th class="text-center">Awesome</th>
-                            <th class="text-center">Afgekeurd</th>
-                            <th style="width: 180px;">Goedgekeurd %</th>
+                            <th class="text-center">Inzendingen</th>
+                            <th>Beoordeling</th>
                             <th>Laatst actief</th>
                         </tr>
                     </thead>
@@ -97,15 +93,24 @@ else
                                         <span class="badge bg-secondary font-monospace ms-1">@abbreviation</span>
                                     }
                                 </td>
-                                <td class="text-center fw-bold text-white fs-5">@g.Score</td>
-                                <td class="text-center text-white">@g.TotalSubmissions</td>
-                                <td class="text-center"><span class="badge badge-pending">@g.PendingCount</span></td>
-                                <td class="text-center"><span class="badge badge-approved">@g.ApprovedCount</span></td>
-                                <td class="text-center"><span class="badge badge-awesome">@g.AwesomeCount</span></td>
-                                <td class="text-center"><span class="badge badge-rejected">@g.RejectedCount</span></td>
-                                <td>
-                                    <div class="d-flex align-items-center gap-2">
-                                        <div class="progress-bar-custom flex-grow-1">
+                                <td class="text-center">
+                                    <div class="score-value fw-bold text-white fs-5">@g.Score</div>
+                                    <div class="score-bonus">
+                                        <span title="@BonusCategory.Adventurers.Label()">Av <span class="bonus-adventurers">@g.AdventurersPoints</span></span>
+                                        ·
+                                        <span title="@BonusCategory.TravelAgency.Label()">Rb <span class="bonus-travel">@g.TravelAgencyPoints</span></span>
+                                    </div>
+                                </td>
+                                <td class="submission-count text-center text-white">@g.TotalSubmissions</td>
+                                <td class="review-cell">
+                                    <div class="d-flex gap-1 mb-1">
+                                        <span class="badge badge-pending count-pending" title="Open">@g.PendingCount</span>
+                                        <span class="badge badge-approved count-approved" title="Goedgekeurd">@g.ApprovedCount</span>
+                                        <span class="badge badge-awesome count-awesome" title="Awesome">@g.AwesomeCount</span>
+                                        <span class="badge badge-rejected count-rejected" title="Afgekeurd">@g.RejectedCount</span>
+                                    </div>
+                                    <div class="d-flex align-items-center gap-2" title="Goedgekeurd %">
+                                        <div class="progress-bar-custom flex-grow-1" style="height: 6px;">
                                             <div class="progress-fill-scout" style="width: @(g.ApprovalRate)%"></div>
                                         </div>
                                         <span class="text-white-50 small">@g.ApprovalRate%</span>

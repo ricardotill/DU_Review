@@ -51,6 +51,14 @@ else
                 <div class="stat-label">Score</div>
                 <div class="stat-value text-white">@(groupStats?.Score ?? 0)</div>
                 <div class="stat-caption">Plaats @(groupStats?.Rank ?? 0) van @groupCount</div>
+                @if (groupStats is { } bonus && (bonus.AdventurersPoints > 0 || bonus.TravelAgencyPoints > 0))
+                {
+                    <div class="stat-caption score-breakdown">
+                        @(bonus.Score - bonus.AdventurersPoints - bonus.TravelAgencyPoints) opdrachten
+                        · @bonus.AdventurersPoints @BonusCategory.Adventurers.ShortLabel()
+                        · @bonus.TravelAgencyPoints @BonusCategory.TravelAgency.ShortLabel()
+                    </div>
+                }
             </div>
         </div>
         <div class="col-lg col-md-4 col-6">

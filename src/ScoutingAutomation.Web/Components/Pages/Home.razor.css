@@ -10,3 +10,13 @@
 .clickable-row {
     cursor: pointer;
 }
+
+.leaderboard .score-bonus {
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.5);
+    white-space: nowrap;
+}
+
+.leaderboard .review-cell {
+    min-width: 160px;
+}

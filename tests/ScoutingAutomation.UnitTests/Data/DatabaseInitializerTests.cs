@@ -3,7 +3,10 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using ScoutingAutomation.Contracts.Configuration;
+using ScoutingAutomation.Domain.Enums;
+using ScoutingAutomation.Domain.Models;
 using ScoutingAutomation.Infrastructure.Data;
+using ScoutingAutomation.Infrastructure.Repositories;
 using ScoutingAutomation.Infrastructure.Services;
 using Xunit;
 
@@ -79,6 +82,71 @@ public class DatabaseInitializerTests : IDisposable
             (await db.Assignments.CountAsync()).Should().Be(7, "assignments removed from the CSV are kept");
             (await db.Submissions.CountAsync()).Should().Be(before);
         }
+    }
+
+    [Fact]
+    public async Task InitializeAsync_GroupsTableFromBeforeBonusPoints_ShouldAddColumnsAndKeepValuesOnRestart()
+    {
+        var path = Path.Combine(_temp.Path, "old.db");
+        var options = new DbContextOptionsBuilder<ScoutingDbContext>().UseSqlite($"Data Source={path}").Options;
+        var settings = Settings();
+        await using (var db = new ScoutingDbContext(options))
+        {
+            // A database from before the bonus columns existed
+            await db.Database.EnsureCreatedAsync();
+            foreach (var column in new[] { "AdventurersPoints", "AdventurersPointsUpdatedAt", "TravelAgencyPoints", "TravelAgencyPointsUpdatedAt" })
+            {
+#pragma warning disable EF1002
+                await db.Database.ExecuteSqlRawAsync($"ALTER TABLE \"Groups\" DROP COLUMN \"{column}\"");
+#pragma warning restore EF1002
+            }
+
+            await Create(db, settings).InitializeAsync();
+            var wolves = await db.Groups.SingleAsync(g => g.SlackChannelId == "C1");
+            wolves.AdventurersPoints.Should().Be(0);
+            wolves.AdventurersPoints = 12;
+            wolves.TravelAgencyPoints = 7;
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = new ScoutingDbContext(options))
+        {
+            await Create(db, settings).InitializeAsync();
+
+            var wolves = await db.Groups.SingleAsync(g => g.SlackChannelId == "C1");
+            wolves.AdventurersPoints.Should().Be(12, "the group sync only changes the names from the settings");
+            wolves.TravelAgencyPoints.Should().Be(7);
+        }
+
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+    }
+
+    [Fact]
+    public async Task InitializeAsync_DatabaseFromBeforeBonusHistory_ShouldAddTheTableOnce()
+    {
+        var path = Path.Combine(_temp.Path, "old.db");
+        var options = new DbContextOptionsBuilder<ScoutingDbContext>().UseSqlite($"Data Source={path}").Options;
+        var settings = Settings();
+        await using (var db = new ScoutingDbContext(options))
+        {
+            await db.Database.EnsureCreatedAsync();
+            await db.Database.ExecuteSqlRawAsync("DROP TABLE \"BonusPointsEntries\"");
+
+            await Create(db, settings).InitializeAsync();
+            await Create(db, settings).InitializeAsync();
+
+            var wolves = await db.Groups.SingleAsync(g => g.SlackChannelId == "C1");
+            await new GroupRepository(db).SetBonusPointsAsync(new[] { new BonusPointsChange(wolves.Id, 0, 0, 5, 0) });
+        }
+
+        await using (var db = new ScoutingDbContext(options))
+        {
+            var entry = await db.BonusPointsEntries.SingleAsync();
+            entry.Category.Should().Be(BonusCategory.Adventurers);
+            entry.Delta.Should().Be(5);
+        }
+
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
     }
 
     [Fact]

@@ -23,6 +23,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISubmissionRepository, SubmissionRepository>();
         services.AddScoped<IGroupRepository, GroupRepository>();
         services.AddScoped<IAssignmentRepository, AssignmentRepository>();
+        services.AddScoped<IFailedSlackEventRepository, FailedSlackEventRepository>();
+        services.AddScoped<SlackEventRetryService>();
+        services.AddSingleton<SlackRetryLock>();
 
         services.AddSingleton<IAssignmentParser, AssignmentParser>();
         services.AddSingleton<IFileStorageService, LocalFileStorageService>();
