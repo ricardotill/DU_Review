@@ -2,7 +2,7 @@
 
 DU Review verwerkt de inzendingen van het **Destination Unknown regiospel**. Groepen plaatsen hun opdrachten als foto, video, geluidsopname of document in hun eigen Slack-kanaal. De jury beoordeelt ze met een emoji. DU Review doet de rest: bestanden opslaan en sorteren, punten tellen, en live een scorebord tonen.
 
-Zoek je uitleg voor groepen, jury en organisatie op de speeldag? Zie de **[handleiding](docs/handleiding.md)**.
+Zoek je uitleg voor de speeldag? Er is een handleiding per rol: voor **[groepen](docs/handleiding-groepen.md)**, voor de **[jury](docs/handleiding-jury.md)** en voor de **[organisatie](docs/handleiding-beheer.md)** (opzetten en beheren).
 
 ## Hoe het werkt
 
@@ -63,7 +63,7 @@ Meldingen van nieuwe inzendingen (rechtsonder) krijgt alleen de jury; een groep 
 
 Inzendingen en bestanden van andere groepen, de namen van juryleden, opmerkingen bij beoordelingen en alle pagina's voor de jury (zoals **Te beoordelen**, **Groepen**, **Opdrachten**, **Scorebord** en **Configuratie**) zijn voor een groep afgeschermd; die komt dan op **Geen toegang** uit. Nieuwe pagina's zijn standaard ook afgeschermd: alleen pagina's met `[GroupAccess]` staan open voor groepen, en zulke pagina's tonen een groep alleen haar eigen gegevens. Groepssleutels beheer je in beheermodus op **Beheer** > **Groepssleutels**: maak sleutels voor alle groepen, maak voor één groep een nieuwe sleutel of trek een sleutel in. Een nieuwe of ingetrokken sleutel logt die groep direct uit; de jury en andere groepen merken er niets van. De sleutels staan per Slack-kanaal in `access-keys.json`.
 
-> **Let op:** de sleutel en het login-cookie gaan onversleuteld over het netwerk als de app via gewone `http://` wordt geopend. Iedereen op hetzelfde netwerk kan ze dan meelezen. Gebruik HTTPS (bijvoorbeeld via een reverse proxy of tunnel) als de app buiten een vertrouwd netwerk bereikbaar is, en geef groepen alleen het HTTPS-adres. Logt een groep toch in via gewone `http://` van een ander apparaat, dan staat er een waarschuwing in het logboek. De app vertrouwt alleen een proxy op dezelfde computer (zoals `cloudflared` of `ngrok`); draait de proxy op een andere machine, voeg die dan toe aan de bekende proxy's, anders ziet de app voor iedereen hetzelfde adres.
+> **Let op:** de sleutel en het login-cookie gaan onversleuteld over het netwerk als de app via gewone `http://` wordt geopend. Iedereen op hetzelfde netwerk kan ze dan meelezen. Gebruik HTTPS (bijvoorbeeld via een reverse proxy of tunnel) als de app buiten een vertrouwd netwerk bereikbaar is, en geef groepen alleen het HTTPS-adres. Logt een groep toch in via gewone `http://` van een ander apparaat, dan staat er een waarschuwing in het logboek. De app vertrouwt een proxy op dezelfde computer (zoals `cloudflared` of `ngrok`) en de `cloudflared`-container uit `docker-compose.yml`; draait de proxy ergens anders, zet het adres dan in `ForwardedHeaders:KnownNetworks` (CIDR, bijvoorbeeld `"192.168.1.5/32"`), anders ziet de app voor iedereen hetzelfde adres. Zie [Via internet](#via-internet-cloudflare-tunnel).
 
 ## Favorieten
 
@@ -259,7 +259,19 @@ cp .env.example .env   # vul POSTGRES_PASSWORD, SLACK_BOT_TOKEN en SLACK_APP_TOK
 docker compose up -d --build
 ```
 
-De app draait dan op <http://localhost:5231>. Gegevens staan in Docker-volumes; zie de [handleiding](docs/handleiding.md#met-docker-compose-productie) voor sleutels, back-ups en het overnemen van instellingen.
+De app draait dan op <http://localhost:5231>. Gegevens staan in Docker-volumes; zie de [handleiding](docs/handleiding-beheer.md#met-docker-compose-productie) voor sleutels, back-ups en het overnemen van instellingen.
+
+### Via internet: Cloudflare Tunnel
+
+Om de app via internet op een HTTPS-adres te zetten (bijvoorbeeld `https://du.jouwdomein.nl`), zonder poorten open te zetten, gebruik je een [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/). Maak in het Cloudflare-dashboard een tunnel aan met een public hostname naar `http://localhost:5231` (`run-gameday.sh`) of `http://app:8080` (Docker Compose), en start dan:
+
+```bash
+cloudflared tunnel run --token <token>          # naast ./run-gameday.sh (brew install cloudflared)
+docker compose --profile tunnel up -d --build   # met CLOUDFLARE_TUNNEL_TOKEN in .env
+cloudflared tunnel --url http://localhost:5231  # snel testen: tijdelijk trycloudflare.com-adres, zonder account
+```
+
+Voor zes groepen en de jury is een gratis tunnel ruim genoeg; WebSockets (voor het live dashboard) werken, en bestanden komen via Slack binnen, dus de uploadgrens van Cloudflare speelt geen rol. Gebruik op de speeldag een vaste tunnel met eigen domein: een snelle tunnel krijgt bij elke start een nieuw adres. Stap voor stap staat in de [handleiding](docs/handleiding-beheer.md#via-internet-cloudflare-tunnel).
 
 Om zonder Slack te testen, zet je **simulatiemodus** aan met `Scouting:Slack:SimulationMode` = `true`, bijvoorbeeld in `appsettings.Development.json`. Er gaat dan niets naar Slack, en je kunt alles testen via de pagina **Slack-simulator**. Zonder die instelling staat simulatiemodus uit.
 
@@ -291,6 +303,7 @@ Alles staat onder `Scouting` in `src/ScoutingAutomation.Web/appsettings.json`. W
 | `TimeZone` | De tijdzone van het spel voor bestandsnamen en tijden op de pagina's (standaard `Europe/Amsterdam`). |
 | `EventStart` | De starttijd van het spel in de tijdzone van `TimeZone`, bijvoorbeeld `"2026-10-03T09:00"`. Slack-berichten van daarvoor worden stil genegeerd: geen inzending en geen feedback, ook niet bij inhalen of opnieuw opbouwen. Leeg (`null`) telt elk bericht mee. Ook in de app aan te passen. |
 | `EventEnd` | De eindtijd van het spel in de tijdzone van `TimeZone`, bijvoorbeeld `"2026-10-03T17:00"`. Inzendingen vanaf dat moment tellen niet. Leeg (`null`) betekent geen eindtijd. Ook in de app aan te passen. Zie **Eindtijd en eindbericht**. |
+| `ForwardedHeaders:KnownNetworks` | Buiten `Scouting`, optioneel: netwerken (CIDR) van een proxy op een andere machine of container, waarvan de app het doorgegeven bezoekersadres en HTTPS vertrouwt. Een proxy op dezelfde computer is altijd vertrouwd. Zie [Via internet](#via-internet-cloudflare-tunnel). |
 | `Slack` | Simulatiemodus, verbindingsmethode (`SocketMode`) en de Slack-geheimen: bot-token, App-Level Token of Signing Secret. `SimulationMode` staat standaard uit; in simulatiemodus controleert de app de handtekening van Slack niet, dus zet hem nooit aan op een server die van buiten bereikbaar is. |
 
 Lijsten in `appsettings.json` hebben geen standaardwaarden in de code, behalve `BonusCategories` als die helemaal ontbreekt. Wat in het bestand staat, is dus precies wat de app gebruikt.

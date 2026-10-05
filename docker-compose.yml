@@ -1,6 +1,6 @@
 # DU Review in production: PostgreSQL plus the app, data in Docker volumes.
 # Fill in .env first (copy .env.example), then: docker compose up -d --build
-# See docs/handleiding.md, "Met Docker Compose".
+# See docs/handleiding-beheer.md, "Met Docker Compose".
 
 services:
   db:
@@ -37,11 +37,38 @@ services:
       # Only used while access-keys.json does not exist yet; empty means the app generates a key
       Scouting__AccessKey: ${ACCESS_KEY:-}
       Scouting__AdminKey: ${ADMIN_KEY:-}
+      # Trust X-Forwarded-For/-Proto from the cloudflared container only (fixed address below)
+      ForwardedHeaders__KnownNetworks__0: 172.29.53.10/32
+    networks:
+      - default
+      - tunnel
     volumes:
       - app-data:/data
       - app-keys:/home/app/.aspnet/DataProtection-Keys
       # Edits to the points file count after `docker compose restart app`, without a rebuild
       - ./src/ScoutingAutomation.Web/opdrachtenpunten.csv:/app/opdrachtenpunten.csv:ro
+
+  # Optional HTTPS address via a Cloudflare Tunnel: set CLOUDFLARE_TUNNEL_TOKEN in .env, then
+  # docker compose --profile tunnel up -d. In Cloudflare the public hostname points to http://app:8080.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    profiles: ["tunnel"]
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      - app
+    networks:
+      tunnel:
+        ipv4_address: 172.29.53.10
+
+networks:
+  # Own network with a fixed address for cloudflared, so the app can trust exactly that address
+  tunnel:
+    ipam:
+      config:
+        - subnet: 172.29.53.0/24
 
 volumes:
   db-data:

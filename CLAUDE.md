@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 DU Review: a .NET 10 Blazor Server app that processes Slack submissions for the Destination Unknown scouting game. Groups post files in their own Slack channel with an assignment number; jury members review with emoji; the app downloads/sorts files, computes scores and shows a live dashboard.
 
-User-facing text, the README and `docs/` are in **Dutch**; code, comments, logs and tests are in English. Keep that split. When behavior changes, update the matching section of `README.md` (and `docs/slack-sync.md` / `docs/handleiding.md` where relevant).
+User-facing text, the README and `docs/` are in **Dutch**; code, comments, logs and tests are in English. Keep that split. When behavior changes, update the matching section of `README.md` (and `docs/slack-sync.md` / the role manuals `docs/handleiding-groepen.md`, `docs/handleiding-jury.md`, `docs/handleiding-beheer.md` where relevant; `docs/handleiding.md` is only an index).
 
 ## Commands
 

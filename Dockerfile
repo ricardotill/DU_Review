@@ -1,5 +1,5 @@
 # DU Review as a container: a Release build of the Web project, run as the non-root `app` user.
-# Build and run with docker-compose.yml (PostgreSQL plus this app); see docs/handleiding.md, "Met Docker Compose".
+# Build and run with docker-compose.yml (PostgreSQL plus this app); see docs/handleiding-beheer.md, "Met Docker Compose".
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 # The Web build runs `npm ci` for Bootstrap and the fonts: take Node and npm from the official Node image

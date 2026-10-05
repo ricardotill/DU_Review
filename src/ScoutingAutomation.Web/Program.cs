@@ -82,10 +82,16 @@ builder.Services.AddScoped<ScoutingAutomation.Web.Favorites.FavoritesService>();
 builder.Services.AddScoped<ScoutingAutomation.Web.Notifications.NotificationPreferences>();
 
 // Behind a reverse proxy that handles HTTPS: the login cookie is still marked Secure, and the login limiter sees
-// the visitor's address instead of the proxy's. Only proxies on this machine are trusted (the default).
+// the visitor's address instead of the proxy's. Proxies on this machine are trusted (the default); a proxy elsewhere,
+// such as cloudflared in its own container, is added with ForwardedHeaders:KnownNetworks (CIDR, e.g. "172.29.53.10/32").
+var knownProxyNetworks = builder.Configuration.GetSection("ForwardedHeaders:KnownNetworks").Get<string[]>() ?? [];
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    foreach (var network in knownProxyNetworks)
+    {
+        options.KnownIPNetworks.Add(System.Net.IPNetwork.Parse(network));
+    }
 });
 
 // One shared access key, plus an admin key and a key per group: see Auth/KeyAuth.cs

@@ -1,6 +1,9 @@
 <Solution>
   <Folder Name="/Documentation/">
     <File Path="docs\handleiding.md" />
+    <File Path="docs\handleiding-beheer.md" />
+    <File Path="docs\handleiding-groepen.md" />
+    <File Path="docs\handleiding-jury.md" />
     <File Path="docs\slack-koppelen.md" />
     <File Path="docs\slack-sync.md" />
   </Folder>
