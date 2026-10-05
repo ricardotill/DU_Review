@@ -4,7 +4,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
 using ScoutingAutomation.Contracts.Configuration;
-using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Infrastructure.Announcements;
+using ScoutingAutomation.Infrastructure.Settings;
 using Xunit;
 
 namespace ScoutingAutomation.IntegrationTests.Slack;

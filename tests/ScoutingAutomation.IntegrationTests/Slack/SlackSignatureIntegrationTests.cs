@@ -3,7 +3,7 @@ using System.Text;
 using FluentAssertions;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
-using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Infrastructure.Slack.Events;
 using Xunit;
 
 namespace ScoutingAutomation.IntegrationTests.Slack;

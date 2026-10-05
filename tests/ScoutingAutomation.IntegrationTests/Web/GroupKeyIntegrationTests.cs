@@ -5,7 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using ScoutingAutomation.Domain.Entities;
 using ScoutingAutomation.Domain.Interfaces;
 using ScoutingAutomation.Domain.Models;
-using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Infrastructure.Access;
 using Xunit;
 
 namespace ScoutingAutomation.IntegrationTests.Web;

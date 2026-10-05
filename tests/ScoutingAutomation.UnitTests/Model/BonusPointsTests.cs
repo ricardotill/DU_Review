@@ -9,7 +9,7 @@ using ScoutingAutomation.Domain.Exceptions;
 using ScoutingAutomation.Domain.Models;
 using ScoutingAutomation.Infrastructure.Data;
 using ScoutingAutomation.Infrastructure.Repositories;
-using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Infrastructure.Settings;
 using Xunit;
 
 namespace ScoutingAutomation.UnitTests.Model;

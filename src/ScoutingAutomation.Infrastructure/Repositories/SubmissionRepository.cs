@@ -6,7 +6,7 @@ using ScoutingAutomation.Domain.Interfaces;
 using ScoutingAutomation.Domain.Models;
 using ScoutingAutomation.Contracts.Configuration;
 using ScoutingAutomation.Infrastructure.Data;
-using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Infrastructure.Settings;
 
 namespace ScoutingAutomation.Infrastructure.Repositories;
 

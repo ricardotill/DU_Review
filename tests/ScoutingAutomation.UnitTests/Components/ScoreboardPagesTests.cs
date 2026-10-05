@@ -4,7 +4,7 @@ using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using ScoutingAutomation.Domain.Enums;
 using ScoutingAutomation.Domain.Interfaces;
-using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Infrastructure.Settings;
 using ScoutingAutomation.Web.Components.Pages;
 using ScoutingAutomation.Web.Components.Shared;
 using Xunit;

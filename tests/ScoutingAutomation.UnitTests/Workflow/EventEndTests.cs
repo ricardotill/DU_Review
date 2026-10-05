@@ -6,7 +6,9 @@ using ScoutingAutomation.Contracts.Configuration;
 using ScoutingAutomation.Contracts.Slack;
 using ScoutingAutomation.Domain.Entities;
 using ScoutingAutomation.Domain.Interfaces;
-using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Infrastructure.Slack;
+using ScoutingAutomation.Infrastructure.Slack.Sync;
+using ScoutingAutomation.Infrastructure.Workflow;
 using Xunit;
 
 namespace ScoutingAutomation.UnitTests.Workflow;

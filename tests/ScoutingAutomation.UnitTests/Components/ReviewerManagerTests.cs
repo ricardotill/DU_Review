@@ -3,7 +3,8 @@ using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using NSubstitute;
-using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Infrastructure.Settings;
+using ScoutingAutomation.Infrastructure.Slack;
 using ScoutingAutomation.Web.Components.Shared;
 using Xunit;
 

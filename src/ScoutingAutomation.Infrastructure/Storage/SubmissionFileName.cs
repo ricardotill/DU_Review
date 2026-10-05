@@ -1,0 +1,51 @@
+using ScoutingAutomation.Domain.Entities;
+
+namespace ScoutingAutomation.Infrastructure.Storage;
+
+public static class SubmissionFileName
+{
+    /// <summary>
+    /// Builds the stored file name "{abbreviation} {assignment code} {time}{extension}", e.g. "CDW 16 14-32-05.jpg" or "CDW A 14-32-05.jpg".
+    /// The time tells several attempts at one assignment apart; the game takes one day, so no date is needed.
+    /// <paramref name="postedAt"/> is written as given, so pass it in the time zone the files are read in.
+    /// Without an assignment code the original name is kept after the abbreviation.
+    /// Falls back to the group name when no abbreviation is configured.
+    /// <paramref name="index"/> numbers the files of a message with several files: "CDW 16 14-32-05 (2).jpg".
+    /// </summary>
+    public static string Build(Group group, string? assignmentCode, string originalFileName, DateTimeOffset postedAt, int? index = null)
+    {
+        var prefix = string.IsNullOrWhiteSpace(group.Abbreviation) ? group.Name : group.Abbreviation;
+        var extension = SafeExtension(originalFileName);
+        var suffix = assignmentCode ?? Path.GetFileNameWithoutExtension(originalFileName);
+        if (suffix.Length > MaxNamePartLength) suffix = suffix[..MaxNamePartLength];
+        if (prefix.Length > MaxNamePartLength) prefix = prefix[..MaxNamePartLength];
+
+        var number = index.HasValue ? $" ({index.Value})" : "";
+        return RemoveInvalidCharacters($"{prefix.Trim()} {suffix.Trim()} {postedAt:HH-mm-ss}{number}") + extension;
+    }
+
+    /// <summary>Longest group or original name part; with the rest the name stays far below the 255 bytes a file system allows.</summary>
+    private const int MaxNamePartLength = 60;
+
+    /// <summary>
+    /// The extension in lower case, when it is a plain one such as ".jpg"; otherwise none. The name comes from
+    /// the scout's phone: an "extension" of 200 characters or with odd characters would make the file unstorable.
+    /// </summary>
+    private static string SafeExtension(string originalFileName)
+    {
+        var extension = Path.GetExtension(originalFileName).ToLowerInvariant();
+        return extension.Length is >= 2 and <= 11 && extension.Skip(1).All(c => c is >= 'a' and <= 'z' or >= '0' and <= '9')
+            ? extension
+            : "";
+    }
+
+    // Windows-invalid characters are removed on every OS so stored files stay portable
+    private static readonly HashSet<char> InvalidCharacters =
+        new(Path.GetInvalidFileNameChars().Concat("\\/:*?\"<>|"));
+
+    private static string RemoveInvalidCharacters(string name)
+    {
+        var cleaned = new string(name.Where(c => !InvalidCharacters.Contains(c) && !char.IsControl(c)).ToArray()).Trim();
+        return string.IsNullOrEmpty(cleaned) ? $"file_{Guid.NewGuid():N}" : cleaned;
+    }
+}

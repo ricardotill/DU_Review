@@ -1,5 +1,5 @@
 using Microsoft.AspNetCore.Components;
-using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Infrastructure.Workflow;
 
 namespace ScoutingAutomation.Web.Components.Shared;
 

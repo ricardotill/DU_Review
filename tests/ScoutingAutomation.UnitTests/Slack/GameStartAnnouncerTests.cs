@@ -6,7 +6,9 @@ using NSubstitute;
 using ScoutingAutomation.Contracts.Configuration;
 using ScoutingAutomation.Domain.Entities;
 using ScoutingAutomation.Domain.Interfaces;
-using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Infrastructure.Announcements;
+using ScoutingAutomation.Infrastructure.Settings;
+using ScoutingAutomation.Infrastructure.Slack;
 using Xunit;
 
 namespace ScoutingAutomation.UnitTests.Slack;

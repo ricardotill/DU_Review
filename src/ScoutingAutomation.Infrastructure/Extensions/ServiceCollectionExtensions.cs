@@ -4,7 +4,16 @@ using Microsoft.Extensions.DependencyInjection;
 using ScoutingAutomation.Contracts.Configuration;
 using ScoutingAutomation.Domain.Interfaces;
 using ScoutingAutomation.Infrastructure.Repositories;
-using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Infrastructure.Access;
+using ScoutingAutomation.Infrastructure.Announcements;
+using ScoutingAutomation.Infrastructure.Data;
+using ScoutingAutomation.Infrastructure.Settings;
+using ScoutingAutomation.Infrastructure.Slack;
+using ScoutingAutomation.Infrastructure.Slack.Events;
+using ScoutingAutomation.Infrastructure.Slack.SocketMode;
+using ScoutingAutomation.Infrastructure.Slack.Sync;
+using ScoutingAutomation.Infrastructure.Storage;
+using ScoutingAutomation.Infrastructure.Workflow;
 
 namespace ScoutingAutomation.Infrastructure.Extensions;
 

@@ -8,7 +8,9 @@ using ScoutingAutomation.Domain.Entities;
 using ScoutingAutomation.Domain.Enums;
 using ScoutingAutomation.Domain.Interfaces;
 using ScoutingAutomation.Domain.Models;
-using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Infrastructure.Announcements;
+using ScoutingAutomation.Infrastructure.Settings;
+using ScoutingAutomation.Infrastructure.Slack;
 using Xunit;
 
 namespace ScoutingAutomation.UnitTests.Slack;

@@ -3,7 +3,7 @@ using FluentAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using ScoutingAutomation.Infrastructure.Extensions;
-using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Infrastructure.Slack;
 using Xunit;
 
 namespace ScoutingAutomation.UnitTests.Slack;

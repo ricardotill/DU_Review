@@ -40,7 +40,7 @@ Projects (dependency direction: Web → Infrastructure → Domain/Contracts):
 
 - **Contracts**: `ScoutingSettings` (the `Scouting` config section) and Slack DTOs.
 - **Domain**: entities, enums, repository interfaces, and the rules (best status wins, points per assignment counted once per group).
-- **Infrastructure**: almost all logic lives in `Services/`; all registration is in `Extensions/ServiceCollectionExtensions.cs`.
+- **Infrastructure**: logic is grouped by feature, namespace follows folder: `Workflow/` (submission workflow, review queue, change notifier), `Slack/` (API + history clients) with `Slack/Events` (dispatcher, queue, event log, retry, locks/gate, request verifier), `Slack/SocketMode` and `Slack/Sync` (catch-up, rebuild), `Announcements/`, `Settings/` (runtime settings, `GameTime`), `Access/`, `Storage/`, `Data/` (DbContext, `DatabaseInitializer`, CSV reader), `Repositories/`. All registration is in `Extensions/ServiceCollectionExtensions.cs`.
 - **Web**: Blazor pages/components, `Program.cs` (DB selection, auth, `/api/slack/events` webhook, export endpoints), key-based auth in `Auth/`.
 - **AppHost / ServiceDefaults**: Aspire host with PostgreSQL.
 

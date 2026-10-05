@@ -129,8 +129,8 @@ public sealed class TestApp : IAsyncDisposable
 
         return new TestApp(baseFactory, all, s =>
         {
-            s.AddHttpClient<Infrastructure.Services.ISlackClient, Infrastructure.Services.SlackClient>().ConfigurePrimaryHttpMessageHandler(() => slack);
-            s.AddHttpClient<Infrastructure.Services.ISlackHistoryClient, Infrastructure.Services.SlackHistoryClient>().ConfigurePrimaryHttpMessageHandler(() => slack);
+            s.AddHttpClient<Infrastructure.Slack.ISlackClient, Infrastructure.Slack.SlackClient>().ConfigurePrimaryHttpMessageHandler(() => slack);
+            s.AddHttpClient<Infrastructure.Slack.ISlackHistoryClient, Infrastructure.Slack.SlackHistoryClient>().ConfigurePrimaryHttpMessageHandler(() => slack);
             services?.Invoke(s);
         });
     }
@@ -225,7 +225,7 @@ public sealed class TestApp : IAsyncDisposable
         };
         request.Headers.Add("X-Slack-Request-Timestamp", ts);
         request.Headers.Add("X-Slack-Signature",
-            Infrastructure.Services.SlackRequestVerifier.ComputeSignature(signingSecret, ts, System.Text.Encoding.UTF8.GetBytes(body)));
+            Infrastructure.Slack.Events.SlackRequestVerifier.ComputeSignature(signingSecret, ts, System.Text.Encoding.UTF8.GetBytes(body)));
         return request;
     }
 

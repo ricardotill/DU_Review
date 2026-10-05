@@ -6,7 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using ScoutingAutomation.Domain.Enums;
 using ScoutingAutomation.Domain.Interfaces;
 using ScoutingAutomation.Domain.Models;
-using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Infrastructure.Settings;
 using Xunit;
 
 namespace ScoutingAutomation.IntegrationTests.Web;

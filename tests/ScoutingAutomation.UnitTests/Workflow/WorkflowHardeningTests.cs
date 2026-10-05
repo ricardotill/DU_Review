@@ -13,7 +13,11 @@ using ScoutingAutomation.Domain.Interfaces;
 using ScoutingAutomation.Domain.Models;
 using ScoutingAutomation.Infrastructure.Data;
 using ScoutingAutomation.Infrastructure.Repositories;
-using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Infrastructure.Settings;
+using ScoutingAutomation.Infrastructure.Slack;
+using ScoutingAutomation.Infrastructure.Slack.Events;
+using ScoutingAutomation.Infrastructure.Storage;
+using ScoutingAutomation.Infrastructure.Workflow;
 using Xunit;
 
 namespace ScoutingAutomation.UnitTests.Workflow;

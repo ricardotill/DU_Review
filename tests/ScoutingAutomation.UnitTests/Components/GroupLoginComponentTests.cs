@@ -1,7 +1,8 @@
 using Bunit;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
-using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Infrastructure.Settings;
+using ScoutingAutomation.Infrastructure.Workflow;
 using ScoutingAutomation.Web.Components.Layout;
 using ScoutingAutomation.Web.Components.Pages;
 using ScoutingAutomation.Web.Components.Shared;

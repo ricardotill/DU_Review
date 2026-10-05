@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using FluentAssertions;
 using ScoutingAutomation.Contracts.Slack;
-using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Infrastructure.Slack.Events;
 using Xunit;
 
 namespace ScoutingAutomation.UnitTests.Slack;

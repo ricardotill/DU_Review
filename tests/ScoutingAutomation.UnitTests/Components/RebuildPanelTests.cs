@@ -3,7 +3,7 @@ using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using ScoutingAutomation.Contracts.Configuration;
-using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Infrastructure.Slack.Sync;
 using ScoutingAutomation.Web.Components.Pages;
 using ScoutingAutomation.Web.Components.Shared;
 using Xunit;

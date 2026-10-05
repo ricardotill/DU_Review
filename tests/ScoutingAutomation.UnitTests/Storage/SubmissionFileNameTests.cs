@@ -1,6 +1,6 @@
 using FluentAssertions;
 using ScoutingAutomation.Domain.Entities;
-using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Infrastructure.Storage;
 using Xunit;
 
 namespace ScoutingAutomation.UnitTests.Storage;

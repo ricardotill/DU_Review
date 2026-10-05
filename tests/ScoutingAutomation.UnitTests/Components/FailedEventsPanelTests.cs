@@ -5,7 +5,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using ScoutingAutomation.Domain.Entities;
 using ScoutingAutomation.Domain.Interfaces;
-using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Infrastructure.Slack.Events;
+using ScoutingAutomation.Infrastructure.Slack.Sync;
 using ScoutingAutomation.Web.Components.Shared;
 using Xunit;
 

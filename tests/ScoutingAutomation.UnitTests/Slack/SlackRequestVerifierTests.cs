@@ -2,7 +2,7 @@ using System.Text;
 using FluentAssertions;
 using Microsoft.Extensions.Options;
 using ScoutingAutomation.Contracts.Configuration;
-using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Infrastructure.Slack.Events;
 using Xunit;
 
 namespace ScoutingAutomation.UnitTests.Slack;

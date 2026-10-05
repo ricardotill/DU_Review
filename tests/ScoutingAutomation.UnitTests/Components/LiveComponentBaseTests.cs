@@ -3,7 +3,7 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Components.Rendering;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Infrastructure.Workflow;
 using ScoutingAutomation.Web.Components.Shared;
 using Xunit;
 

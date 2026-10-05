@@ -15,7 +15,10 @@ using ScoutingAutomation.Domain.Enums;
 using ScoutingAutomation.Domain.Interfaces;
 using ScoutingAutomation.Infrastructure.Data;
 using ScoutingAutomation.Infrastructure.Extensions;
-using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Infrastructure.Slack;
+using ScoutingAutomation.Infrastructure.Slack.Events;
+using ScoutingAutomation.Infrastructure.Slack.Sync;
+using ScoutingAutomation.Infrastructure.Workflow;
 using Xunit;
 
 namespace ScoutingAutomation.UnitTests.Slack;

@@ -11,7 +11,12 @@ using ScoutingAutomation.Contracts.Configuration;
 using ScoutingAutomation.Contracts.Slack;
 using ScoutingAutomation.Domain.Entities;
 using ScoutingAutomation.Domain.Interfaces;
-using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Infrastructure.Announcements;
+using ScoutingAutomation.Infrastructure.Slack;
+using ScoutingAutomation.Infrastructure.Slack.Events;
+using ScoutingAutomation.Infrastructure.Slack.SocketMode;
+using ScoutingAutomation.Infrastructure.Slack.Sync;
+using ScoutingAutomation.Infrastructure.Workflow;
 using Xunit;
 
 namespace ScoutingAutomation.UnitTests.Slack;
@@ -198,7 +203,7 @@ public class SlackResilienceTests
         var log = NewLog();
         var services = new ServiceCollection().AddSingleton(log).BuildServiceProvider();
         using var provider = new EventLogLoggerProvider(services);
-        var logger = provider.CreateLogger("ScoutingAutomation.Infrastructure.Services.GameStartAnnouncer");
+        var logger = provider.CreateLogger("ScoutingAutomation.Infrastructure.Announcements.GameStartAnnouncer");
 
         logger.LogWarning("only a warning");
         logger.LogError(new IOException("disk full"), "Posting the {Name} message failed", "game-start");

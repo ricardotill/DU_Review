@@ -2,7 +2,8 @@ using FluentAssertions;
 using ScoutingAutomation.Domain.Entities;
 using ScoutingAutomation.Domain.Enums;
 using ScoutingAutomation.Domain.Models;
-using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Infrastructure.Data;
+using ScoutingAutomation.Infrastructure.Slack.SocketMode;
 using Xunit;
 
 namespace ScoutingAutomation.UnitTests.Model;

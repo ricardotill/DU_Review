@@ -7,8 +7,8 @@ namespace ScoutingAutomation.UnitTests;
 internal static class TestRuntime
 {
     /// <summary>Runtime settings for the given options; nothing is read from or written to disk until a reviewer is added.</summary>
-    public static ScoutingAutomation.Infrastructure.Services.RuntimeSettingsService For(Microsoft.Extensions.Options.IOptions<ScoutingAutomation.Contracts.Configuration.ScoutingSettings> options) =>
-        new(options, Microsoft.Extensions.Logging.Abstractions.NullLogger<ScoutingAutomation.Infrastructure.Services.RuntimeSettingsService>.Instance);
+    public static ScoutingAutomation.Infrastructure.Settings.RuntimeSettingsService For(Microsoft.Extensions.Options.IOptions<ScoutingAutomation.Contracts.Configuration.ScoutingSettings> options) =>
+        new(options, Microsoft.Extensions.Logging.Abstractions.NullLogger<ScoutingAutomation.Infrastructure.Settings.RuntimeSettingsService>.Instance);
 }
 
 internal static class TestDb

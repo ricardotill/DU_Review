@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Components.Forms;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
-using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Infrastructure.Slack;
 using ScoutingAutomation.Web.Components.Pages;
 using Xunit;
 

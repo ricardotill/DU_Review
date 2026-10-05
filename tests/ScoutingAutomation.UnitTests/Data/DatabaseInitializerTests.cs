@@ -8,7 +8,8 @@ using ScoutingAutomation.Domain.Enums;
 using ScoutingAutomation.Domain.Models;
 using ScoutingAutomation.Infrastructure.Data;
 using ScoutingAutomation.Infrastructure.Repositories;
-using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Infrastructure.Settings;
+using ScoutingAutomation.Infrastructure.Storage;
 using Xunit;
 
 namespace ScoutingAutomation.UnitTests.Data;

@@ -9,7 +9,7 @@ using ScoutingAutomation.Domain.Enums;
 using ScoutingAutomation.Domain.Interfaces;
 using ScoutingAutomation.Domain.Models;
 using ScoutingAutomation.Infrastructure.Repositories;
-using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Infrastructure.Workflow;
 using ScoutingAutomation.Web.Components.Pages;
 using Xunit;
 

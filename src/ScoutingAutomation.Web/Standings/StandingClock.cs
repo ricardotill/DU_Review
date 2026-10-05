@@ -1,5 +1,5 @@
 using ScoutingAutomation.Domain.Models;
-using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Infrastructure.Settings;
 
 namespace ScoutingAutomation.Web.Standings;
 

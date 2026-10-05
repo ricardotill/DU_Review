@@ -1,7 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using FluentAssertions;
-using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Infrastructure.Slack.SocketMode;
 using Xunit;
 
 namespace ScoutingAutomation.UnitTests.Slack;

@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using ScoutingAutomation.Contracts.Configuration;
-using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Infrastructure.Access;
 using ScoutingAutomation.Web.Auth;
 using ScoutingAutomation.Web.Components.Pages;
 using Xunit;

@@ -4,7 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using ScoutingAutomation.Domain.Enums;
 using ScoutingAutomation.Domain.Interfaces;
 using ScoutingAutomation.Domain.Models;
-using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Infrastructure.Slack.Sync;
 using Xunit;
 
 namespace ScoutingAutomation.IntegrationTests.Slack;

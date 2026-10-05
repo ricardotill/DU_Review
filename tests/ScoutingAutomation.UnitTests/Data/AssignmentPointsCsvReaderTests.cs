@@ -1,6 +1,6 @@
 using FluentAssertions;
 using ScoutingAutomation.Domain.Models;
-using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Infrastructure.Data;
 using Xunit;
 
 namespace ScoutingAutomation.UnitTests.Data;

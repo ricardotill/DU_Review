@@ -3,7 +3,7 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
 using ScoutingAutomation.Domain.Enums;
-using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Infrastructure.Settings;
 using ScoutingAutomation.Web.Components.Layout;
 using ScoutingAutomation.Web.Components.Pages;
 using ScoutingAutomation.Web.Components.Shared;

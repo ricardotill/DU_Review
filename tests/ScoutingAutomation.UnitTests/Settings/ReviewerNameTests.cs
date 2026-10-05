@@ -4,7 +4,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
 using ScoutingAutomation.Contracts.Configuration;
-using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Infrastructure.Settings;
+using ScoutingAutomation.Infrastructure.Slack;
 using Xunit;
 
 namespace ScoutingAutomation.UnitTests.Settings;

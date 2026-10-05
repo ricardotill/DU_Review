@@ -3,7 +3,7 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
 using ScoutingAutomation.Contracts.Configuration;
-using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Infrastructure.Slack.SocketMode;
 using ScoutingAutomation.Web.Components.Layout;
 using ScoutingAutomation.Web.Components.Pages;
 using Xunit;

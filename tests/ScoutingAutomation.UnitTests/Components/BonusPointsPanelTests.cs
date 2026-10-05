@@ -10,7 +10,8 @@ using ScoutingAutomation.Domain.Entities;
 using ScoutingAutomation.Domain.Exceptions;
 using ScoutingAutomation.Domain.Interfaces;
 using ScoutingAutomation.Domain.Models;
-using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Infrastructure.Settings;
+using ScoutingAutomation.Infrastructure.Workflow;
 using ScoutingAutomation.Web.Components.Shared;
 using Xunit;
 

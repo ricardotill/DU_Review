@@ -5,7 +5,8 @@ using Microsoft.Extensions.Options;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using ScoutingAutomation.Contracts.Configuration;
-using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Infrastructure.Slack.SocketMode;
+using ScoutingAutomation.Infrastructure.Slack.Sync;
 using Xunit;
 
 namespace ScoutingAutomation.UnitTests.Slack;

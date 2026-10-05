@@ -1,5 +1,5 @@
 using FluentAssertions;
-using ScoutingAutomation.Infrastructure.Services;
+using ScoutingAutomation.Infrastructure.Settings;
 using Xunit;
 
 namespace ScoutingAutomation.UnitTests.Settings;
