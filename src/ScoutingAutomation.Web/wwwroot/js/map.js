@@ -84,6 +84,8 @@ window.duMap = (function () {
 
         // Fitted once, or when asked: a live reload must not move the map the user just panned
         if (bounds.length > 0 && (fit || !state.fitted)) {
+            // The container may have got its size only now; fitting to a stale size cuts markers off
+            state.map.invalidateSize();
             state.map.fitBounds(bounds, { padding: [30, 30], maxZoom: 16 });
             state.fitted = true;
         }

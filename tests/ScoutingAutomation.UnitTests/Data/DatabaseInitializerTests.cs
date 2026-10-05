@@ -306,4 +306,69 @@ public class DatabaseInitializerTests : IDisposable
     }
 
     public void Dispose() => _temp.Dispose();
+
+    [Fact]
+    public async Task InitializeAsync_DatabaseFromBeforeAvonturiers_ShouldAddKindChannelsAndLocations()
+    {
+        var path = Path.Combine(_temp.Path, "before-avonturiers.db");
+        var options = new DbContextOptionsBuilder<ScoutingDbContext>().UseSqlite($"Data Source={path}").Options;
+        var settings = Settings();
+        settings.Groups[0].AdventurersSlackChannelId = "CAV1";
+        var groupId = Guid.NewGuid();
+        await using (var db = new ScoutingDbContext(options))
+        {
+            // A database from before the Avonturiers: no Kind column, no second channel or map token, no location tables
+            await db.Database.EnsureCreatedAsync();
+            db.Groups.Add(new Domain.Entities.Group { Id = groupId, Name = "De Wolven", Abbreviation = "DWO", SlackChannelId = "C1" });
+            await db.SaveChangesAsync();
+            await db.Database.ExecuteSqlRawAsync("""
+                DROP INDEX "IX_Submissions_Kind";
+                ALTER TABLE "Submissions" DROP COLUMN "Kind";
+                DROP INDEX "IX_Groups_AdventurersSlackChannelId";
+                DROP INDEX "IX_Groups_MapToken";
+                ALTER TABLE "Groups" DROP COLUMN "AdventurersSlackChannelId";
+                ALTER TABLE "Groups" DROP COLUMN "MapToken";
+                DROP TABLE "LocationUnlocks";
+                DROP TABLE "Locations";
+                """);
+            await db.Database.ExecuteSqlRawAsync("""
+                INSERT INTO "Submissions" ("Id", "GroupId", "AssignmentCode", "SlackChannelId", "SlackMessageId", "Submitter",
+                    "FileName", "StoragePath", "FileSizeBytes", "ContentType", "Status", "CreatedAt")
+                VALUES ('0F8FAD5B-D9CB-469F-A165-70867728950E', {0}, '2', 'C1', '1727700000.000100', 'U1',
+                    'a.jpg', '/s/a.jpg', 1, 'image/jpeg', 'Approved', '2026-10-01 10:00:00+00:00')
+                """, groupId.ToString().ToUpperInvariant());
+
+            await Create(db, settings).InitializeAsync();
+        }
+
+        await using (var db = new ScoutingDbContext(options))
+        {
+            // A second start finds everything in place
+            await Create(db, settings).InitializeAsync();
+
+            var old = await db.Submissions.SingleAsync(s => s.SlackMessageId == "1727700000.000100");
+            old.Kind.Should().Be(SubmissionKind.Assignment, "existing rows keep their meaning");
+            var wolves = await db.Groups.SingleAsync(g => g.Id == groupId);
+            wolves.AdventurersSlackChannelId.Should().Be("CAV1");
+            wolves.MapToken.Should().NotBeNullOrWhiteSpace();
+            (await db.Groups.Select(g => g.MapToken).Distinct().CountAsync()).Should().Be(2);
+
+            db.Locations.Add(new Location { Number = 7, Name = "Molen", Latitude = 51.6, Longitude = 5.0 });
+            db.LocationUnlocks.Add(new LocationUnlock { GroupId = groupId, LocationNumber = 7, UnlockedAt = DateTimeOffset.UtcNow });
+            await db.SaveChangesAsync();
+            (await new LocationRepository(db).GetUnlocksAsync(groupId)).Should().ContainSingle();
+        }
+    }
+
+    [Fact]
+    public async Task InitializeAsync_ChannelUsedTwice_ShouldStop()
+    {
+        var settings = Settings();
+        settings.Groups[1].AdventurersSlackChannelId = "C1";
+        await using var db = TestDb.Create();
+
+        var act = () => Create(db, settings).InitializeAsync();
+
+        await act.Should().ThrowAsync<StartupConfigurationException>();
+    }
 }
