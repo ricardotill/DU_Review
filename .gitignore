@@ -638,3 +638,6 @@ access-keys.json
 
 # Copied from node_modules at build time (see ScoutingAutomation.Web.csproj)
 src/ScoutingAutomation.Web/wwwroot/lib/
+
+# macOS
+.DS_Store
