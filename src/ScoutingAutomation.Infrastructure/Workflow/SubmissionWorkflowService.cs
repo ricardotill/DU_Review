@@ -113,7 +113,10 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         }
 
         // FR-001: Ignore unknown channels
-        var found = await _groupRepository.GetByAnyChannelIdAsync(channelId, ct);
+        // The Toeristen channel first: by far most messages come from there
+        var found = await _groupRepository.GetBySlackChannelIdAsync(channelId, ct) is { } toeristen
+            ? new GroupChannel(toeristen, ChannelRole.Toeristen)
+            : await _groupRepository.GetByAnyChannelIdAsync(channelId, ct);
         if (found == null)
         {
             _logger.LogInformation("Ignored message from unknown channel {ChannelId}", channelId);

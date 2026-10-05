@@ -5,6 +5,7 @@ using ScoutingAutomation.Contracts.Configuration;
 using ScoutingAutomation.Domain.Interfaces;
 using ScoutingAutomation.Infrastructure.Repositories;
 using ScoutingAutomation.Infrastructure.Access;
+using ScoutingAutomation.Infrastructure.Adventurers;
 using ScoutingAutomation.Infrastructure.Announcements;
 using ScoutingAutomation.Infrastructure.Data;
 using ScoutingAutomation.Infrastructure.Settings;
@@ -57,6 +58,19 @@ public static class ServiceCollectionExtensions
         services.AddHostedService(sp => sp.GetRequiredService<GameEndAnnouncer>());
         services.AddSingleton<ReviewReminderService>();
         services.AddHostedService(sp => sp.GetRequiredService<ReviewReminderService>());
+
+        // Avonturiers: check-ins, theme rounds, broadcasts and the maps
+        services.AddScoped<ILocationRepository, LocationRepository>();
+        services.AddScoped<LocationService>();
+        services.AddScoped<AdventurersScoreService>();
+        services.AddSingleton<UnlockNotifier>();
+        services.AddHostedService(sp => sp.GetRequiredService<UnlockNotifier>());
+        services.AddSingleton<ThemeRoundAnnouncer>();
+        services.AddHostedService(sp => sp.GetRequiredService<ThemeRoundAnnouncer>());
+        services.AddSingleton<AdventurersStartAnnouncer>();
+        services.AddHostedService(sp => sp.GetRequiredService<AdventurersStartAnnouncer>());
+        services.AddSingleton<AdventurersFinalAnnouncer>();
+        services.AddHostedService(sp => sp.GetRequiredService<AdventurersFinalAnnouncer>());
 
         // Not the app-wide resilience handler: its 10 s attempt timeout breaks large video downloads,
         // and its retries could post a thread reply twice. SlackClient retries downloads itself.

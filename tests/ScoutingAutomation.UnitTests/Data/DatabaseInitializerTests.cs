@@ -130,7 +130,8 @@ public class DatabaseInitializerTests : IDisposable
             (await db.BonusPointsEntries.Select(e => e.CategoryKey).OrderBy(k => k).ToListAsync()).Should().Equal("avonturiers", "reisbureau");
 
             var columns = await db.Database.SqlQueryRaw<string>("SELECT name AS \"Value\" FROM pragma_table_info('Groups')").ToListAsync();
-            columns.Should().NotContain(c => c.Contains("Adventurers") || c.Contains("TravelAgency"));
+            // The Avonturiers channel is a new column of its own, not one of the old points columns
+            columns.Should().NotContain(c => (c.Contains("Adventurers") && c != "AdventurersSlackChannelId") || c.Contains("TravelAgency"));
 
             var stats = await new SubmissionRepository(db).GetStatisticsAsync();
             stats.GroupStatistics.Single(g => g.GroupId == wolvesId).BonusTotal.Should().Be(19);

@@ -84,7 +84,8 @@ public class ScoutingDbContext : DbContext
             entity.Ignore(s => s.SubmitterDisplayName);
             entity.Ignore(s => s.CodeLabel);
             // A number, so rows from before kinds existed read as 0: a Toeristen assignment
-            entity.Property(s => s.Kind).HasConversion<int>();
+            // A default in the table, so rows written without the column (older code, raw SQL) are assignments
+            entity.Property(s => s.Kind).HasConversion<int>().HasDefaultValueSql("0");
             entity.HasIndex(s => s.Kind).HasDatabaseName(SubmissionKindIndexName);
             entity.Property(s => s.ContentType).HasMaxLength(100);
             entity.Property(s => s.Status).HasConversion<string>();
