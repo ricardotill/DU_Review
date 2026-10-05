@@ -1,6 +1,6 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
-using Moq;
+using NSubstitute;
 using ScoutingAutomation.Domain.Entities;
 using ScoutingAutomation.Domain.Interfaces;
 using ScoutingAutomation.Infrastructure.Services;
@@ -13,21 +13,21 @@ public class GroupMessageSenderTests
     private readonly Group _wolves = new() { Name = "De Wolven", SlackChannelId = "C1" };
     private readonly Group _owls = new() { Name = "De Bosuilen", SlackChannelId = "C2" };
     private readonly Group _noChannel = new() { Name = "Zonder kanaal", SlackChannelId = "" };
-    private readonly Mock<IGroupRepository> _groups = new();
-    private readonly Mock<ISlackClient> _slack = new();
+    private readonly IGroupRepository _groups = Substitute.For<IGroupRepository>();
+    private readonly ISlackClient _slack = Substitute.For<ISlackClient>();
     private readonly List<(string Channel, string Text)> _posted = new();
 
     public GroupMessageSenderTests()
     {
-        _groups.Setup(g => g.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new[] { _wolves, _owls, _noChannel });
-        _slack.Setup(s => s.PostMessageAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .Callback((string channel, string text, CancellationToken _) => _posted.Add((channel, text)))
-            .ReturnsAsync((string?)null);
+        _groups.GetAllAsync(Arg.Any<CancellationToken>()).Returns(new[] { _wolves, _owls, _noChannel });
+        _slack.PostMessageAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns((string?)null)
+            .AndDoes(ci => _posted.Add((ci.ArgAt<string>(0), ci.ArgAt<string>(1))));
     }
 
     private static readonly byte[] Jpeg = { 0xFF, 0xD8, 0xFF, 0xE0, 1 };
 
-    private GroupMessageSender Create() => new(_groups.Object, _slack.Object, NullLogger<GroupMessageSender>.Instance);
+    private GroupMessageSender Create() => new(_groups, _slack, NullLogger<GroupMessageSender>.Instance);
 
     [Fact]
     public async Task Post_ShouldPostOnceInTheChannelOfEachChosenGroup()
@@ -41,7 +41,7 @@ public class GroupMessageSenderTests
     [Fact]
     public async Task Post_ShouldReportSlackErrorsPerGroup()
     {
-        _slack.Setup(s => s.PostMessageAsync("C2", It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync("not_in_channel");
+        _slack.PostMessageAsync("C2", Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns("not_in_channel");
 
         var results = await Create().PostAsync("Hoi", new[] { _wolves.Id, _owls.Id });
 
@@ -72,9 +72,9 @@ public class GroupMessageSenderTests
     public async Task Picture_ShouldBeSentWithTheTextInEachChannel()
     {
         var shared = new List<(string Channel, string FileName, string? Text)>();
-        _slack.Setup(s => s.PostFileAsync(It.IsAny<string>(), It.IsAny<byte[]>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .Callback((string channel, byte[] _, string name, string? text, CancellationToken _) => shared.Add((channel, name, text)))
-            .ReturnsAsync((string?)null);
+        _slack.PostFileAsync(Arg.Any<string>(), Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns((string?)null)
+            .AndDoes(ci => shared.Add((ci.ArgAt<string>(0), ci.ArgAt<string>(2), ci.ArgAt<string?>(3))));
 
         var results = await Create().PostAsync("Kijk!", new[] { _wolves.Id, _owls.Id }, new MessagePicture("vuur.jpg", Jpeg));
 
@@ -130,9 +130,9 @@ public class GroupMessageSenderTests
     public async Task Picture_ShouldBeSentWithASafeName()
     {
         string? sentName = null;
-        _slack.Setup(s => s.PostFileAsync(It.IsAny<string>(), It.IsAny<byte[]>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .Callback((string _, byte[] _, string name, string? _, CancellationToken _) => sentName = name)
-            .ReturnsAsync((string?)null);
+        _slack.PostFileAsync(Arg.Any<string>(), Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns((string?)null)
+            .AndDoes(ci => sentName = ci.ArgAt<string>(2));
 
         await Create().PostAsync("", new[] { _wolves.Id }, new MessagePicture("../geheim/vuur.jpg", Jpeg));
 

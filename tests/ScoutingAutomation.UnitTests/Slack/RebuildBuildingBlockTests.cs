@@ -3,6 +3,7 @@ using System.Text;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using NSubstitute;
 using ScoutingAutomation.Contracts.Configuration;
 using ScoutingAutomation.Contracts.Slack;
 using ScoutingAutomation.Domain.Entities;
@@ -228,17 +229,17 @@ public class SlackProcessingGateTests
     public async Task Dispatcher_ShouldWaitWhileRebuildRuns()
     {
         var gate = new SlackProcessingGate();
-        var workflow = new Moq.Mock<ISubmissionWorkflowService>();
-        var dispatcher = new SlackEventDispatcher(workflow.Object, gate, new SlackEventLog(NullLogger<SlackEventLog>.Instance), TimeProvider.System, NullLogger<SlackEventDispatcher>.Instance);
+        var workflow = Substitute.For<ISubmissionWorkflowService>();
+        var dispatcher = new SlackEventDispatcher(workflow, gate, new SlackEventLog(NullLogger<SlackEventLog>.Instance), TimeProvider.System, NullLogger<SlackEventDispatcher>.Instance);
         var closed = await gate.CloseAsync();
 
         var dispatching = dispatcher.DispatchAsync(new SlackEventEnvelopeDto { Type = "event_callback", Event = new SlackEventItemDto { Type = "reaction_added" } });
         await Task.Delay(50);
-        workflow.Invocations.Should().BeEmpty();
+        workflow.ReceivedCalls().Should().BeEmpty();
 
         closed.Dispose();
         await dispatching.WaitAsync(TimeSpan.FromSeconds(5));
-        workflow.Invocations.Should().ContainSingle();
+        workflow.ReceivedCalls().Should().ContainSingle();
     }
 }
 

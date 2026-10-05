@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
-using Moq;
+using NSubstitute;
 using ScoutingAutomation.Infrastructure.Services;
 using ScoutingAutomation.Web.Components.Pages;
 using Xunit;
@@ -12,18 +12,18 @@ namespace ScoutingAutomation.UnitTests.Components;
 
 public class MessagesPageTests : PageTestBase
 {
-    private readonly Mock<ISlackClient> _slack = new();
+    private readonly ISlackClient _slack = Substitute.For<ISlackClient>();
     private readonly List<(string Channel, string Text)> _posted = new();
     private readonly BunitJSModuleInterop _module;
     private static readonly byte[] Jpeg = { 0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3 };
 
     public MessagesPageTests()
     {
-        _slack.SetupGet(s => s.IsConnected).Returns(true);
-        _slack.Setup(s => s.PostMessageAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .Callback((string channel, string text, CancellationToken _) => _posted.Add((channel, text)))
-            .ReturnsAsync((string?)null);
-        Services.AddSingleton(_slack.Object);
+        _slack.IsConnected.Returns(true);
+        _slack.PostMessageAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns((string?)null)
+            .AndDoes(ci => _posted.Add((ci.ArgAt<string>(0), ci.ArgAt<string>(1))));
+        Services.AddSingleton(_slack);
 
         _module = JSInterop.SetupModule("./js/slack-composer.js");
         _module.Mode = JSRuntimeMode.Loose;
@@ -96,7 +96,7 @@ public class MessagesPageTests : PageTestBase
     [Fact]
     public void NotConnected_ShouldExplainAndNotSend()
     {
-        _slack.SetupGet(s => s.IsConnected).Returns(false);
+        _slack.IsConnected.Returns(false);
         var cut = RenderPage();
         Type(cut);
 
@@ -117,9 +117,9 @@ public class MessagesPageTests : PageTestBase
     public void Picture_ShouldBeSentEvenWithoutText()
     {
         var shared = new List<(string Channel, string FileName, int Bytes)>();
-        _slack.Setup(s => s.PostFileAsync(It.IsAny<string>(), It.IsAny<byte[]>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .Callback((string channel, byte[] content, string name, string? _, CancellationToken _) => shared.Add((channel, name, content.Length)))
-            .ReturnsAsync((string?)null);
+        _slack.PostFileAsync(Arg.Any<string>(), Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns((string?)null)
+            .AndDoes(ci => shared.Add((ci.ArgAt<string>(0), ci.ArgAt<string>(2), ci.ArgAt<byte[]>(1).Length)));
         var cut = RenderPage(Owls.Id);
 
         cut.FindComponent<InputFile>().UploadFiles(InputFileContent.CreateFromBinary(Jpeg, "vuur.jpg", contentType: "image/jpeg"));
@@ -171,9 +171,9 @@ public class MessagesPageTests : PageTestBase
     public void SendAgain_AfterAFailure_ShouldOnlyRetryTheChannelsThatFailed()
     {
         var failing = true;
-        _slack.Setup(s => s.PostMessageAsync("C2", It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .Callback((string channel, string text, CancellationToken _) => _posted.Add((channel, text)))
-            .ReturnsAsync(() => failing ? "not_in_channel" : null);
+        // The constructor's AndDoes still records every post
+        _slack.PostMessageAsync("C2", Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(_ => failing ? "not_in_channel" : null);
         var cut = RenderPage();
         Type(cut);
 

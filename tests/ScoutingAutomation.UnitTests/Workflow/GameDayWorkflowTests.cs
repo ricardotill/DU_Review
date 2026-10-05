@@ -3,7 +3,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using Moq;
+using NSubstitute;
 using ScoutingAutomation.Contracts.Configuration;
 using ScoutingAutomation.Contracts.Slack;
 using ScoutingAutomation.Domain.Entities;
@@ -28,7 +28,7 @@ public class GameDayWorkflowTests : IDisposable
     private readonly TempDirectory _temp = new();
     private readonly SqliteConnection _connection = new("Data Source=:memory:");
     private readonly ScoutingDbContext _db;
-    private readonly Mock<ISlackClient> _slack = new();
+    private readonly ISlackClient _slack = Substitute.For<ISlackClient>();
     private readonly Group _group = new() { Id = Guid.NewGuid(), Name = "De Wolven", Abbreviation = "DWO", SlackChannelId = "C1" };
     private readonly IOptions<ScoutingSettings> _settings;
 
@@ -59,16 +59,16 @@ public class GameDayWorkflowTests : IDisposable
             }
         });
 
-        _slack.Setup(s => s.DownloadFileAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() => new MemoryStream(new byte[] { 1, 2, 3 }));
-        _slack.Setup(s => s.AddReactionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        _slack.DownloadFileAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(_ => new MemoryStream(new byte[] { 1, 2, 3 }));
+        _slack.AddReactionAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(true);
     }
 
     private SubmissionWorkflowService Create() => new(
         new SubmissionRepository(_db), new GroupRepository(_db), new AssignmentRepository(_db),
         new AssignmentParser(NullLogger<AssignmentParser>.Instance),
         new LocalFileStorageService(_settings, NullLogger<LocalFileStorageService>.Instance),
-        _slack.Object, Mock.Of<ISubmissionChangeNotifier>(), TestRuntime.For(_settings), _settings,
+        _slack, Substitute.For<ISubmissionChangeNotifier>(), TestRuntime.For(_settings), _settings,
         NullLogger<SubmissionWorkflowService>.Instance);
 
     private static SlackFileItemDto File(string name, string? id = null) =>
@@ -146,8 +146,8 @@ public class GameDayWorkflowTests : IDisposable
     [Fact]
     public async Task DownloadFailingHalfway_ShouldLeaveNoFileAndAskToPostAgain()
     {
-        _slack.Setup(s => s.DownloadFileAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() => new FailingStream());
+        _slack.DownloadFileAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(_ => new FailingStream());
 
         var result = await Create().ProcessSlackMessageAsync(Message("Opdracht 4", File("video.jpg")));
 
@@ -160,7 +160,8 @@ public class GameDayWorkflowTests : IDisposable
     public async Task AddingAWorseReview_ShouldKeepTheBestOne()
     {
         await Create().ProcessSlackMessageAsync(Message("Opdracht 4", File("a.jpg")));
-        _slack.Setup(s => s.GetReactionsAsync("C1", Ts, It.IsAny<CancellationToken>())).ReturnsAsync(new List<SlackMessageReactionDto>
+        _slack.GetReactionsAsync("C1", Ts, Arg.Any<CancellationToken>())
+            .Returns(new List<SlackMessageReactionDto>
         {
             new() { Name = "heart", Users = new List<string> { "U_JURY" } },
             new() { Name = "thumbsup", Users = new List<string> { "U_JURY2" } }
@@ -176,7 +177,7 @@ public class GameDayWorkflowTests : IDisposable
     public async Task AddedReview_WhenSlackCannotListReactions_ShouldUseTheAddedEmoji()
     {
         await Create().ProcessSlackMessageAsync(Message("Opdracht 4", File("a.jpg")));
-        _slack.Setup(s => s.GetReactionsAsync("C1", Ts, It.IsAny<CancellationToken>())).ReturnsAsync((IReadOnlyList<SlackMessageReactionDto>?)null);
+        _slack.GetReactionsAsync("C1", Ts, Arg.Any<CancellationToken>()).Returns((IReadOnlyList<SlackMessageReactionDto>?)null);
 
         var result = await Create().ProcessSlackReactionAsync(Reaction("x", "U_JURY"));
 
@@ -206,7 +207,7 @@ public class GameDayWorkflowTests : IDisposable
         result.CreatedSubmissionIds.Should().HaveCount(1);
         Stored().Single().AssignmentCode.Should().Be("4");
         Name(Stored().Single()).Should().Be($"DWO 4 {Time}.jpg");
-        _slack.Verify(s => s.RemoveReactionAsync("C1", Ts, "question", It.IsAny<CancellationToken>()), Times.Once);
+        await _slack.Received(1).RemoveReactionAsync("C1", Ts, "question", Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -219,7 +220,7 @@ public class GameDayWorkflowTests : IDisposable
         var result = await Create().ProcessSlackMessageChangedAsync(Edit("kijk!", "kijk! Opdracht 4", File("a.jpg")));
 
         result.CreatedSubmissionIds.Should().HaveCount(1);
-        _slack.Verify(s => s.AddReactionAsync(It.IsAny<string>(), It.IsAny<string>(), "alarm_clock", It.IsAny<CancellationToken>()), Times.Never);
+        await _slack.DidNotReceive().AddReactionAsync(Arg.Any<string>(), Arg.Any<string>(), "alarm_clock", Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -227,12 +228,12 @@ public class GameDayWorkflowTests : IDisposable
     {
         // Slack sends an edit when the bot's thread reply changes the reply count
         await Create().ProcessSlackMessageAsync(Message("kijk!", File("a.jpg")));
-        _slack.Invocations.Clear();
+        _slack.ClearReceivedCalls();
 
         var result = await Create().ProcessSlackMessageChangedAsync(Edit("kijk!", "kijk!", File("a.jpg")));
 
         result.Success.Should().BeFalse();
-        _slack.VerifyNoOtherCalls();
+        _slack.ReceivedCalls().Should().BeEmpty();
     }
 
     [Fact]
@@ -358,7 +359,7 @@ public class GameDayWorkflowTests : IDisposable
         var result = await Create().ProcessMissedMessageAsync(Message("kijk! Opdracht 4", File("a.jpg")));
 
         result.CreatedSubmissionIds.Should().HaveCount(1);
-        _slack.Verify(s => s.RemoveReactionAsync("C1", Ts, "question", It.IsAny<CancellationToken>()), Times.Once);
+        await _slack.Received(1).RemoveReactionAsync("C1", Ts, "question", Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -370,7 +371,7 @@ public class GameDayWorkflowTests : IDisposable
 
         result.CreatedSubmissionIds.Should().BeEmpty();
         Stored().Should().HaveCount(1);
-        _slack.Verify(s => s.RemoveReactionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        await _slack.DidNotReceive().RemoveReactionAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     public void Dispose()

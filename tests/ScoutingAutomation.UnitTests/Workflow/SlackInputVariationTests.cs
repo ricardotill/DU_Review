@@ -2,7 +2,7 @@ using System.Text;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using Moq;
+using NSubstitute;
 using ScoutingAutomation.Contracts.Configuration;
 using ScoutingAutomation.Contracts.Slack;
 using ScoutingAutomation.Domain.Entities;
@@ -17,25 +17,25 @@ namespace ScoutingAutomation.UnitTests.Workflow;
 /// </summary>
 public class SlackInputVariationTests
 {
-    private readonly Mock<ISubmissionRepository> _submissions = new();
-    private readonly Mock<IGroupRepository> _groups = new();
-    private readonly Mock<IAssignmentRepository> _assignments = new();
-    private readonly Mock<IAssignmentParser> _parser = new();
-    private readonly Mock<ISlackClient> _slack = new();
+    private readonly ISubmissionRepository _submissions = Substitute.For<ISubmissionRepository>();
+    private readonly IGroupRepository _groups = Substitute.For<IGroupRepository>();
+    private readonly IAssignmentRepository _assignments = Substitute.For<IAssignmentRepository>();
+    private readonly IAssignmentParser _parser = Substitute.For<IAssignmentParser>();
+    private readonly ISlackClient _slack = Substitute.For<ISlackClient>();
     private readonly Group _group = new() { Name = "G", Abbreviation = "G", SlackChannelId = "C1" };
 
     private SubmissionWorkflowService Create(ScoutingSettings settings)
     {
         var options = Options.Create(settings);
-        return new(_submissions.Object, _groups.Object, _assignments.Object, _parser.Object, Mock.Of<IFileStorageService>(), _slack.Object,
-            Mock.Of<ISubmissionChangeNotifier>(), TestRuntime.For(options), options, NullLogger<SubmissionWorkflowService>.Instance);
+        return new(_submissions, _groups, _assignments, _parser, Substitute.For<IFileStorageService>(), _slack,
+            Substitute.For<ISubmissionChangeNotifier>(), TestRuntime.For(options), options, NullLogger<SubmissionWorkflowService>.Instance);
     }
 
     private void GroupAndAssignmentExist()
     {
-        _groups.Setup(g => g.GetBySlackChannelIdAsync("C1", It.IsAny<CancellationToken>())).ReturnsAsync(_group);
-        _parser.Setup(p => p.Parse(It.IsAny<string>())).Returns(AssignmentParseResult.Succeeded("1"));
-        _assignments.Setup(a => a.GetByCodeAsync("1", It.IsAny<CancellationToken>())).ReturnsAsync(new Assignment { Code = "1" });
+        _groups.GetBySlackChannelIdAsync("C1", Arg.Any<CancellationToken>()).Returns(_group);
+        _parser.Parse(Arg.Any<string>()).Returns(AssignmentParseResult.Succeeded("1"));
+        _assignments.GetByCodeAsync("1", Arg.Any<CancellationToken>()).Returns(new Assignment { Code = "1" });
     }
 
     [Fact]
@@ -52,7 +52,7 @@ public class SlackInputVariationTests
     public async Task Message_ParserFailureWithoutReason_ShouldUseDefaultReason()
     {
         GroupAndAssignmentExist();
-        _parser.Setup(p => p.Parse(It.IsAny<string>())).Returns(new AssignmentParseResult(false, null));
+        _parser.Parse(Arg.Any<string>()).Returns(new AssignmentParseResult(false, null));
 
         var result = await Create(new ScoutingSettings()).ProcessSlackMessageAsync(new SlackEventItemDto
         {
@@ -77,14 +77,14 @@ public class SlackInputVariationTests
             SupportedMimeTypePrefixes = new List<string> { "image/" },
             SlackFeedback = new SlackFeedbackConfig { UnsupportedFile = new FeedbackConfig() }
         };
-        _slack.Setup(s => s.DownloadFileAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(new MemoryStream());
+        _slack.DownloadFileAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new MemoryStream());
 
         await Create(settings).ProcessSlackMessageAsync(new SlackEventItemDto
         {
             Channel = "C1", User = "U", Ts = "1.0", Files = new List<SlackFileItemDto> { new() { Name = name, Mimetype = mimetype, Size = 1 } }
         });
 
-        _slack.Verify(s => s.DownloadFileAsync(It.IsAny<string>(), name, It.IsAny<CancellationToken>()), accepted ? Times.Once() : Times.Never());
+        await _slack.Received(accepted ? 1 : 0).DownloadFileAsync(Arg.Any<string>(), name, Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -116,12 +116,12 @@ public class SlackInputVariationTests
     [Fact]
     public async Task Dispatcher_ReactionWithoutItem_ShouldStillReachWorkflow()
     {
-        var workflow = new Mock<ISubmissionWorkflowService>();
-        var dispatcher = new SlackEventDispatcher(workflow.Object, new SlackProcessingGate(), new SlackEventLog(NullLogger<SlackEventLog>.Instance), TimeProvider.System, NullLogger<SlackEventDispatcher>.Instance);
+        var workflow = Substitute.For<ISubmissionWorkflowService>();
+        var dispatcher = new SlackEventDispatcher(workflow, new SlackProcessingGate(), new SlackEventLog(NullLogger<SlackEventLog>.Instance), TimeProvider.System, NullLogger<SlackEventDispatcher>.Instance);
 
         await dispatcher.DispatchAsync(new SlackEventEnvelopeDto { Type = "event_callback", Event = new SlackEventItemDto { Type = "reaction_added" } });
 
-        workflow.Verify(w => w.ProcessSlackReactionAsync(It.IsAny<SlackEventItemDto>(), It.IsAny<CancellationToken>()), Times.Once);
+        await workflow.Received(1).ProcessSlackReactionAsync(Arg.Any<SlackEventItemDto>(), Arg.Any<CancellationToken>());
     }
 
     [Theory]

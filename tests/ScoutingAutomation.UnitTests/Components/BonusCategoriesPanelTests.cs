@@ -3,7 +3,7 @@ using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using Moq;
+using NSubstitute;
 using ScoutingAutomation.Contracts.Configuration;
 using ScoutingAutomation.Infrastructure.Services;
 using ScoutingAutomation.Web.Components.Shared;
@@ -15,7 +15,7 @@ public class BonusCategoriesPanelTests : BunitContext
 {
     private readonly TempDirectory _temp = new();
     private readonly RuntimeSettingsService _runtime;
-    private readonly Mock<ISubmissionChangeNotifier> _notifier = new();
+    private readonly ISubmissionChangeNotifier _notifier = Substitute.For<ISubmissionChangeNotifier>();
     private readonly Bunit.TestDoubles.BunitAuthorizationContext _auth;
 
     public BonusCategoriesPanelTests()
@@ -24,7 +24,7 @@ public class BonusCategoriesPanelTests : BunitContext
         _runtime = new RuntimeSettingsService(options, NullLogger<RuntimeSettingsService>.Instance);
         Services.AddSingleton(_runtime);
         Services.AddSingleton(options);
-        Services.AddSingleton(_notifier.Object);
+        Services.AddSingleton(_notifier);
         _auth = AddAuthorization();
         _auth.SetAuthorized("Admin");
         _auth.SetRoles(ScoutingAutomation.Web.Auth.KeyAuth.AdminRole);
@@ -45,7 +45,7 @@ public class BonusCategoriesPanelTests : BunitContext
         cut.Find("form.add-category").Submit();
 
         _runtime.BonusCategories.Select(c => c.Key).Should().Equal("avonturiers", "reisbureau", "foto-wedstrijd");
-        _notifier.Verify(n => n.NotifyChanged(), Times.Once);
+        _notifier.Received(1).NotifyChanged();
         cut.FindAll("tr.bonus-category").Should().HaveCount(3);
     }
 
@@ -58,7 +58,7 @@ public class BonusCategoriesPanelTests : BunitContext
         cut.Find("form.add-category").Submit();
 
         cut.Find(".category-error").TextContent.Should().Contain("al in gebruik");
-        _notifier.Verify(n => n.NotifyChanged(), Times.Never);
+        _notifier.DidNotReceive().NotifyChanged();
     }
 
     [Fact]
@@ -73,7 +73,7 @@ public class BonusCategoriesPanelTests : BunitContext
         cut.Find("button.confirm-remove").Click();
 
         _runtime.BonusCategories.Select(c => c.Key).Should().Equal("avonturiers");
-        _notifier.Verify(n => n.NotifyChanged(), Times.Once);
+        _notifier.Received(1).NotifyChanged();
     }
 
     [Fact]

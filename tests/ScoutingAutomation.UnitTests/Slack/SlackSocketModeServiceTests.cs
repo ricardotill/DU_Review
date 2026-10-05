@@ -2,7 +2,8 @@ using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using Moq;
+using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using ScoutingAutomation.Contracts.Configuration;
 using ScoutingAutomation.Infrastructure.Services;
 using Xunit;
@@ -11,15 +12,15 @@ namespace ScoutingAutomation.UnitTests.Slack;
 
 public class SlackSocketModeServiceTests
 {
-    private readonly Mock<ISlackSocketConnector> _connector = new();
+    private readonly ISlackSocketConnector _connector = Substitute.For<ISlackSocketConnector>();
     private readonly SlackConnectionStatus _status = new();
 
     private SlackSocketModeService Create(SlackSettings slack) => new(
         Options.Create(new ScoutingSettings { Slack = slack }),
-        _connector.Object,
+        _connector,
         new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
         _status,
-        Mock.Of<ISlackCatchUpService>(),
+        Substitute.For<ISlackCatchUpService>(),
         NullLogger<SlackSocketModeService>.Instance);
 
     [Theory]
@@ -33,7 +34,7 @@ public class SlackSocketModeServiceTests
         await service.ExecuteTask!;
 
         _status.State.Should().Be(SlackConnectionState.Disabled);
-        _connector.VerifyNoOtherCalls();
+        _connector.ReceivedCalls().Should().BeEmpty();
     }
 
     [Fact]
@@ -52,9 +53,9 @@ public class SlackSocketModeServiceTests
     public async Task ConnectionFailure_ShouldReportErrorAndRetryUntilStopped()
     {
         var attempts = 0;
-        _connector.Setup(c => c.OpenConnectionAsync("xapp", It.IsAny<CancellationToken>()))
-            .Callback(() => attempts++)
-            .ThrowsAsync(new InvalidOperationException("Slack refused the Socket Mode connection: invalid_auth"));
+        _connector.OpenConnectionAsync("xapp", Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("Slack refused the Socket Mode connection: invalid_auth"))
+            .AndDoes(_ => attempts++);
         var service = Create(new SlackSettings { SimulationMode = false, SocketMode = true, AppToken = "xapp" });
 
         await service.StartAsync(CancellationToken.None);
@@ -71,8 +72,8 @@ public class SlackSocketModeServiceTests
     [Fact]
     public async Task StopWhileConnecting_ShouldEndCleanly()
     {
-        _connector.Setup(c => c.OpenConnectionAsync("xapp", It.IsAny<CancellationToken>()))
-            .Returns<string, CancellationToken>(async (_, ct) => { await Task.Delay(Timeout.Infinite, ct); return new Uri("ws://x"); });
+        _connector.OpenConnectionAsync("xapp", Arg.Any<CancellationToken>())
+            .Returns(async ci => { await Task.Delay(Timeout.Infinite, ci.ArgAt<CancellationToken>(1)); return new Uri("ws://x"); });
         var service = Create(new SlackSettings { SimulationMode = false, SocketMode = true, AppToken = "xapp" });
 
         await service.StartAsync(CancellationToken.None);

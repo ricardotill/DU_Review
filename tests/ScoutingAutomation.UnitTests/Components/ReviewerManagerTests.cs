@@ -2,7 +2,7 @@ using Bunit;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Moq;
+using NSubstitute;
 using ScoutingAutomation.Infrastructure.Services;
 using ScoutingAutomation.Web.Components.Shared;
 using Xunit;
@@ -11,17 +11,17 @@ namespace ScoutingAutomation.UnitTests.Components;
 
 public class ReviewerManagerTests : PageTestBase
 {
-    private readonly Mock<ISlackClient> _slack = new();
+    private readonly ISlackClient _slack = Substitute.For<ISlackClient>();
 
     private RuntimeSettingsService Runtime => Services.GetRequiredService<RuntimeSettingsService>();
 
     /// <summary>Connects a fake Slack, so names can be fetched.</summary>
     private void ConnectSlack()
     {
-        _slack.Setup(s => s.IsConnected).Returns(true);
-        _slack.Setup(s => s.GetUserNameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(SlackUserLookup.Failed("user_not_found"));
+        _slack.IsConnected.Returns(true);
+        _slack.GetUserNameAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(SlackUserLookup.Failed("user_not_found"));
         Services.RemoveAll<ISlackClient>();
-        Services.AddSingleton(_slack.Object);
+        Services.AddSingleton(_slack);
     }
 
     private static IReadOnlyList<string> Rows(IRenderedComponent<ReviewerManager> cut) =>
@@ -63,7 +63,7 @@ public class ReviewerManagerTests : PageTestBase
     public void Add_WithSlack_ShouldFetchTheName()
     {
         ConnectSlack();
-        _slack.Setup(s => s.GetUserNameAsync("U04ABC123", It.IsAny<CancellationToken>())).ReturnsAsync(SlackUserLookup.Found("Piet"));
+        _slack.GetUserNameAsync("U04ABC123", Arg.Any<CancellationToken>()).Returns(SlackUserLookup.Found("Piet"));
         var cut = Render<ReviewerManager>();
 
         cut.Find("input[aria-label='Slack-member-ID']").Input("U04ABC123");
@@ -126,7 +126,7 @@ public class ReviewerManagerTests : PageTestBase
         Runtime.AddReviewer("U_PIET");
         Runtime.AddReviewer("U_KAREL");
         Runtime.SetReviewerName("U_KAREL", "Karel");
-        _slack.Setup(s => s.GetUserNameAsync("U_JURY", It.IsAny<CancellationToken>())).ReturnsAsync(SlackUserLookup.Found("Eva"));
+        _slack.GetUserNameAsync("U_JURY", Arg.Any<CancellationToken>()).Returns(SlackUserLookup.Found("Eva"));
         var cut = Render<ReviewerManager>();
 
         cut.Find("button.fetch-names").Click();
@@ -140,7 +140,7 @@ public class ReviewerManagerTests : PageTestBase
     public void FetchNames_WithoutProblems_ShouldConfirm()
     {
         ConnectSlack();
-        _slack.Setup(s => s.GetUserNameAsync("U_JURY", It.IsAny<CancellationToken>())).ReturnsAsync(SlackUserLookup.Found("Eva"));
+        _slack.GetUserNameAsync("U_JURY", Arg.Any<CancellationToken>()).Returns(SlackUserLookup.Found("Eva"));
         var cut = Render<ReviewerManager>();
 
         cut.Find("button.fetch-names").Click();

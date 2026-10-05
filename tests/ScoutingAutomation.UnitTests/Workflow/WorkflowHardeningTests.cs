@@ -3,7 +3,8 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using Moq;
+using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using ScoutingAutomation.Contracts.Configuration;
 using ScoutingAutomation.Contracts.Slack;
 using ScoutingAutomation.Domain.Entities;
@@ -29,7 +30,7 @@ public class WorkflowHardeningTests : IDisposable
     private readonly SqliteConnection _connection = new("Data Source=:memory:");
     private readonly ScoutingDbContext _db;
     private readonly FailingRepository _submissions;
-    private readonly Mock<ISlackClient> _slack = new();
+    private readonly ISlackClient _slack = Substitute.For<ISlackClient>();
     private readonly Group _group = new() { Id = Guid.NewGuid(), Name = "De Wolven", Abbreviation = "DWO", SlackChannelId = "C1" };
     private readonly ScoutingSettings _settings;
     private readonly SlackProcessingGate _gate = new();
@@ -60,10 +61,10 @@ public class WorkflowHardeningTests : IDisposable
             }
         };
 
-        _slack.Setup(s => s.IsConnected).Returns(true);
-        _slack.Setup(s => s.DownloadFileAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() => new MemoryStream(new byte[] { 1, 2, 3 }));
-        _slack.Setup(s => s.GetUserNameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(SlackUserLookup.Failed("x"));
+        _slack.IsConnected.Returns(true);
+        _slack.DownloadFileAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(_ => new MemoryStream(new byte[] { 1, 2, 3 }));
+        _slack.GetUserNameAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(SlackUserLookup.Failed("x"));
         SlackShows(("thumbsup", "U_JURY"));
     }
 
@@ -73,13 +74,13 @@ public class WorkflowHardeningTests : IDisposable
         _submissions, new GroupRepository(_db), new AssignmentRepository(_db),
         new AssignmentParser(NullLogger<AssignmentParser>.Instance),
         new LocalFileStorageService(Options.Create(_settings), NullLogger<LocalFileStorageService>.Instance),
-        _slack.Object, Mock.Of<ISubmissionChangeNotifier>(), Runtime, Options.Create(_settings),
+        _slack, Substitute.For<ISubmissionChangeNotifier>(), Runtime, Options.Create(_settings),
         NullLogger<SubmissionWorkflowService>.Instance,
         channels: new SlackChannelLocks(), gate: _gate, ownUploads: _ownUploads);
 
     private void SlackShows(params (string Emoji, string User)[] reactions) =>
-        _slack.Setup(s => s.GetReactionsAsync("C1", Ts, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(reactions.Select(r => new SlackMessageReactionDto { Name = r.Emoji, Users = new List<string> { r.User } }).ToList());
+        _slack.GetReactionsAsync("C1", Ts, Arg.Any<CancellationToken>())
+            .Returns(reactions.Select(r => new SlackMessageReactionDto { Name = r.Emoji, Users = new List<string> { r.User } }).ToList());
 
     private static SlackEventItemDto Message(string? url = "https://files.slack.com/a.jpg", string fileId = "F1") => new()
     {
@@ -150,7 +151,7 @@ public class WorkflowHardeningTests : IDisposable
     {
         await Create().ProcessSlackMessageAsync(Message());
         await Create().ProcessSlackReactionAsync(Reaction("thumbsup"));
-        _slack.Setup(s => s.GetReactionsAsync("C1", Ts, It.IsAny<CancellationToken>())).ReturnsAsync((IReadOnlyList<SlackMessageReactionDto>?)null);
+        _slack.GetReactionsAsync("C1", Ts, Arg.Any<CancellationToken>()).Returns((IReadOnlyList<SlackMessageReactionDto>?)null);
 
         var changed = await Create().SyncReviewAsync("C1", Ts, Array.Empty<SlackMessageReactionDto>());
 
@@ -190,16 +191,15 @@ public class WorkflowHardeningTests : IDisposable
 
         result.FailedDownloads.Should().Equal("a.jpg");
         _db.Submissions.Should().BeEmpty();
-        _slack.Verify(s => s.DownloadFileAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        await _slack.DidNotReceive().DownloadFileAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
     public async Task ManualMode_DownloadThatFailed_ShouldBeTriedAgainNextTime()
     {
         _settings.ManualMode = true;
-        _slack.SetupSequence(s => s.DownloadFileAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new HttpRequestException("reset"))
-            .ReturnsAsync(new MemoryStream(new byte[] { 1 }));
+        _slack.DownloadFileAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(_ => throw new HttpRequestException("reset"), _ => new MemoryStream(new byte[] { 1 }));
 
         var first = await Create().ProcessSlackMessageAsync(Message());
         var second = await Create().ProcessSlackMessageAsync(Message());

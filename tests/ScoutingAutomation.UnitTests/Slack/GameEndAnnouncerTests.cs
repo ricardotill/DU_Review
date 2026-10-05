@@ -2,7 +2,7 @@ using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using Moq;
+using NSubstitute;
 using ScoutingAutomation.Contracts.Configuration;
 using ScoutingAutomation.Domain.Entities;
 using ScoutingAutomation.Domain.Interfaces;
@@ -17,20 +17,21 @@ public class GameEndAnnouncerTests : IDisposable
     private static readonly DateTime End = new(2026, 10, 3, 17, 0, 0);
 
     private readonly TempDirectory _temp = new();
-    private readonly Mock<IGroupRepository> _groups = new();
-    private readonly Mock<ISlackClient> _slack = new();
+    private readonly IGroupRepository _groups = Substitute.For<IGroupRepository>();
+    private readonly ISlackClient _slack = Substitute.For<ISlackClient>();
     private readonly List<(string Channel, string Text)> _posted = new();
 
     public GameEndAnnouncerTests()
     {
-        _groups.Setup(g => g.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new[]
+        _groups.GetAllAsync(Arg.Any<CancellationToken>())
+            .Returns(new[]
         {
             new Group { Name = "De Wolven", SlackChannelId = "C1" },
             new Group { Name = "De Bosuilen", SlackChannelId = "C2" }
         });
-        _slack.Setup(s => s.PostMessageAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .Callback((string channel, string text, CancellationToken _) => { lock (_posted) _posted.Add((channel, text)); })
-            .ReturnsAsync((string?)null);
+        _slack.PostMessageAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns((string?)null)
+            .AndDoes(ci => { lock (_posted) _posted.Add((ci.ArgAt<string>(0), ci.ArgAt<string>(1))); });
     }
 
     public void Dispose() => _temp.Dispose();
@@ -53,8 +54,8 @@ public class GameEndAnnouncerTests : IDisposable
         var options = Options.Create(settings);
         var runtime = new RuntimeSettingsService(options, NullLogger<RuntimeSettingsService>.Instance);
         var services = new ServiceCollection()
-            .AddSingleton(_groups.Object)
-            .AddSingleton(_slack.Object)
+            .AddSingleton(_groups)
+            .AddSingleton(_slack)
             .BuildServiceProvider();
         var announcer = new GameEndAnnouncer(services.GetRequiredService<IServiceScopeFactory>(), options, runtime,
             time ?? TimeProvider.System, NullLogger<GameEndAnnouncer>.Instance);

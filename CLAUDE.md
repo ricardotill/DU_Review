@@ -76,5 +76,5 @@ Interactive Server Blazor. Pages update live through `SubmissionChangeNotifier`.
 
 xUnit + FluentAssertions. Both test projects are organised by topic folder (`Workflow`, `Slack`, `Storage`, `Data`, `Model`, `Settings`, `Web`, `Components`, `Hosting`).
 
-- **UnitTests**: Moq, EF Core InMemory, bUnit for Razor components; shared helpers in `TestSupport.cs`.
+- **UnitTests**: NSubstitute, EF Core InMemory, bUnit for Razor components; shared helpers in `TestSupport.cs`.
 - **IntegrationTests**: `TestApp` wraps `WebApplicationFactory<Program>` with a temporary SQLite DB and storage folder; `FakeSlackApi` stands in for Slack, `SlackEvents` builds event payloads, `LogCapture` asserts on logs. Use `FakeTimeProvider` (the app takes `TimeProvider` from DI) instead of real waits.

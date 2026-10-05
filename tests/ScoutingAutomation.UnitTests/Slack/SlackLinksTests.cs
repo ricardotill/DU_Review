@@ -1,7 +1,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
-using Moq;
+using NSubstitute;
 using ScoutingAutomation.Infrastructure.Services;
 using Xunit;
 
@@ -32,19 +32,18 @@ public class SlackLinksTests
     [Fact]
     public async Task Links_WithoutWorkspace_ShouldBeNullAndAskSlackAgainLater()
     {
-        var slack = new Mock<ISlackClient>();
-        slack.Setup(s => s.IsConnected).Returns(true);
-        slack.SetupSequence(s => s.GetWorkspaceAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync((SlackWorkspace?)null)
-            .ReturnsAsync(Workspace);
+        var slack = Substitute.For<ISlackClient>();
+        slack.IsConnected.Returns(true);
+        slack.GetWorkspaceAsync(Arg.Any<CancellationToken>())
+            .Returns((SlackWorkspace?)null, Workspace);
         var time = new Clock { Now = DateTimeOffset.UtcNow };
-        var links = new SlackLinks(new ServiceCollection().AddSingleton(slack.Object).BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
+        var links = new SlackLinks(new ServiceCollection().AddSingleton(slack).BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
             time, NullLogger<SlackLinks>.Instance);
 
         await links.EnsureLoadedAsync();
         await links.EnsureLoadedAsync();
         links.AppLink("C1", "1.2").Should().BeNull();
-        slack.Verify(s => s.GetWorkspaceAsync(It.IsAny<CancellationToken>()), Times.Once);
+        await slack.Received(1).GetWorkspaceAsync(Arg.Any<CancellationToken>());
 
         time.Now += SlackLinks.RetryAfter;
         await links.EnsureLoadedAsync();

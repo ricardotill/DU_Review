@@ -1,7 +1,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using Moq;
+using NSubstitute;
 using ScoutingAutomation.Contracts.Configuration;
 using ScoutingAutomation.Contracts.Slack;
 using ScoutingAutomation.Domain.Entities;
@@ -21,19 +21,19 @@ public class EventEndTests
     private const string AtEndTs = "1791039600.000000";
     private const string JustBeforeTs = "1791039599.999000";
 
-    private readonly Mock<ISubmissionRepository> _submissions = new();
-    private readonly Mock<IGroupRepository> _groups = new();
-    private readonly Mock<IAssignmentRepository> _assignments = new();
-    private readonly Mock<IAssignmentParser> _parser = new();
-    private readonly Mock<IFileStorageService> _storage = new();
-    private readonly Mock<ISlackClient> _slack = new();
-    private readonly Mock<ISubmissionChangeNotifier> _notifier = new();
+    private readonly ISubmissionRepository _submissions = Substitute.For<ISubmissionRepository>();
+    private readonly IGroupRepository _groups = Substitute.For<IGroupRepository>();
+    private readonly IAssignmentRepository _assignments = Substitute.For<IAssignmentRepository>();
+    private readonly IAssignmentParser _parser = Substitute.For<IAssignmentParser>();
+    private readonly IFileStorageService _storage = Substitute.For<IFileStorageService>();
+    private readonly ISlackClient _slack = Substitute.For<ISlackClient>();
+    private readonly ISubmissionChangeNotifier _notifier = Substitute.For<ISubmissionChangeNotifier>();
 
     public EventEndTests()
     {
-        _groups.Setup(g => g.GetBySlackChannelIdAsync("C1", It.IsAny<CancellationToken>())).ReturnsAsync(new Group { Name = "De Wolven", SlackChannelId = "C1" });
-        _parser.Setup(p => p.Parse(It.IsAny<string>())).Returns(AssignmentParseResult.Failed("Geen opdrachtnummer"));
-        _slack.Setup(s => s.AddReactionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        _groups.GetBySlackChannelIdAsync("C1", Arg.Any<CancellationToken>()).Returns(new Group { Name = "De Wolven", SlackChannelId = "C1" });
+        _parser.Parse(Arg.Any<string>()).Returns(AssignmentParseResult.Failed("Geen opdrachtnummer"));
+        _slack.AddReactionAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(true);
     }
 
     private static ScoutingSettings Settings(DateTime? eventEnd) => new()
@@ -50,7 +50,7 @@ public class EventEndTests
     private SubmissionWorkflowService Create(DateTime? eventEnd)
     {
         var options = Options.Create(Settings(eventEnd));
-        return new(_submissions.Object, _groups.Object, _assignments.Object, _parser.Object, _storage.Object, _slack.Object, _notifier.Object,
+        return new(_submissions, _groups, _assignments, _parser, _storage, _slack, _notifier,
             TestRuntime.For(options), options, NullLogger<SubmissionWorkflowService>.Instance);
     }
 
@@ -69,10 +69,10 @@ public class EventEndTests
 
         result.Success.Should().BeFalse();
         result.Message.Should().Contain("eindtijd");
-        _slack.Verify(s => s.AddReactionAsync("C1", ts, "alarm_clock", It.IsAny<CancellationToken>()), Times.Once);
-        _slack.Verify(s => s.PostThreadReplyAsync("C1", ts, "Afgelopen om 17:00", It.IsAny<CancellationToken>()), Times.Once);
-        _parser.Verify(p => p.Parse(It.IsAny<string>()), Times.Never);
-        _storage.VerifyNoOtherCalls();
+        await _slack.Received(1).AddReactionAsync("C1", ts, "alarm_clock", Arg.Any<CancellationToken>());
+        await _slack.Received(1).PostThreadReplyAsync("C1", ts, "Afgelopen om 17:00", Arg.Any<CancellationToken>());
+        _parser.DidNotReceive().Parse(Arg.Any<string>());
+        _storage.ReceivedCalls().Should().BeEmpty();
     }
 
     [Fact]
@@ -81,7 +81,7 @@ public class EventEndTests
         var result = await Create(End).ImportSlackMessageAsync(Message(AtEndTs));
 
         result.Message.Should().Contain("eindtijd");
-        _slack.VerifyNoOtherCalls();
+        _slack.ReceivedCalls().Should().BeEmpty();
     }
 
     [Fact]
@@ -89,7 +89,7 @@ public class EventEndTests
     {
         await Create(End).ProcessSlackMessageAsync(Message(AtEndTs, withFile: false));
 
-        _slack.VerifyNoOtherCalls();
+        _slack.ReceivedCalls().Should().BeEmpty();
     }
 
     [Theory]
@@ -101,8 +101,8 @@ public class EventEndTests
         await Create(End).ProcessSlackMessageAsync(Message(ts));
 
         // Reaching the parser proves the end check let the message through
-        _parser.Verify(p => p.Parse(It.IsAny<string>()), Times.Once);
-        _slack.Verify(s => s.AddReactionAsync(It.IsAny<string>(), It.IsAny<string>(), "alarm_clock", It.IsAny<CancellationToken>()), Times.Never);
+        _parser.Received(1).Parse(Arg.Any<string>());
+        await _slack.DidNotReceive().AddReactionAsync(Arg.Any<string>(), Arg.Any<string>(), "alarm_clock", Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -110,7 +110,7 @@ public class EventEndTests
     {
         await Create(null).ProcessSlackMessageAsync(Message("9999999999.000000"));
 
-        _parser.Verify(p => p.Parse(It.IsAny<string>()), Times.Once);
+        _parser.Received(1).Parse(Arg.Any<string>());
     }
 
     [Fact]

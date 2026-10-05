@@ -1,7 +1,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using Moq;
+using NSubstitute;
 using ScoutingAutomation.Contracts.Configuration;
 using ScoutingAutomation.Contracts.Slack;
 using ScoutingAutomation.Domain.Entities;
@@ -21,13 +21,13 @@ public class EventStartTests
     private const string AtStartTs = "1791010800.000000";
     private const string JustBeforeTs = "1791010799.999000";
 
-    private readonly Mock<ISubmissionRepository> _submissions = new();
-    private readonly Mock<IGroupRepository> _groups = new();
-    private readonly Mock<IAssignmentRepository> _assignments = new();
-    private readonly Mock<IAssignmentParser> _parser = new();
-    private readonly Mock<IFileStorageService> _storage = new();
-    private readonly Mock<ISlackClient> _slack = new();
-    private readonly Mock<ISubmissionChangeNotifier> _notifier = new();
+    private readonly ISubmissionRepository _submissions = Substitute.For<ISubmissionRepository>();
+    private readonly IGroupRepository _groups = Substitute.For<IGroupRepository>();
+    private readonly IAssignmentRepository _assignments = Substitute.For<IAssignmentRepository>();
+    private readonly IAssignmentParser _parser = Substitute.For<IAssignmentParser>();
+    private readonly IFileStorageService _storage = Substitute.For<IFileStorageService>();
+    private readonly ISlackClient _slack = Substitute.For<ISlackClient>();
+    private readonly ISubmissionChangeNotifier _notifier = Substitute.For<ISubmissionChangeNotifier>();
 
     private static ScoutingSettings Settings(DateTime? eventStart) => new()
     {
@@ -42,7 +42,7 @@ public class EventStartTests
     private SubmissionWorkflowService Create(DateTime? eventStart)
     {
         var options = Options.Create(Settings(eventStart));
-        return new(_submissions.Object, _groups.Object, _assignments.Object, _parser.Object, _storage.Object, _slack.Object, _notifier.Object,
+        return new(_submissions, _groups, _assignments, _parser, _storage, _slack, _notifier,
             TestRuntime.For(options), options, NullLogger<SubmissionWorkflowService>.Instance);
     }
 
@@ -59,8 +59,8 @@ public class EventStartTests
 
         result.Success.Should().BeFalse();
         result.Message.Should().Contain("starttijd");
-        _groups.VerifyNoOtherCalls();
-        _slack.VerifyNoOtherCalls();
+        _groups.ReceivedCalls().Should().BeEmpty();
+        _slack.ReceivedCalls().Should().BeEmpty();
     }
 
     [Fact]
@@ -69,7 +69,7 @@ public class EventStartTests
         var result = await Create(Start).ImportSlackMessageAsync(Message(JustBeforeTs));
 
         result.Message.Should().Contain("starttijd");
-        _groups.VerifyNoOtherCalls();
+        _groups.ReceivedCalls().Should().BeEmpty();
     }
 
     [Theory]
@@ -78,23 +78,23 @@ public class EventStartTests
     [InlineData("geen tijd")]
     public async Task Message_AtStartOrWithoutValidTimestamp_ShouldBeProcessed(string? ts)
     {
-        _groups.Setup(g => g.GetBySlackChannelIdAsync("C1", It.IsAny<CancellationToken>())).ReturnsAsync(new Group { Name = "De Wolven", SlackChannelId = "C1" });
-        _parser.Setup(p => p.Parse(It.IsAny<string>())).Returns(AssignmentParseResult.Failed("Geen opdrachtnummer"));
+        _groups.GetBySlackChannelIdAsync("C1", Arg.Any<CancellationToken>()).Returns(new Group { Name = "De Wolven", SlackChannelId = "C1" });
+        _parser.Parse(Arg.Any<string>()).Returns(AssignmentParseResult.Failed("Geen opdrachtnummer"));
 
         await Create(Start).ProcessSlackMessageAsync(Message(ts));
 
         // Reaching the channel lookup proves the start check let the message through
-        _groups.Verify(g => g.GetBySlackChannelIdAsync("C1", It.IsAny<CancellationToken>()), Times.Once);
+        await _groups.Received(1).GetBySlackChannelIdAsync("C1", Arg.Any<CancellationToken>());
     }
 
     [Fact]
     public async Task Message_WithoutEventStart_ShouldBeProcessed()
     {
-        _groups.Setup(g => g.GetBySlackChannelIdAsync("C1", It.IsAny<CancellationToken>())).ReturnsAsync((Group?)null);
+        _groups.GetBySlackChannelIdAsync("C1", Arg.Any<CancellationToken>()).Returns((Group?)null);
 
         await Create(null).ProcessSlackMessageAsync(Message("1.0"));
 
-        _groups.Verify(g => g.GetBySlackChannelIdAsync("C1", It.IsAny<CancellationToken>()), Times.Once);
+        await _groups.Received(1).GetBySlackChannelIdAsync("C1", Arg.Any<CancellationToken>());
     }
 
     [Fact]

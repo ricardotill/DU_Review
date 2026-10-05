@@ -1,7 +1,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using Moq;
+using NSubstitute;
 using ScoutingAutomation.Contracts.Configuration;
 using ScoutingAutomation.Contracts.Slack;
 using ScoutingAutomation.Domain.Entities;
@@ -21,12 +21,12 @@ public class AttemptAfterApprovalTests : IDisposable
     private const string Ts = "1727704800.500000";
 
     private readonly TempDirectory _temp = new();
-    private readonly Mock<ISubmissionRepository> _submissions = new();
-    private readonly Mock<IGroupRepository> _groups = new();
-    private readonly Mock<IAssignmentRepository> _assignments = new();
-    private readonly Mock<IFileStorageService> _storage = new();
-    private readonly Mock<ISlackClient> _slack = new();
-    private readonly Mock<ISubmissionChangeNotifier> _notifier = new();
+    private readonly ISubmissionRepository _submissions = Substitute.For<ISubmissionRepository>();
+    private readonly IGroupRepository _groups = Substitute.For<IGroupRepository>();
+    private readonly IAssignmentRepository _assignments = Substitute.For<IAssignmentRepository>();
+    private readonly IFileStorageService _storage = Substitute.For<IFileStorageService>();
+    private readonly ISlackClient _slack = Substitute.For<ISlackClient>();
+    private readonly ISubmissionChangeNotifier _notifier = Substitute.For<ISubmissionChangeNotifier>();
     private readonly Group _group = new() { Name = "De Wolven", Abbreviation = "DWO", SlackChannelId = "C1" };
     private readonly List<Submission> _existing = new();
     private readonly List<Submission> _added = new();
@@ -50,31 +50,31 @@ public class AttemptAfterApprovalTests : IDisposable
         });
         _runtime = new RuntimeSettingsService(_settings, NullLogger<RuntimeSettingsService>.Instance);
 
-        _groups.Setup(g => g.GetBySlackChannelIdAsync("C1", It.IsAny<CancellationToken>())).ReturnsAsync(_group);
-        _groups.Setup(g => g.GetByIdAsync(_group.Id, It.IsAny<CancellationToken>())).ReturnsAsync(_group);
-        _assignments.Setup(a => a.GetByCodeAsync(It.IsIn("4", "5"), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string code, CancellationToken _) => new Assignment { Code = code });
-        _slack.Setup(s => s.DownloadFileAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(() => new MemoryStream(new byte[] { 1 }));
-        _slack.Setup(s => s.AddReactionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
-        _storage.Setup(s => s.SaveInitialFileAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string _, string name, Stream _, CancellationToken _) => $"/s/{name}");
-        _storage.Setup(s => s.RenameFileAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string _, string name, CancellationToken _) => $"/s/{name}");
-        _submissions.Setup(s => s.AddAsync(It.IsAny<Submission>(), It.IsAny<CancellationToken>())).Callback<Submission, CancellationToken>((s, _) => _added.Add(s));
-        _submissions.Setup(s => s.GetBySlackMessageIdAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string channel, string ts, CancellationToken _) => _existing.Where(s => s.SlackChannelId == channel && s.SlackMessageId == ts).ToList());
-        _submissions.Setup(s => s.SearchSubmissionsAsync(It.IsAny<SubmissionFilter>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((SubmissionFilter f, CancellationToken _) => _existing
+        _groups.GetBySlackChannelIdAsync("C1", Arg.Any<CancellationToken>()).Returns(_group);
+        _groups.GetByIdAsync(_group.Id, Arg.Any<CancellationToken>()).Returns(_group);
+        _assignments.GetByCodeAsync(Arg.Is<string>(c => c == "4" || c == "5"), Arg.Any<CancellationToken>())
+            .Returns(ci => new Assignment { Code = ci.ArgAt<string>(0) });
+        _slack.DownloadFileAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(_ => new MemoryStream(new byte[] { 1 }));
+        _slack.AddReactionAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(true);
+        _storage.SaveInitialFileAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<Stream>(), Arg.Any<CancellationToken>())
+            .Returns(ci => $"/s/{ci.ArgAt<string>(1)}");
+        _storage.RenameFileAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(ci => $"/s/{ci.ArgAt<string>(1)}");
+        _submissions.When(s => s.AddAsync(Arg.Any<Submission>(), Arg.Any<CancellationToken>())).Do(ci => _added.Add(ci.ArgAt<Submission>(0)));
+        _submissions.GetBySlackMessageIdAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(ci => { var channel = ci.ArgAt<string>(0); var ts = ci.ArgAt<string>(1); return _existing.Where(s => s.SlackChannelId == channel && s.SlackMessageId == ts).ToList(); });
+        _submissions.SearchSubmissionsAsync(Arg.Any<SubmissionFilter>(), Arg.Any<CancellationToken>())
+            .Returns(ci => { var f = ci.ArgAt<SubmissionFilter>(0); return _existing
                 .Where(s => f.GroupId == null || s.GroupId == f.GroupId)
                 .Where(s => f.AssignmentCode == null || s.AssignmentCode == f.AssignmentCode)
-                .ToList());
+                .ToList(); });
     }
 
     public void Dispose() => _temp.Dispose();
 
     private SubmissionWorkflowService Create() => new(
-        _submissions.Object, _groups.Object, _assignments.Object, new AssignmentParser(NullLogger<AssignmentParser>.Instance),
-        _storage.Object, _slack.Object, _notifier.Object, _runtime, _settings,
+        _submissions, _groups, _assignments, new AssignmentParser(NullLogger<AssignmentParser>.Instance),
+        _storage, _slack, _notifier, _runtime, _settings,
         NullLogger<SubmissionWorkflowService>.Instance);
 
     private static SlackEventItemDto Message(string text, string ts = Ts) => new()
@@ -96,7 +96,7 @@ public class AttemptAfterApprovalTests : IDisposable
     }
 
     private void VerifyBlockedFeedback(int number) =>
-        _slack.Verify(s => s.PostThreadReplyAsync("C1", Ts, It.Is<string>(t => t.Contains($"Opdracht {number} is al goedgekeurd")), It.IsAny<CancellationToken>()), Times.Once);
+        _slack.Received(1).PostThreadReplyAsync("C1", Ts, Arg.Is<string>(t => t.Contains($"Opdracht {number} is al goedgekeurd")), Arg.Any<CancellationToken>());
 
     [Theory]
     [InlineData(SubmissionStatus.Approved)]
@@ -110,8 +110,8 @@ public class AttemptAfterApprovalTests : IDisposable
         result.CreatedSubmissionIds.Should().BeEmpty();
         result.Message.Should().Contain("al goedgekeurd");
         _added.Should().BeEmpty();
-        _slack.Verify(s => s.DownloadFileAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
-        _slack.Verify(s => s.AddReactionAsync("C1", Ts, "lock", It.IsAny<CancellationToken>()), Times.Once);
+        await _slack.DidNotReceive().DownloadFileAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _slack.Received(1).AddReactionAsync("C1", Ts, "lock", Arg.Any<CancellationToken>());
         VerifyBlockedFeedback(4);
     }
 
@@ -125,7 +125,7 @@ public class AttemptAfterApprovalTests : IDisposable
         var result = await Create().ProcessSlackMessageAsync(Message("Opdracht 4"));
 
         result.CreatedSubmissionIds.Should().ContainSingle();
-        _slack.Verify(s => s.AddReactionAsync(It.IsAny<string>(), It.IsAny<string>(), "lock", It.IsAny<CancellationToken>()), Times.Never);
+        await _slack.DidNotReceive().AddReactionAsync(Arg.Any<string>(), Arg.Any<string>(), "lock", Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -153,12 +153,12 @@ public class AttemptAfterApprovalTests : IDisposable
     public async Task SameMessageDeliveredAgain_ShouldNotBlockItself()
     {
         Earlier(4, SubmissionStatus.Approved, ts: Ts);
-        _submissions.Setup(s => s.ExistsAsync("C1", Ts, "F1", "a.jpg", It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        _submissions.ExistsAsync("C1", Ts, "F1", "a.jpg", Arg.Any<CancellationToken>()).Returns(true);
 
         var result = await Create().ProcessSlackMessageAsync(Message("Opdracht 4"));
 
         result.Message.Should().NotContain("al goedgekeurd");
-        _slack.Verify(s => s.PostThreadReplyAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        await _slack.DidNotReceive().PostThreadReplyAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -167,14 +167,14 @@ public class AttemptAfterApprovalTests : IDisposable
         // Rejected first, approved in a later message: the catch-up reads the rejected one again
         var rejected = Earlier(4, SubmissionStatus.Rejected, ts: Ts);
         Earlier(4, SubmissionStatus.Approved, ts: "1727708400.000100");
-        _submissions.Setup(s => s.ExistsAsync("C1", Ts, "F1", "a.jpg", It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        _submissions.ExistsAsync("C1", Ts, "F1", "a.jpg", Arg.Any<CancellationToken>()).Returns(true);
 
         var result = await Create().ProcessMissedMessageAsync(Message("Opdracht 4"));
 
         result.Message.Should().NotContain("al goedgekeurd");
         rejected.Status.Should().Be(SubmissionStatus.Rejected);
-        _slack.Verify(s => s.AddReactionAsync(It.IsAny<string>(), It.IsAny<string>(), "lock", It.IsAny<CancellationToken>()), Times.Never);
-        _slack.Verify(s => s.PostThreadReplyAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        await _slack.DidNotReceive().AddReactionAsync(Arg.Any<string>(), Arg.Any<string>(), "lock", Arg.Any<CancellationToken>());
+        await _slack.DidNotReceive().PostThreadReplyAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -183,12 +183,12 @@ public class AttemptAfterApprovalTests : IDisposable
         // One photo per message, both approved: neither is an attempt after the other's approval
         Earlier(4, SubmissionStatus.Approved, ts: Ts);
         Earlier(4, SubmissionStatus.Approved, ts: "1727700000.000100");
-        _submissions.Setup(s => s.ExistsAsync("C1", Ts, "F1", "a.jpg", It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        _submissions.ExistsAsync("C1", Ts, "F1", "a.jpg", Arg.Any<CancellationToken>()).Returns(true);
 
         var result = await Create().ProcessMissedMessageAsync(Message("Opdracht 4"));
 
         result.Message.Should().NotContain("al goedgekeurd");
-        _slack.Verify(s => s.PostThreadReplyAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        await _slack.DidNotReceive().PostThreadReplyAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -200,7 +200,7 @@ public class AttemptAfterApprovalTests : IDisposable
         var result = await Create().ProcessMissedMessageAsync(Message("Opdracht 4"));
 
         result.CreatedSubmissionIds.Should().ContainSingle();
-        _slack.Verify(s => s.AddReactionAsync(It.IsAny<string>(), It.IsAny<string>(), "lock", It.IsAny<CancellationToken>()), Times.Never);
+        await _slack.DidNotReceive().AddReactionAsync(Arg.Any<string>(), Arg.Any<string>(), "lock", Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -223,7 +223,7 @@ public class AttemptAfterApprovalTests : IDisposable
         var result = await Create().ProcessSlackMessageAsync(Message("Opdracht 4"));
 
         result.StoredFiles.Should().ContainSingle();
-        _slack.Verify(s => s.PostThreadReplyAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        await _slack.DidNotReceive().PostThreadReplyAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]

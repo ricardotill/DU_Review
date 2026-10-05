@@ -1,7 +1,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using Moq;
+using NSubstitute;
 using ScoutingAutomation.Contracts.Configuration;
 using ScoutingAutomation.Contracts.Slack;
 using ScoutingAutomation.Domain.Entities;
@@ -14,13 +14,13 @@ namespace ScoutingAutomation.UnitTests.Workflow;
 
 public class SubmissionWorkflowServiceTests
 {
-    private readonly Mock<ISubmissionRepository> _subRepoMock = new();
-    private readonly Mock<IGroupRepository> _groupRepoMock = new();
-    private readonly Mock<IAssignmentRepository> _assignmentRepoMock = new();
-    private readonly Mock<IAssignmentParser> _parserMock = new();
-    private readonly Mock<IFileStorageService> _storageMock = new();
-    private readonly Mock<ISlackClient> _slackClientMock = new();
-    private readonly Mock<ISubmissionChangeNotifier> _notifierMock = new();
+    private readonly ISubmissionRepository _subRepoMock = Substitute.For<ISubmissionRepository>();
+    private readonly IGroupRepository _groupRepoMock = Substitute.For<IGroupRepository>();
+    private readonly IAssignmentRepository _assignmentRepoMock = Substitute.For<IAssignmentRepository>();
+    private readonly IAssignmentParser _parserMock = Substitute.For<IAssignmentParser>();
+    private readonly IFileStorageService _storageMock = Substitute.For<IFileStorageService>();
+    private readonly ISlackClient _slackClientMock = Substitute.For<ISlackClient>();
+    private readonly ISubmissionChangeNotifier _notifierMock = Substitute.For<ISubmissionChangeNotifier>();
     private readonly IOptions<ScoutingSettings> _options;
 
     public SubmissionWorkflowServiceTests()
@@ -44,18 +44,18 @@ public class SubmissionWorkflowServiceTests
             }
         });
 
-        _assignmentRepoMock.Setup(r => r.GetByCodeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string code, CancellationToken _) => new Assignment { Code = code, StandardPoints = 1, AwesomePoints = 2 });
-        _slackClientMock.Setup(c => c.AddReactionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+        _assignmentRepoMock.GetByCodeAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(ci => new Assignment { Code = ci.ArgAt<string>(0), StandardPoints = 1, AwesomePoints = 2 });
+        _slackClientMock.AddReactionAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(true);
     }
 
     [Fact]
     public async Task ProcessSlackMessageAsync_UnknownChannel_ShouldIgnoreMessage()
     {
         // Arrange
-        _groupRepoMock.Setup(r => r.GetBySlackChannelIdAsync("UNKNOWN_CHANNEL", It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Group?)null);
+        _groupRepoMock.GetBySlackChannelIdAsync("UNKNOWN_CHANNEL", Arg.Any<CancellationToken>())
+            .Returns((Group?)null);
 
         var service = CreateService();
 
@@ -72,7 +72,7 @@ public class SubmissionWorkflowServiceTests
         // Assert
         result.Success.Should().BeFalse();
         result.Message.Should().Contain("hoort bij geen enkele groep");
-        _subRepoMock.Verify(r => r.AddAsync(It.IsAny<Submission>(), It.IsAny<CancellationToken>()), Times.Never);
+        await _subRepoMock.DidNotReceive().AddAsync(Arg.Any<Submission>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -82,18 +82,18 @@ public class SubmissionWorkflowServiceTests
         const string channel = "C01TEST";
         var group = new Group { Id = Guid.NewGuid(), Name = "De Zeearenden", Abbreviation = "DZA", SlackChannelId = channel };
 
-        _groupRepoMock.Setup(r => r.GetBySlackChannelIdAsync(channel, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(group);
+        _groupRepoMock.GetBySlackChannelIdAsync(channel, Arg.Any<CancellationToken>())
+            .Returns(group);
 
-        _parserMock.Setup(p => p.Parse(It.IsAny<string>()))
+        _parserMock.Parse(Arg.Any<string>())
             .Returns(AssignmentParseResult.Succeeded("4"));
 
-        _slackClientMock.Setup(c => c.DownloadFileAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new MemoryStream(new byte[] { 1, 2, 3 }));
+        _slackClientMock.DownloadFileAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new MemoryStream(new byte[] { 1, 2, 3 }));
 
         var storedName = $"DZA 4 {SlackTimestamp.ToDateTimeOffset("12345.678")!.Value.ToLocalTime():HH-mm-ss}.jpg";
-        _storageMock.Setup(s => s.SaveInitialFileAsync(group.Name, storedName, It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("/storage/de-zeearenden/DZA 4.jpg");
+        _storageMock.SaveInitialFileAsync(group.Name, storedName, Arg.Any<Stream>(), Arg.Any<CancellationToken>())
+            .Returns("/storage/de-zeearenden/DZA 4.jpg");
 
         var service = CreateService();
 
@@ -115,14 +115,14 @@ public class SubmissionWorkflowServiceTests
         // Assert
         result.Success.Should().BeTrue();
         result.CreatedSubmissionIds.Should().HaveCount(1);
-        _subRepoMock.Verify(r => r.AddAsync(It.Is<Submission>(s =>
+        await _subRepoMock.Received(1).AddAsync(Arg.Is<Submission>(s =>
             s.GroupId == group.Id &&
             s.AssignmentCode == "4" &&
             s.Status == SubmissionStatus.Pending &&
             s.FileName == "foto.jpg" &&
             s.StoragePath == "/storage/de-zeearenden/DZA 4.jpg"
-        ), It.IsAny<CancellationToken>()), Times.Once);
-        _notifierMock.Verify(n => n.NotifyChanged(), Times.Once);
+        ), Arg.Any<CancellationToken>());
+        _notifierMock.Received(1).NotifyChanged();
     }
 
     [Theory]
@@ -150,12 +150,12 @@ public class SubmissionWorkflowServiceTests
             Status = SubmissionStatus.Pending
         };
 
-        _subRepoMock.Setup(r => r.GetBySlackMessageIdAsync(channel, ts, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { submission });
+        _subRepoMock.GetBySlackMessageIdAsync(channel, ts, Arg.Any<CancellationToken>())
+            .Returns(new[] { submission });
 
         var expectedTargetPath = $"/storage/de-zeearenden/{expectedStatus.ToString().ToLower()}/foto.jpg";
-        _storageMock.Setup(s => s.MoveFileToStatusAsync(group.Name, submission.StoragePath, expectedStatus, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(expectedTargetPath);
+        _storageMock.MoveFileToStatusAsync(group.Name, submission.StoragePath, expectedStatus, Arg.Any<CancellationToken>())
+            .Returns(expectedTargetPath);
 
         var service = CreateService();
 
@@ -180,8 +180,8 @@ public class SubmissionWorkflowServiceTests
         submission.Status.Should().Be(expectedStatus);
         submission.StoragePath.Should().Be(expectedTargetPath);
         submission.Reviews.Should().ContainSingle(r => r.Reviewer == "Sara_Jury" && r.Status == expectedStatus);
-        _subRepoMock.Verify(r => r.UpdateAsync(submission, It.IsAny<CancellationToken>()), Times.Once);
-        _notifierMock.Verify(n => n.NotifyChanged(), Times.Once);
+        await _subRepoMock.Received(1).UpdateAsync(submission, Arg.Any<CancellationToken>());
+        _notifierMock.Received(1).NotifyChanged();
     }
 
     [Theory]
@@ -199,7 +199,7 @@ public class SubmissionWorkflowServiceTests
 
         // Assert
         result.CreatedSubmissionIds.Should().HaveCount(1);
-        _slackClientMock.Verify(c => c.AddReactionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        await _slackClientMock.DidNotReceive().AddReactionAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Theory]
@@ -217,9 +217,9 @@ public class SubmissionWorkflowServiceTests
 
         // Assert
         result.CreatedSubmissionIds.Should().BeEmpty();
-        _subRepoMock.Verify(r => r.AddAsync(It.IsAny<Submission>(), It.IsAny<CancellationToken>()), Times.Never);
-        _slackClientMock.Verify(c => c.AddReactionAsync(group.SlackChannelId, "12345.678", "warning", It.IsAny<CancellationToken>()), Times.Once);
-        _slackClientMock.Verify(c => c.PostThreadReplyAsync(group.SlackChannelId, "12345.678", $"Niet ondersteund: {fileName}", It.IsAny<CancellationToken>()), Times.Once);
+        await _subRepoMock.DidNotReceive().AddAsync(Arg.Any<Submission>(), Arg.Any<CancellationToken>());
+        await _slackClientMock.Received(1).AddReactionAsync(group.SlackChannelId, "12345.678", "warning", Arg.Any<CancellationToken>());
+        await _slackClientMock.Received(1).PostThreadReplyAsync(group.SlackChannelId, "12345.678", $"Niet ondersteund: {fileName}", Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -227,15 +227,15 @@ public class SubmissionWorkflowServiceTests
     {
         // Arrange
         var group = SetupGroupAndStorage();
-        _slackClientMock.Setup(c => c.AddReactionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
+        _slackClientMock.AddReactionAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(false);
         var service = CreateService();
 
         // Act
         await service.ProcessSlackMessageAsync(MessageWithFile(group.SlackChannelId, "data.zip", "application/zip"));
 
         // Assert
-        _slackClientMock.Verify(c => c.PostThreadReplyAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        await _slackClientMock.DidNotReceive().PostThreadReplyAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -252,8 +252,8 @@ public class SubmissionWorkflowServiceTests
 
         // Assert
         result.Success.Should().BeFalse();
-        _subRepoMock.Verify(r => r.AddAsync(It.IsAny<Submission>(), It.IsAny<CancellationToken>()), Times.Never);
-        _slackClientMock.Verify(c => c.AddReactionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        await _subRepoMock.DidNotReceive().AddAsync(Arg.Any<Submission>(), Arg.Any<CancellationToken>());
+        await _slackClientMock.DidNotReceive().AddReactionAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -261,7 +261,7 @@ public class SubmissionWorkflowServiceTests
     {
         // Arrange
         var group = SetupGroupAndStorage();
-        _parserMock.Setup(p => p.Parse(It.IsAny<string>()))
+        _parserMock.Parse(Arg.Any<string>())
             .Returns(AssignmentParseResult.Failed("No assignment number found"));
         var service = CreateService();
 
@@ -270,12 +270,12 @@ public class SubmissionWorkflowServiceTests
 
         // Assert
         result.Success.Should().BeFalse();
-        _slackClientMock.Verify(c => c.DownloadFileAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
-        _storageMock.Verify(s => s.SaveInitialFileAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()), Times.Never);
-        _subRepoMock.Verify(r => r.AddAsync(It.IsAny<Submission>(), It.IsAny<CancellationToken>()), Times.Never);
-        _notifierMock.Verify(n => n.NotifyChanged(), Times.Never);
-        _slackClientMock.Verify(c => c.AddReactionAsync(group.SlackChannelId, "12345.678", "question", It.IsAny<CancellationToken>()), Times.Once);
-        _slackClientMock.Verify(c => c.PostThreadReplyAsync(group.SlackChannelId, "12345.678", "Geen opdrachtnummer", It.IsAny<CancellationToken>()), Times.Once);
+        await _slackClientMock.DidNotReceive().DownloadFileAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _storageMock.DidNotReceive().SaveInitialFileAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<Stream>(), Arg.Any<CancellationToken>());
+        await _subRepoMock.DidNotReceive().AddAsync(Arg.Any<Submission>(), Arg.Any<CancellationToken>());
+        _notifierMock.DidNotReceive().NotifyChanged();
+        await _slackClientMock.Received(1).AddReactionAsync(group.SlackChannelId, "12345.678", "question", Arg.Any<CancellationToken>());
+        await _slackClientMock.Received(1).PostThreadReplyAsync(group.SlackChannelId, "12345.678", "Geen opdrachtnummer", Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -283,10 +283,10 @@ public class SubmissionWorkflowServiceTests
     {
         // Arrange
         var group = SetupGroupAndStorage();
-        _parserMock.Setup(p => p.Parse(It.IsAny<string>()))
+        _parserMock.Parse(Arg.Any<string>())
             .Returns(AssignmentParseResult.Succeeded("999"));
-        _assignmentRepoMock.Setup(r => r.GetByCodeAsync("999", It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Assignment?)null);
+        _assignmentRepoMock.GetByCodeAsync("999", Arg.Any<CancellationToken>())
+            .Returns((Assignment?)null);
         var service = CreateService();
 
         // Act
@@ -294,25 +294,25 @@ public class SubmissionWorkflowServiceTests
 
         // Assert
         result.Success.Should().BeFalse();
-        _slackClientMock.Verify(c => c.DownloadFileAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
-        _storageMock.Verify(s => s.SaveInitialFileAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()), Times.Never);
-        _subRepoMock.Verify(r => r.AddAsync(It.IsAny<Submission>(), It.IsAny<CancellationToken>()), Times.Never);
-        _notifierMock.Verify(n => n.NotifyChanged(), Times.Never);
-        _slackClientMock.Verify(c => c.AddReactionAsync(group.SlackChannelId, "12345.678", "question", It.IsAny<CancellationToken>()), Times.Once);
-        _slackClientMock.Verify(c => c.PostThreadReplyAsync(group.SlackChannelId, "12345.678", "Opdracht 999 bestaat niet", It.IsAny<CancellationToken>()), Times.Once);
+        await _slackClientMock.DidNotReceive().DownloadFileAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _storageMock.DidNotReceive().SaveInitialFileAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<Stream>(), Arg.Any<CancellationToken>());
+        await _subRepoMock.DidNotReceive().AddAsync(Arg.Any<Submission>(), Arg.Any<CancellationToken>());
+        _notifierMock.DidNotReceive().NotifyChanged();
+        await _slackClientMock.Received(1).AddReactionAsync(group.SlackChannelId, "12345.678", "question", Arg.Any<CancellationToken>());
+        await _slackClientMock.Received(1).PostThreadReplyAsync(group.SlackChannelId, "12345.678", "Opdracht 999 bestaat niet", Arg.Any<CancellationToken>());
     }
 
     private Group SetupGroupAndStorage()
     {
         var group = new Group { Id = Guid.NewGuid(), Name = "De Zeearenden", SlackChannelId = "C01TEST" };
-        _groupRepoMock.Setup(r => r.GetBySlackChannelIdAsync(group.SlackChannelId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(group);
-        _parserMock.Setup(p => p.Parse(It.IsAny<string>()))
+        _groupRepoMock.GetBySlackChannelIdAsync(group.SlackChannelId, Arg.Any<CancellationToken>())
+            .Returns(group);
+        _parserMock.Parse(Arg.Any<string>())
             .Returns(AssignmentParseResult.Succeeded("4"));
-        _slackClientMock.Setup(c => c.DownloadFileAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new MemoryStream(new byte[] { 1, 2, 3 }));
-        _storageMock.Setup(s => s.SaveInitialFileAsync(group.Name, It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("/storage/de-zeearenden/file");
+        _slackClientMock.DownloadFileAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new MemoryStream(new byte[] { 1, 2, 3 }));
+        _storageMock.SaveInitialFileAsync(group.Name, Arg.Any<string>(), Arg.Any<Stream>(), Arg.Any<CancellationToken>())
+            .Returns("/storage/de-zeearenden/file");
         return group;
     }
 
@@ -353,9 +353,9 @@ public class SubmissionWorkflowServiceTests
 
         // Assert
         result.Success.Should().BeFalse();
-        _storageMock.Verify(s => s.MoveFileToStatusAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<SubmissionStatus>(), It.IsAny<CancellationToken>()), Times.Never);
-        _subRepoMock.Verify(r => r.UpdateAsync(It.IsAny<Submission>(), It.IsAny<CancellationToken>()), Times.Never);
-        _notifierMock.Verify(n => n.NotifyChanged(), Times.Never);
+        await _storageMock.DidNotReceive().MoveFileToStatusAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<SubmissionStatus>(), Arg.Any<CancellationToken>());
+        await _subRepoMock.DidNotReceive().UpdateAsync(Arg.Any<Submission>(), Arg.Any<CancellationToken>());
+        _notifierMock.DidNotReceive().NotifyChanged();
     }
 
     [Fact]
@@ -364,10 +364,10 @@ public class SubmissionWorkflowServiceTests
         // Arrange
         var group = new Group { Id = Guid.NewGuid(), Name = "De Wolven" };
         var submission = new Submission { GroupId = group.Id, Group = group, StoragePath = "/storage/de-wolven/CDW 3.jpg", SlackChannelId = "C1", SlackMessageId = "1.1" };
-        _subRepoMock.Setup(r => r.GetByIdAsync(submission.Id, It.IsAny<CancellationToken>())).ReturnsAsync(submission);
-        _subRepoMock.Setup(r => r.GetBySlackMessageIdAsync("C1", "1.1", It.IsAny<CancellationToken>())).ReturnsAsync(new[] { submission });
-        _storageMock.Setup(s => s.MoveFileToStatusAsync(group.Name, submission.StoragePath, SubmissionStatus.Approved, It.IsAny<CancellationToken>()))
-            .ReturnsAsync("/storage/de-wolven/approved/CDW 3.jpg");
+        _subRepoMock.GetByIdAsync(submission.Id, Arg.Any<CancellationToken>()).Returns(submission);
+        _subRepoMock.GetBySlackMessageIdAsync("C1", "1.1", Arg.Any<CancellationToken>()).Returns(new[] { submission });
+        _storageMock.MoveFileToStatusAsync(group.Name, submission.StoragePath, SubmissionStatus.Approved, Arg.Any<CancellationToken>())
+            .Returns("/storage/de-wolven/approved/CDW 3.jpg");
         var service = CreateService();
 
         // Act
@@ -379,8 +379,8 @@ public class SubmissionWorkflowServiceTests
         submission.Reviews.Should().ContainSingle(r =>
             r.Reviewer == SubmissionWorkflowService.DashboardOverrideReviewer &&
             r.Notes == "Reaction was placed on the wrong message");
-        _subRepoMock.Verify(r => r.UpdateAsync(submission, It.IsAny<CancellationToken>()), Times.Once);
-        _notifierMock.Verify(n => n.NotifyChanged(), Times.Once);
+        await _subRepoMock.Received(1).UpdateAsync(submission, Arg.Any<CancellationToken>());
+        _notifierMock.Received(1).NotifyChanged();
     }
 
     [Theory]
@@ -393,19 +393,19 @@ public class SubmissionWorkflowServiceTests
         var act = () => service.OverrideStatusAsync(Guid.NewGuid(), SubmissionStatus.Approved, reason);
 
         await act.Should().ThrowAsync<ArgumentException>();
-        _subRepoMock.Verify(r => r.UpdateAsync(It.IsAny<Submission>(), It.IsAny<CancellationToken>()), Times.Never);
+        await _subRepoMock.DidNotReceive().UpdateAsync(Arg.Any<Submission>(), Arg.Any<CancellationToken>());
     }
 
     private SubmissionWorkflowService CreateService()
     {
         return new SubmissionWorkflowService(
-            _subRepoMock.Object,
-            _groupRepoMock.Object,
-            _assignmentRepoMock.Object,
-            _parserMock.Object,
-            _storageMock.Object,
-            _slackClientMock.Object,
-            _notifierMock.Object,
+            _subRepoMock,
+            _groupRepoMock,
+            _assignmentRepoMock,
+            _parserMock,
+            _storageMock,
+            _slackClientMock,
+            _notifierMock,
             TestRuntime.For(_options),
             _options,
             NullLogger<SubmissionWorkflowService>.Instance

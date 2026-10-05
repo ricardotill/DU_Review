@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using Moq;
+using NSubstitute;
 using ScoutingAutomation.Contracts.Configuration;
 using ScoutingAutomation.Infrastructure.Services;
 using ScoutingAutomation.Web.Auth;
@@ -69,13 +69,13 @@ public class KeyAuthTests : IDisposable
     public void SafeReturnUrl_ShouldOnlyAllowLocalPaths(string? returnUrl, string expected) =>
         KeyAuth.SafeReturnUrl(returnUrl).Should().Be(expected);
 
-    private (DefaultHttpContext Http, Mock<IAuthenticationService> Auth, KeyAuthenticationStateProvider State) CreateHttp()
+    private (DefaultHttpContext Http, IAuthenticationService Auth, KeyAuthenticationStateProvider State) CreateHttp()
     {
-        var auth = new Mock<IAuthenticationService>();
+        var auth = Substitute.For<IAuthenticationService>();
         var state = new KeyAuthenticationStateProvider(_keys);
         var services = new ServiceCollection()
             .AddSingleton(_keys)
-            .AddSingleton(auth.Object)
+            .AddSingleton(auth)
             .AddSingleton<AuthenticationStateProvider>(state)
             .BuildServiceProvider();
         return (new DefaultHttpContext { RequestServices = services }, auth, state);
@@ -96,7 +96,7 @@ public class KeyAuthTests : IDisposable
 
         context.Principal.Should().BeSameAs(principal);
         context.ShouldRenew.Should().BeFalse();
-        auth.VerifyNoOtherCalls();
+        auth.ReceivedCalls().Should().BeEmpty();
     }
 
     [Fact]
@@ -122,7 +122,7 @@ public class KeyAuthTests : IDisposable
         await KeyAuth.ValidatePrincipalAsync(context);
 
         context.Principal.Should().BeNull();
-        auth.Verify(a => a.SignOutAsync(http, KeyAuth.Scheme, It.IsAny<AuthenticationProperties>()), Times.Once);
+        await auth.Received(1).SignOutAsync(http, KeyAuth.Scheme, Arg.Any<AuthenticationProperties>());
     }
 
     [Fact]
@@ -133,8 +133,8 @@ public class KeyAuthTests : IDisposable
 
         await KeyAuth.SignInAsync(http, _keys, admin: true);
 
-        auth.Verify(a => a.SignInAsync(http, KeyAuth.Scheme, It.Is<ClaimsPrincipal>(p => p.IsInRole(KeyAuth.AdminRole)),
-            It.Is<AuthenticationProperties>(p => p.IsPersistent)), Times.Once);
+        await auth.Received(1).SignInAsync(http, KeyAuth.Scheme, Arg.Is<ClaimsPrincipal>(p => p.IsInRole(KeyAuth.AdminRole)),
+            Arg.Is<AuthenticationProperties>(p => p.IsPersistent));
         http.User.IsInRole(KeyAuth.AdminRole).Should().BeTrue();
         (await state.GetAuthenticationStateAsync()).User.IsInRole(KeyAuth.AdminRole).Should().BeTrue();
     }
@@ -142,8 +142,8 @@ public class KeyAuthTests : IDisposable
     [Fact]
     public async Task SignIn_WithoutBlazorLoginState_ShouldStillSignIn()
     {
-        var auth = new Mock<IAuthenticationService>();
-        var http = new DefaultHttpContext { RequestServices = new ServiceCollection().AddSingleton(auth.Object).BuildServiceProvider() };
+        var auth = Substitute.For<IAuthenticationService>();
+        var http = new DefaultHttpContext { RequestServices = new ServiceCollection().AddSingleton(auth).BuildServiceProvider() };
 
         await KeyAuth.SignInAsync(http, _keys, admin: false);
 

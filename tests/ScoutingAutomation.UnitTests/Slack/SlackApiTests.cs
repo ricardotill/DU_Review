@@ -4,7 +4,8 @@ using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using Moq;
+using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using ScoutingAutomation.Contracts.Configuration;
 using ScoutingAutomation.Contracts.Slack;
 using ScoutingAutomation.Infrastructure.Services;
@@ -228,10 +229,10 @@ public class SlackSocketConnectorTests
 
 public class SlackEventDispatcherTests
 {
-    private readonly Mock<ISubmissionWorkflowService> _workflow = new();
+    private readonly ISubmissionWorkflowService _workflow = Substitute.For<ISubmissionWorkflowService>();
     private readonly SlackEventLog _log = new(NullLogger<SlackEventLog>.Instance);
 
-    private SlackEventDispatcher Create() => new(_workflow.Object, new SlackProcessingGate(), _log, TimeProvider.System, NullLogger<SlackEventDispatcher>.Instance);
+    private SlackEventDispatcher Create() => new(_workflow, new SlackProcessingGate(), _log, TimeProvider.System, NullLogger<SlackEventDispatcher>.Instance);
 
     [Theory]
     [InlineData(null)]
@@ -239,7 +240,7 @@ public class SlackEventDispatcherTests
     public async Task DispatchAsync_Message_ShouldProcessMessage(string? subtype)
     {
         var expected = ProcessSlackMessageResult.Succeeded(new[] { Guid.NewGuid() });
-        _workflow.Setup(w => w.ProcessSlackMessageAsync(It.IsAny<SlackEventItemDto>(), It.IsAny<CancellationToken>())).ReturnsAsync(expected);
+        _workflow.ProcessSlackMessageAsync(Arg.Any<SlackEventItemDto>(), Arg.Any<CancellationToken>()).Returns(expected);
 
         var result = await Create().DispatchAsync(new SlackEventEnvelopeDto
         {
@@ -254,7 +255,7 @@ public class SlackEventDispatcherTests
     public async Task DispatchAsync_Reaction_ShouldProcessReaction()
     {
         var expected = ProcessSlackReactionResult.Ignored("x");
-        _workflow.Setup(w => w.ProcessSlackReactionAsync(It.IsAny<SlackEventItemDto>(), It.IsAny<CancellationToken>())).ReturnsAsync(expected);
+        _workflow.ProcessSlackReactionAsync(Arg.Any<SlackEventItemDto>(), Arg.Any<CancellationToken>()).Returns(expected);
 
         var result = await Create().DispatchAsync(new SlackEventEnvelopeDto
         {
@@ -269,7 +270,7 @@ public class SlackEventDispatcherTests
     public async Task DispatchAsync_RemovedReaction_ShouldProcessRemoval()
     {
         var expected = ProcessSlackReactionResult.Ignored("y");
-        _workflow.Setup(w => w.ProcessSlackReactionRemovedAsync(It.IsAny<SlackEventItemDto>(), It.IsAny<CancellationToken>())).ReturnsAsync(expected);
+        _workflow.ProcessSlackReactionRemovedAsync(Arg.Any<SlackEventItemDto>(), Arg.Any<CancellationToken>()).Returns(expected);
 
         var result = await Create().DispatchAsync(new SlackEventEnvelopeDto
         {
@@ -284,7 +285,7 @@ public class SlackEventDispatcherTests
     public async Task DispatchAsync_EditedMessage_ShouldProcessEdit()
     {
         var expected = ProcessSlackMessageResult.Ignored("edit");
-        _workflow.Setup(w => w.ProcessSlackMessageChangedAsync(It.IsAny<SlackEventItemDto>(), It.IsAny<CancellationToken>())).ReturnsAsync(expected);
+        _workflow.ProcessSlackMessageChangedAsync(Arg.Any<SlackEventItemDto>(), Arg.Any<CancellationToken>()).Returns(expected);
 
         var result = await Create().DispatchAsync(new SlackEventEnvelopeDto
         {
@@ -299,7 +300,7 @@ public class SlackEventDispatcherTests
     public async Task DispatchAsync_DeletedMessage_ShouldProcessDeletion()
     {
         var expected = ProcessSlackMessageResult.Ignored("delete");
-        _workflow.Setup(w => w.ProcessSlackMessageDeletedAsync(It.IsAny<SlackEventItemDto>(), It.IsAny<CancellationToken>())).ReturnsAsync(expected);
+        _workflow.ProcessSlackMessageDeletedAsync(Arg.Any<SlackEventItemDto>(), Arg.Any<CancellationToken>()).Returns(expected);
 
         var result = await Create().DispatchAsync(new SlackEventEnvelopeDto
         {
@@ -314,7 +315,7 @@ public class SlackEventDispatcherTests
     public async Task DispatchAsync_ThreadReplyAlsoSentToChannel_ShouldProcessAsMessage()
     {
         var expected = ProcessSlackMessageResult.Ignored("broadcast");
-        _workflow.Setup(w => w.ProcessSlackMessageAsync(It.IsAny<SlackEventItemDto>(), It.IsAny<CancellationToken>())).ReturnsAsync(expected);
+        _workflow.ProcessSlackMessageAsync(Arg.Any<SlackEventItemDto>(), Arg.Any<CancellationToken>()).Returns(expected);
 
         var result = await Create().DispatchAsync(new SlackEventEnvelopeDto
         {
@@ -340,7 +341,7 @@ public class SlackEventDispatcherTests
         var result = await Create().DispatchAsync(envelope);
 
         result.Should().BeNull();
-        _workflow.VerifyNoOtherCalls();
+        _workflow.ReceivedCalls().Should().BeEmpty();
         _log.Recent().Should().BeEmpty();
     }
 
@@ -348,8 +349,8 @@ public class SlackEventDispatcherTests
     public async Task DispatchAsync_Message_ShouldRecordEventWithOutcome()
     {
         var id = Guid.NewGuid();
-        _workflow.Setup(w => w.ProcessSlackMessageAsync(It.IsAny<SlackEventItemDto>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(ProcessSlackMessageResult.Succeeded(new[] { id }, "1 bestand opgeslagen"));
+        _workflow.ProcessSlackMessageAsync(Arg.Any<SlackEventItemDto>(), Arg.Any<CancellationToken>())
+            .Returns(ProcessSlackMessageResult.Succeeded(new[] { id }, "1 bestand opgeslagen"));
 
         await Create().DispatchAsync(new SlackEventEnvelopeDto
         {
@@ -375,10 +376,10 @@ public class SlackEventDispatcherTests
     [Fact]
     public async Task DispatchAsync_IgnoredAndFailedReactions_ShouldBeRecordedApart()
     {
-        _workflow.Setup(w => w.ProcessSlackReactionAsync(It.IsAny<SlackEventItemDto>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(ProcessSlackReactionResult.Ignored("geen jurylid"));
-        _workflow.Setup(w => w.ProcessSlackReactionRemovedAsync(It.IsAny<SlackEventItemDto>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(ProcessSlackReactionResult.Failed("niet gevonden"));
+        _workflow.ProcessSlackReactionAsync(Arg.Any<SlackEventItemDto>(), Arg.Any<CancellationToken>())
+            .Returns(ProcessSlackReactionResult.Ignored("geen jurylid"));
+        _workflow.ProcessSlackReactionRemovedAsync(Arg.Any<SlackEventItemDto>(), Arg.Any<CancellationToken>())
+            .Returns(ProcessSlackReactionResult.Failed("niet gevonden"));
 
         await Create().DispatchAsync(new SlackEventEnvelopeDto
         {
@@ -402,7 +403,7 @@ public class SlackEventDispatcherTests
     [Fact]
     public async Task DispatchAsync_WorkflowThrows_ShouldRecordFailureAndRethrow()
     {
-        _workflow.Setup(w => w.ProcessSlackMessageDeletedAsync(It.IsAny<SlackEventItemDto>(), It.IsAny<CancellationToken>()))
+        _workflow.ProcessSlackMessageDeletedAsync(Arg.Any<SlackEventItemDto>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new InvalidOperationException("boom"));
 
         var act = () => Create().DispatchAsync(new SlackEventEnvelopeDto

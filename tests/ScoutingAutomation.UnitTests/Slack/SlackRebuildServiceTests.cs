@@ -6,7 +6,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
-using Moq;
+using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using ScoutingAutomation.Contracts.Configuration;
 using ScoutingAutomation.Contracts.Slack;
 using ScoutingAutomation.Domain.Entities;
@@ -25,8 +26,8 @@ namespace ScoutingAutomation.UnitTests.Slack;
 public class SlackRebuildServiceTests : IDisposable
 {
     private readonly TempDirectory _temp = new();
-    private readonly Mock<ISlackHistoryClient> _history = new();
-    private readonly Mock<ISlackClient> _slack = new();
+    private readonly ISlackHistoryClient _history = Substitute.For<ISlackHistoryClient>();
+    private readonly ISlackClient _slack = Substitute.For<ISlackClient>();
     private readonly ServiceProvider _services;
     private readonly ScoutingSettings _settings;
     private readonly Group _wolves = new() { Name = "De Wolven", Abbreviation = "DWO", SlackChannelId = "C1" };
@@ -57,13 +58,13 @@ public class SlackRebuildServiceTests : IDisposable
         services.AddScoutingInfrastructure(new ConfigurationBuilder().Build());
         services.AddSingleton<IOptions<ScoutingSettings>>(_ => Options.Create(_settings));
         services.RemoveAll<ISlackHistoryClient>();
-        services.AddSingleton(_history.Object);
+        services.AddSingleton(_history);
         services.RemoveAll<ISlackClient>();
-        services.AddSingleton(_slack.Object);
+        services.AddSingleton(_slack);
         _services = services.BuildServiceProvider();
 
-        _slack.Setup(s => s.DownloadFileAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(() => new MemoryStream(new byte[] { 7 }));
-        _slack.Setup(s => s.DownloadFileAsync(It.IsAny<string>(), "weg.jpg", It.IsAny<CancellationToken>())).ThrowsAsync(new HttpRequestException("gone"));
+        _slack.DownloadFileAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(_ => new MemoryStream(new byte[] { 7 }));
+        _slack.DownloadFileAsync(Arg.Any<string>(), "weg.jpg", Arg.Any<CancellationToken>()).ThrowsAsync(new HttpRequestException("gone"));
 
         WithDb(db =>
         {
@@ -97,7 +98,7 @@ public class SlackRebuildServiceTests : IDisposable
     private void SlackHas(string channel, params SlackEventItemDto[] messages)
     {
         foreach (var m in messages) m.Channel = channel;
-        _history.Setup(h => h.GetChannelMessagesAsync(channel, _since, It.IsAny<CancellationToken>())).ReturnsAsync(messages);
+        _history.GetChannelMessagesAsync(channel, _since, Arg.Any<CancellationToken>()).Returns(messages);
     }
 
     private async Task<string> SeedExistingSubmissionAsync()
@@ -162,7 +163,7 @@ public class SlackRebuildServiceTests : IDisposable
         Path.GetFileName(submissions[1].StoragePath).Should().Be(
             $"DWO 1 {SlackTimestamp.ToDateTimeOffset(Ts(150))!.Value.ToLocalTime():HH-mm-ss}.jpg", "each attempt is named after its own time");
         submissions.Should().OnlyContain(s => File.Exists(s.StoragePath));
-        _slack.Verify(s => s.AddReactionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        await _slack.DidNotReceive().AddReactionAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
         _services.GetRequiredService<SlackProcessingGate>().IsClosed.Should().BeFalse();
     }
 
@@ -212,7 +213,7 @@ public class SlackRebuildServiceTests : IDisposable
         progress.GroupName.Should().Be("De Wolven");
         progress.ChannelsTotal.Should().Be(1);
         progress.SubmissionsImported.Should().Be(1);
-        _history.Verify(h => h.GetChannelMessagesAsync("C2", It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+        await _history.DidNotReceive().GetChannelMessagesAsync("C2", Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>());
 
         var submissions = WithDb(db => db.Submissions.OrderBy(s => s.FileName).ToList());
         submissions.Select(s => (s.FileName, s.Status)).Should().Equal(
@@ -239,16 +240,16 @@ public class SlackRebuildServiceTests : IDisposable
         Service.Progress.Error.Should().Contain("bestaat niet");
         File.Exists(oldPath).Should().BeTrue();
         WithDb(db => db.Submissions.Count()).Should().Be(1);
-        _history.VerifyNoOtherCalls();
+        _history.ReceivedCalls().Should().BeEmpty();
     }
 
     [Fact]
     public async Task SlackFailure_ShouldReportEveryFailingChannelAndLeaveDataUntouched()
     {
         var oldPath = await SeedExistingSubmissionAsync();
-        _history.Setup(h => h.GetChannelMessagesAsync("C1", It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+        _history.GetChannelMessagesAsync("C1", Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new HttpRequestException("Connection refused"));
-        _history.Setup(h => h.GetChannelMessagesAsync("C2", It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+        _history.GetChannelMessagesAsync("C2", Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new SlackApiException("conversations.history", "not_in_channel"));
 
         Service.TryStart(_since);
@@ -277,7 +278,7 @@ public class SlackRebuildServiceTests : IDisposable
     public async Task SlackFailure_ShouldAdviseWhatToDo(string error, string advice)
     {
         SlackHas("C1");
-        _history.Setup(h => h.GetChannelMessagesAsync("C2", It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+        _history.GetChannelMessagesAsync("C2", Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new SlackApiException("conversations.history", error));
 
         Service.TryStart(_since);
@@ -290,7 +291,7 @@ public class SlackRebuildServiceTests : IDisposable
     public async Task UnexpectedFailure_ShouldStillFailCleanly()
     {
         // E.g. a timeout of the HTTP pipeline: any failure reading a channel is a channel problem, and nothing changes
-        _history.Setup(h => h.GetChannelMessagesAsync(It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+        _history.GetChannelMessagesAsync(Arg.Any<string>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new InvalidOperationException("boom"));
 
         Service.TryStart(_since);
@@ -312,14 +313,14 @@ public class SlackRebuildServiceTests : IDisposable
 
         Service.Progress.State.Should().Be(RebuildState.Failed);
         Service.Progress.Error.Should().Contain("Slack verbonden");
-        _history.VerifyNoOtherCalls();
+        _history.ReceivedCalls().Should().BeEmpty();
     }
 
     [Fact]
     public async Task SecondStart_WhileRunning_ShouldBeRefused()
     {
         var release = new TaskCompletionSource<IReadOnlyList<SlackEventItemDto>>();
-        _history.Setup(h => h.GetChannelMessagesAsync(It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).Returns(release.Task);
+        _history.GetChannelMessagesAsync(Arg.Any<string>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>()).Returns(release.Task);
 
         Service.TryStart(_since).Should().BeTrue();
         Service.TryStart(_since).Should().BeFalse();

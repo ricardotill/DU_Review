@@ -2,7 +2,7 @@ using System.Net;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using Moq;
+using NSubstitute;
 using ScoutingAutomation.Contracts.Configuration;
 using ScoutingAutomation.Infrastructure.Services;
 using Xunit;
@@ -119,7 +119,7 @@ public class ReviewerNameTests : IDisposable
 public class ReviewerNameFetcherTests : IDisposable
 {
     private readonly TempDirectory _temp = new();
-    private readonly Mock<ISlackClient> _slack = new();
+    private readonly ISlackClient _slack = Substitute.For<ISlackClient>();
     private readonly RuntimeSettingsService _runtime;
 
     public ReviewerNameFetcherTests()
@@ -129,17 +129,17 @@ public class ReviewerNameFetcherTests : IDisposable
             Reviewers = new List<string> { "U_EVA", "U_PIET", "U_WEG" },
             RuntimeSettingsFile = Path.Combine(_temp.Path, "rt.json")
         }), NullLogger<RuntimeSettingsService>.Instance);
-        _slack.Setup(s => s.IsConnected).Returns(true);
-        _slack.Setup(s => s.GetUserNameAsync("U_EVA", It.IsAny<CancellationToken>())).ReturnsAsync(SlackUserLookup.Found("Eva"));
-        _slack.Setup(s => s.GetUserNameAsync("U_PIET", It.IsAny<CancellationToken>())).ReturnsAsync(SlackUserLookup.Found("Piet"));
-        _slack.Setup(s => s.GetUserNameAsync("U_WEG", It.IsAny<CancellationToken>())).ReturnsAsync(SlackUserLookup.Failed("user_not_found"));
+        _slack.IsConnected.Returns(true);
+        _slack.GetUserNameAsync("U_EVA", Arg.Any<CancellationToken>()).Returns(SlackUserLookup.Found("Eva"));
+        _slack.GetUserNameAsync("U_PIET", Arg.Any<CancellationToken>()).Returns(SlackUserLookup.Found("Piet"));
+        _slack.GetUserNameAsync("U_WEG", Arg.Any<CancellationToken>()).Returns(SlackUserLookup.Failed("user_not_found"));
     }
 
     [Fact]
     public async Task FetchAllAsync_ShouldFillNamesKeepManualOnesAndReportProblems()
     {
         _runtime.SetReviewerName("U_PIET", "Pietje");
-        var fetcher = new ReviewerNameFetcher(_slack.Object, _runtime);
+        var fetcher = new ReviewerNameFetcher(_slack, _runtime);
 
         var result = await fetcher.FetchAllAsync();
 
@@ -148,7 +148,7 @@ public class ReviewerNameFetcherTests : IDisposable
         result.Problems.Should().ContainSingle().Which.Should().Contain("Slack kent U_WEG niet");
         _runtime.NameOf("U_EVA").Should().Be("Eva");
         _runtime.NameOf("U_PIET").Should().Be("Pietje");
-        _slack.Verify(s => s.GetUserNameAsync("U_PIET", It.IsAny<CancellationToken>()), Times.Never);
+        await _slack.DidNotReceive().GetUserNameAsync("U_PIET", Arg.Any<CancellationToken>());
     }
 
     [Theory]
@@ -156,9 +156,9 @@ public class ReviewerNameFetcherTests : IDisposable
     [InlineData("ratelimited", "De naam van U_EVA kon niet worden opgehaald: ratelimited")]
     public async Task FetchAsync_Problems_ShouldExplain(string error, string expected)
     {
-        _slack.Setup(s => s.GetUserNameAsync("U_EVA", It.IsAny<CancellationToken>())).ReturnsAsync(SlackUserLookup.Failed(error));
+        _slack.GetUserNameAsync("U_EVA", Arg.Any<CancellationToken>()).Returns(SlackUserLookup.Failed(error));
 
-        var problem = await new ReviewerNameFetcher(_slack.Object, _runtime).FetchAsync("U_EVA");
+        var problem = await new ReviewerNameFetcher(_slack, _runtime).FetchAsync("U_EVA");
 
         problem.Should().Contain(expected);
     }
@@ -166,9 +166,9 @@ public class ReviewerNameFetcherTests : IDisposable
     [Fact]
     public void CanFetch_ShouldFollowTheSlackConnection()
     {
-        new ReviewerNameFetcher(_slack.Object, _runtime).CanFetch.Should().BeTrue();
-        _slack.Setup(s => s.IsConnected).Returns(false);
-        new ReviewerNameFetcher(_slack.Object, _runtime).CanFetch.Should().BeFalse();
+        new ReviewerNameFetcher(_slack, _runtime).CanFetch.Should().BeTrue();
+        _slack.IsConnected.Returns(false);
+        new ReviewerNameFetcher(_slack, _runtime).CanFetch.Should().BeFalse();
     }
 
     public void Dispose() => _temp.Dispose();

@@ -2,7 +2,7 @@ using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using Moq;
+using NSubstitute;
 using ScoutingAutomation.Contracts.Configuration;
 using ScoutingAutomation.Domain.Entities;
 using ScoutingAutomation.Domain.Enums;
@@ -18,8 +18,8 @@ public class ReviewReminderServiceTests : IDisposable
     private static readonly DateTimeOffset Now = new(2026, 10, 3, 10, 0, 0, TimeSpan.Zero);
 
     private readonly TempDirectory _temp = new();
-    private readonly Mock<ISubmissionRepository> _submissions = new();
-    private readonly Mock<ISlackClient> _slack = new();
+    private readonly ISubmissionRepository _submissions = Substitute.For<ISubmissionRepository>();
+    private readonly ISlackClient _slack = Substitute.For<ISlackClient>();
     private readonly List<Submission> _all = new();
     private readonly List<(string Channel, string Text)> _posted = new();
     private readonly Group _wolves = new() { Name = "De Wolven", Abbreviation = "DWO", SlackChannelId = "C1" };
@@ -27,13 +27,13 @@ public class ReviewReminderServiceTests : IDisposable
 
     public ReviewReminderServiceTests()
     {
-        _submissions.Setup(s => s.SearchSubmissionsAsync(It.IsAny<SubmissionFilter>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() => _all.ToList());
-        _slack.Setup(s => s.IsConnected).Returns(true);
-        _slack.Setup(s => s.GetWorkspaceAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new SlackWorkspace("T1", "https://scouting.slack.com/"));
-        _slack.Setup(s => s.PostMessageAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .Callback((string channel, string text, CancellationToken _) => _posted.Add((channel, text)))
-            .ReturnsAsync(() => _postError);
+        _submissions.SearchSubmissionsAsync(Arg.Any<SubmissionFilter>(), Arg.Any<CancellationToken>())
+            .Returns(_ => _all.ToList());
+        _slack.IsConnected.Returns(true);
+        _slack.GetWorkspaceAsync(Arg.Any<CancellationToken>()).Returns(new SlackWorkspace("T1", "https://scouting.slack.com/"));
+        _slack.PostMessageAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(_ => _postError)
+            .AndDoes(ci => _posted.Add((ci.ArgAt<string>(0), ci.ArgAt<string>(1))));
     }
 
     public void Dispose() => _temp.Dispose();
@@ -47,8 +47,8 @@ public class ReviewReminderServiceTests : IDisposable
         });
         var runtime = new RuntimeSettingsService(options, NullLogger<RuntimeSettingsService>.Instance);
         var services = new ServiceCollection()
-            .AddSingleton(_submissions.Object)
-            .AddSingleton(_slack.Object)
+            .AddSingleton(_submissions)
+            .AddSingleton(_slack)
             .BuildServiceProvider();
         var scopes = services.GetRequiredService<IServiceScopeFactory>();
         var time = new FixedTimeProvider(Now);

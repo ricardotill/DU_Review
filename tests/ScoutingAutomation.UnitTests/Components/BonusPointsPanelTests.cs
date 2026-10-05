@@ -3,7 +3,8 @@ using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using Moq;
+using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using ScoutingAutomation.Contracts.Configuration;
 using ScoutingAutomation.Domain.Entities;
 using ScoutingAutomation.Domain.Exceptions;
@@ -20,22 +21,22 @@ public class BonusPointsPanelTests : BunitContext
     private readonly TempDirectory _temp = new();
     private readonly RuntimeSettingsService _runtime;
     private readonly List<GroupBonusPoints> _points = new();
-    private readonly Mock<IGroupRepository> _groups = new();
-    private readonly Mock<ISubmissionChangeNotifier> _notifier = new();
+    private readonly IGroupRepository _groups = Substitute.For<IGroupRepository>();
+    private readonly ISubmissionChangeNotifier _notifier = Substitute.For<ISubmissionChangeNotifier>();
     private readonly Group _wolves = new() { Name = "De Wolven", SlackChannelId = "C1" };
     private readonly Bunit.TestDoubles.BunitAuthorizationContext _auth;
 
     public BonusPointsPanelTests()
     {
         _points.Add(new GroupBonusPoints { GroupId = _wolves.Id, CategoryKey = "avonturiers", Points = 2 });
-        _groups.Setup(g => g.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new[] { _wolves });
-        _groups.Setup(g => g.GetBonusPointsAsync(It.IsAny<CancellationToken>())).ReturnsAsync(() => _points.ToList());
+        _groups.GetAllAsync(Arg.Any<CancellationToken>()).Returns(new[] { _wolves });
+        _groups.GetBonusPointsAsync(Arg.Any<CancellationToken>()).Returns(_ => _points.ToList());
         _runtime = new RuntimeSettingsService(
             Options.Create(new ScoutingSettings { RuntimeSettingsFile = Path.Combine(_temp.Path, "runtime-settings.json") }),
             NullLogger<RuntimeSettingsService>.Instance);
         Services.AddSingleton(_runtime);
-        Services.AddSingleton(_groups.Object);
-        Services.AddSingleton(_notifier.Object);
+        Services.AddSingleton(_groups);
+        Services.AddSingleton(_notifier);
         _auth = AddAuthorization();
         _auth.SetAuthorized("Admin");
         _auth.SetRoles(ScoutingAutomation.Web.Auth.KeyAuth.AdminRole);
@@ -50,10 +51,10 @@ public class BonusPointsPanelTests : BunitContext
         cut.Find("input.bonus-reisbureau").Change("9");
         cut.Find(".save-bonus").Click();
 
-        _groups.Verify(g => g.SetBonusPointsAsync(
-            It.Is<IReadOnlyCollection<BonusPointsChange>>(c => c.Single() == new BonusPointsChange(_wolves.Id, "reisbureau", 0, 9)),
-            It.IsAny<CancellationToken>()), Times.Once);
-        _notifier.Verify(n => n.NotifyChanged(), Times.Once);
+        _groups.Received(1).SetBonusPointsAsync(
+            Arg.Is<IReadOnlyCollection<BonusPointsChange>>(c => c.Single() == new BonusPointsChange(_wolves.Id, "reisbureau", 0, 9)),
+            Arg.Any<CancellationToken>());
+        _notifier.Received(1).NotifyChanged();
         cut.Find(".bonus-message").TextContent.Should().Be("Opgeslagen.");
     }
 
@@ -89,16 +90,19 @@ public class BonusPointsPanelTests : BunitContext
         cut.Find(".save-bonus").Click();
 
         NothingSaved();
-        _notifier.Verify(n => n.NotifyChanged(), Times.Never);
+        _notifier.DidNotReceive().NotifyChanged();
         cut.Find(".bonus-message").TextContent.Should().Be("Niets gewijzigd.");
     }
 
     [Fact]
     public void Save_ChangedByAnotherAdmin_ShouldExplainAndShowTheNewValues()
     {
-        _groups.Setup(g => g.SetBonusPointsAsync(It.IsAny<IReadOnlyCollection<BonusPointsChange>>(), It.IsAny<CancellationToken>()))
-            .Callback(() => _points[0].Points = 7)
-            .ThrowsAsync(new BonusPointsConflictException("De Wolven"));
+        _groups.SetBonusPointsAsync(Arg.Any<IReadOnlyCollection<BonusPointsChange>>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                _points[0].Points = 7;
+                return Task.FromException(new BonusPointsConflictException("De Wolven"));
+            });
         var cut = Render<BonusPointsPanel>();
 
         cut.Find("input.bonus-reisbureau").Change("4");
@@ -106,13 +110,13 @@ public class BonusPointsPanelTests : BunitContext
 
         cut.Find(".bonus-message").TextContent.Should().Contain("iemand anders");
         cut.Find("input.bonus-avonturiers").GetAttribute("value").Should().Be("7");
-        _notifier.Verify(n => n.NotifyChanged(), Times.Never);
+        _notifier.DidNotReceive().NotifyChanged();
     }
 
     [Fact]
     public void Save_WhenTheDatabaseFails_ShouldShowAMessageInsteadOfBreakingThePage()
     {
-        _groups.Setup(g => g.SetBonusPointsAsync(It.IsAny<IReadOnlyCollection<BonusPointsChange>>(), It.IsAny<CancellationToken>()))
+        _groups.SetBonusPointsAsync(Arg.Any<IReadOnlyCollection<BonusPointsChange>>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new Microsoft.EntityFrameworkCore.DbUpdateException("database is locked"));
         var cut = Render<BonusPointsPanel>();
 
@@ -123,7 +127,7 @@ public class BonusPointsPanelTests : BunitContext
     }
 
     private void NothingSaved() =>
-        _groups.Verify(g => g.SetBonusPointsAsync(It.IsAny<IReadOnlyCollection<BonusPointsChange>>(), It.IsAny<CancellationToken>()), Times.Never);
+        _groups.DidNotReceive().SetBonusPointsAsync(Arg.Any<IReadOnlyCollection<BonusPointsChange>>(), Arg.Any<CancellationToken>());
 
     [Fact]
     public void CategoryAddedByAnotherAdmin_ShouldAddAColumnAndKeepWhatWasTyped()

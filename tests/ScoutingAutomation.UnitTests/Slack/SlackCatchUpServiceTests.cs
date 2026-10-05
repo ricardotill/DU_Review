@@ -2,7 +2,8 @@ using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using Moq;
+using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using ScoutingAutomation.Contracts.Configuration;
 using ScoutingAutomation.Contracts.Slack;
 using ScoutingAutomation.Domain.Entities;
@@ -14,20 +15,20 @@ namespace ScoutingAutomation.UnitTests.Slack;
 
 public class SlackCatchUpServiceTests
 {
-    private readonly Mock<IGroupRepository> _groups = new();
-    private readonly Mock<ISlackHistoryClient> _history = new();
-    private readonly Mock<ISubmissionWorkflowService> _workflow = new();
+    private readonly IGroupRepository _groups = Substitute.For<IGroupRepository>();
+    private readonly ISlackHistoryClient _history = Substitute.For<ISlackHistoryClient>();
+    private readonly ISubmissionWorkflowService _workflow = Substitute.For<ISubmissionWorkflowService>();
     private readonly SlackProcessingGate _gate = new();
     private readonly Group _wolves = new() { Name = "De Wolven", SlackChannelId = "C1" };
     private readonly Group _owls = new() { Name = "De Bosuilen", SlackChannelId = "C2" };
 
     public SlackCatchUpServiceTests()
     {
-        _groups.Setup(g => g.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new[] { _wolves, _owls });
-        _history.Setup(h => h.GetChannelMessagesAsync(It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Array.Empty<SlackEventItemDto>());
-        _workflow.Setup(w => w.ProcessMissedMessageAsync(It.IsAny<SlackEventItemDto>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(ProcessSlackMessageResult.Succeeded(new[] { Guid.NewGuid() }));
+        _groups.GetAllAsync(Arg.Any<CancellationToken>()).Returns(new[] { _wolves, _owls });
+        _history.GetChannelMessagesAsync(Arg.Any<string>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
+            .Returns(Array.Empty<SlackEventItemDto>());
+        _workflow.ProcessMissedMessageAsync(Arg.Any<SlackEventItemDto>(), Arg.Any<CancellationToken>())
+            .Returns(ProcessSlackMessageResult.Succeeded(new[] { Guid.NewGuid() }));
     }
 
     private SlackCatchUpService Create(bool simulation = false, bool manualMode = false)
@@ -39,9 +40,9 @@ public class SlackCatchUpServiceTests
             Slack = new SlackSettings { SimulationMode = simulation, BotToken = "xoxb-test", SocketMode = true }
         });
         var services = new ServiceCollection()
-            .AddSingleton(_groups.Object)
-            .AddSingleton(_history.Object)
-            .AddSingleton(_workflow.Object)
+            .AddSingleton(_groups)
+            .AddSingleton(_history)
+            .AddSingleton(_workflow)
             .BuildServiceProvider();
         return new SlackCatchUpService(services.GetRequiredService<IServiceScopeFactory>(), settings, _gate,
             TestRuntime.For(settings), NullLogger<SlackCatchUpService>.Instance);
@@ -57,24 +58,25 @@ public class SlackCatchUpServiceTests
     [Fact]
     public async Task Request_ShouldProcessTodaysUploadsOfEveryGroupAndSyncTheirReviews()
     {
-        _history.Setup(h => h.GetChannelMessagesAsync("C1", It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync(new[]
+        _history.GetChannelMessagesAsync("C1", Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
+            .Returns(new[]
         {
             Upload("C1", "1.0"),
             Upload("C1", "2.0", user: "U_JURY"),                                                // reviewer: never a submission
             new SlackEventItemDto { Type = "message", Channel = "C1", Ts = "3.0", Text = "hoi" }, // no files
             new SlackEventItemDto { Type = "message", Channel = "C1", Ts = "4.0", BotId = "B1", Files = Upload("C1", "4.0").Files }
         });
-        _history.Setup(h => h.GetChannelMessagesAsync("C2", It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync(new[] { Upload("C2", "5.0") });
-        _workflow.Setup(w => w.SyncReviewAsync("C2", "5.0", It.IsAny<IReadOnlyList<SlackMessageReactionDto>?>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        _history.GetChannelMessagesAsync("C2", Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>()).Returns(new[] { Upload("C2", "5.0") });
+        _workflow.SyncReviewAsync("C2", "5.0", Arg.Any<IReadOnlyList<SlackMessageReactionDto>?>(), Arg.Any<CancellationToken>()).Returns(true);
         var service = Create();
 
         service.Request("test");
         await service.Completion;
 
-        _workflow.Verify(w => w.ProcessMissedMessageAsync(It.Is<SlackEventItemDto>(m => m.Ts == "1.0"), It.IsAny<CancellationToken>()), Times.Once);
-        _workflow.Verify(w => w.ProcessMissedMessageAsync(It.Is<SlackEventItemDto>(m => m.Ts == "5.0"), It.IsAny<CancellationToken>()), Times.Once);
-        _workflow.Verify(w => w.ProcessMissedMessageAsync(It.IsAny<SlackEventItemDto>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
-        _workflow.Verify(w => w.SyncReviewAsync("C1", "1.0", It.Is<IReadOnlyList<SlackMessageReactionDto>?>(r => r!.Single().Name == "thumbsup"), It.IsAny<CancellationToken>()), Times.Once);
+        await _workflow.Received(1).ProcessMissedMessageAsync(Arg.Is<SlackEventItemDto>(m => m.Ts == "1.0"), Arg.Any<CancellationToken>());
+        await _workflow.Received(1).ProcessMissedMessageAsync(Arg.Is<SlackEventItemDto>(m => m.Ts == "5.0"), Arg.Any<CancellationToken>());
+        await _workflow.Received(2).ProcessMissedMessageAsync(Arg.Any<SlackEventItemDto>(), Arg.Any<CancellationToken>());
+        await _workflow.Received(1).SyncReviewAsync("C1", "1.0", Arg.Is<IReadOnlyList<SlackMessageReactionDto>?>(r => r!.Single().Name == "thumbsup"), Arg.Any<CancellationToken>());
         service.LastResult.Should().BeEquivalentTo(new { MessagesChecked = 2, SubmissionsAdded = 2, ReviewsUpdated = 1 });
     }
 
@@ -82,9 +84,9 @@ public class SlackCatchUpServiceTests
     public async Task Request_ShouldOnlyLookAtToday()
     {
         DateTimeOffset? since = null;
-        _history.Setup(h => h.GetChannelMessagesAsync(It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
-            .Callback<string, DateTimeOffset, CancellationToken>((_, s, _) => since = s)
-            .ReturnsAsync(Array.Empty<SlackEventItemDto>());
+        _history.GetChannelMessagesAsync(Arg.Any<string>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
+            .Returns(Array.Empty<SlackEventItemDto>())
+            .AndDoes(ci => since = ci.ArgAt<DateTimeOffset>(1));
         var service = Create();
 
         service.Request("test");
@@ -97,15 +99,15 @@ public class SlackCatchUpServiceTests
     [Fact]
     public async Task UnreadableChannel_ShouldNotStopTheOthers()
     {
-        _history.Setup(h => h.GetChannelMessagesAsync("C1", It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+        _history.GetChannelMessagesAsync("C1", Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new SlackApiException("conversations.history", "not_in_channel"));
-        _history.Setup(h => h.GetChannelMessagesAsync("C2", It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync(new[] { Upload("C2", "5.0") });
+        _history.GetChannelMessagesAsync("C2", Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>()).Returns(new[] { Upload("C2", "5.0") });
         var service = Create();
 
         service.Request("test");
         await service.Completion;
 
-        _workflow.Verify(w => w.ProcessMissedMessageAsync(It.IsAny<SlackEventItemDto>(), It.IsAny<CancellationToken>()), Times.Once);
+        await _workflow.Received(1).ProcessMissedMessageAsync(Arg.Any<SlackEventItemDto>(), Arg.Any<CancellationToken>());
         service.LastResult!.ChannelErrors.Should().ContainSingle().Which.Should().Contain("De Wolven").And.Contain("not_in_channel");
     }
 
@@ -115,8 +117,8 @@ public class SlackCatchUpServiceTests
         var firstRead = new TaskCompletionSource();
         var release = new TaskCompletionSource();
         var reads = 0;
-        _history.Setup(h => h.GetChannelMessagesAsync("C1", It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
-            .Returns(async () =>
+        _history.GetChannelMessagesAsync("C1", Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
+            .Returns(async _ =>
             {
                 if (Interlocked.Increment(ref reads) == 1)
                 {
@@ -124,7 +126,7 @@ public class SlackCatchUpServiceTests
                     await release.Task;
                 }
 
-                return Array.Empty<SlackEventItemDto>();
+                return (IReadOnlyList<SlackEventItemDto>)Array.Empty<SlackEventItemDto>();
             });
         var service = Create();
 
@@ -146,11 +148,11 @@ public class SlackCatchUpServiceTests
 
         service.Request("test");
         await Task.Delay(50);
-        _history.Verify(h => h.GetChannelMessagesAsync(It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+        await _history.DidNotReceive().GetChannelMessagesAsync(Arg.Any<string>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>());
 
         rebuild.Dispose();
         await service.Completion.WaitAsync(TimeSpan.FromSeconds(5));
-        _history.Verify(h => h.GetChannelMessagesAsync(It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+        await _history.Received(2).GetChannelMessagesAsync(Arg.Any<string>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>());
     }
 
     [Theory]
@@ -163,6 +165,6 @@ public class SlackCatchUpServiceTests
         service.Request("test");
         await service.Completion;
 
-        _history.VerifyNoOtherCalls();
+        _history.ReceivedCalls().Should().BeEmpty();
     }
 }
