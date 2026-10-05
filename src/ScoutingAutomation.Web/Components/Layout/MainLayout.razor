@@ -69,7 +69,10 @@
     </main>
 </div>
 
-<ToastHost />
+@* Toasts announce every group's uploads: for the jury only *@
+<AuthorizeView Roles="@KeyAuth.JuryRole">
+    <ToastHost />
+</AuthorizeView>
 
 <div id="blazor-error-ui" data-nosnippet>
     Er is een onverwachte fout opgetreden.

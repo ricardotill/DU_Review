@@ -616,6 +616,7 @@ public partial class RuntimeSettingsService
             }
 
             LoadStandings(saved?.Standings);
+            LoadBonusCategories(saved?.BonusCategories);
         }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
         {
@@ -640,6 +641,7 @@ public partial class RuntimeSettingsService
         _blockAttempts = null;
         _reminder = null;
         ResetStandings();
+        _bonusCategories = null;
     }
 
     /// <summary>
@@ -651,7 +653,8 @@ public partial class RuntimeSettingsService
         var settings = new SavedSettings { Reviewers = _addedReviewers, ReviewerNames = _names, GameStartPosted = _gameStartPosted,
             GameEndPosted = _gameEndPosted, EventStart = _eventStart, EventEnd = _eventEnd,
             SlackTexts = _texts.ToDictionary(t => t.Key.ToString(), t => t.Value),
-            BlockAttemptsAfterApproval = _blockAttempts, ReviewReminder = _reminder, Standings = SaveStandings() };
+            BlockAttemptsAfterApproval = _blockAttempts, ReviewReminder = _reminder, Standings = SaveStandings(),
+            BonusCategories = _bonusCategories };
         try
         {
             DurableFile.WriteAllText(_file, JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true }));
@@ -679,6 +682,7 @@ public partial class RuntimeSettingsService
         public bool? BlockAttemptsAfterApproval { get; set; }
         public ReminderOverride? ReviewReminder { get; set; }
         public SavedStandings? Standings { get; set; }
+        public List<BonusCategoryConfig>? BonusCategories { get; set; }
     }
 
     /// <summary>A reminder time set in the app; <see cref="Minutes"/> null means reminders are off.</summary>

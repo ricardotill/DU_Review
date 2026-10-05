@@ -65,7 +65,7 @@ public class SlackRebuildIntegrationTests : IClassFixture<WebApplicationFactory<
         var bosuilen = await _app.Factory.Services.CreateScope().ServiceProvider.GetRequiredService<IGroupRepository>().GetBySlackChannelIdAsync("C02BOSUILEN");
         await repository().AddAsync(new Domain.Entities.Submission
         {
-            GroupId = bosuilen!.Id, AssignmentNumber = 1, FileName = "oud.jpg", StoragePath = earlierPath,
+            GroupId = bosuilen!.Id, AssignmentCode = "1", FileName = "oud.jpg", StoragePath = earlierPath,
             SlackChannelId = "C02BOSUILEN", SlackMessageId = "1.0"
         });
 
@@ -98,7 +98,7 @@ public class SlackRebuildIntegrationTests : IClassFixture<WebApplicationFactory<
         awesome.Status.Should().Be(SubmissionStatus.Awesome);
         awesome.StoragePath.Should().EndWith(Path.Combine("de-zeearenden", "awesome", $"DZA 5 {_since.AddSeconds(10).ToLocalTime():HH-mm-ss}.jpg"));
         (await File.ReadAllBytesAsync(awesome.StoragePath)).Should().Equal(1, 2, 3);
-        all.Single(s => s.FileName == "antwoord.jpg").AssignmentNumber.Should().Be(7, "thread replies are imported too");
+        all.Single(s => s.FileName == "antwoord.jpg").AssignmentCode.Should().Be("7", "thread replies are imported too");
 
         (await File.ReadAllTextAsync(Path.Combine(progress.BackupFolder!, "submissions.json"))).Should().Contain("oud.jpg");
         File.Exists(Path.Combine(progress.BackupFolder!, "de-bosuilen", "DBU 1.jpg")).Should().BeTrue("the earlier file was backed up");

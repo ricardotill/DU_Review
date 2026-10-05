@@ -91,6 +91,10 @@ else
         </div>
 
         <div class="col-12">
+            <BonusCategoriesPanel @rendermode="InteractiveServer" />
+        </div>
+
+        <div class="col-12">
             <GroupKeysPanel @rendermode="InteractiveServer" />
         </div>
     </div>
@@ -146,7 +150,7 @@ else
             return;
         }
 
-        Limiter.Reset(client);
+        Limiter.Succeeded(client);
         await KeyAuth.SignInAsync(HttpContext, Keys, admin: true);
         Navigation.NavigateTo("admin");
     }

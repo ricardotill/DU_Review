@@ -341,7 +341,7 @@ public class SlackRebuildService : ISlackRebuildService
         // Plain copies: the entities reference each other, which JSON cannot represent
         var export = submissions.Select(s => new
         {
-            s.Id, Group = s.Group?.Name, s.GroupId, s.AssignmentNumber, Status = s.Status.ToString(), s.FileName, s.StoragePath,
+            s.Id, Group = s.Group?.Name, s.GroupId, s.AssignmentCode, Status = s.Status.ToString(), s.FileName, s.StoragePath,
             s.ContentType, s.FileSizeBytes, s.Submitter, s.SubmitterName, s.SlackChannelId, s.SlackMessageId, s.MessageText, s.UnresolvedReason,
             s.CreatedAt, s.UpdatedAt,
             Reviews = s.Reviews.Select(r => new { r.Reviewer, Status = r.Status.ToString(), r.ReactionEmoji, r.Notes, r.CreatedAt })

@@ -32,7 +32,10 @@ Zet het opdrachtnummer in je bericht en voeg het bestand toe, in het kanaal van 
 | `#12` | ja |
 | `A12` | ja |
 | `12 - kampvuur`, `12: kampvuur` | ja, als het nummer vooraan staat |
+| `Opdracht A`, `#A` | ja, voor een speciale opdracht met een letter |
 | `we deden het met 12 man` | nee: een los getal in de tekst telt niet |
+
+Let op: `A12` is opdracht **12**. Voor speciale opdracht A schrijf je `Opdracht A` of `#A`, zonder nummer erbij.
 
 ### Goed om te weten
 
@@ -101,7 +104,7 @@ Het dashboard toont live de stand, alle inzendingen en de bestanden zelf. Je hoe
 2. Vul de toegangssleutel in (jury) of de groepssleutel (groepen). Hoofdletters en spaties maken niet uit.
 3. Je browser blijft daarna 30 dagen ingelogd.
 
-Na 5 verkeerde sleutels binnen een minuut moet je even wachten voordat je het opnieuw kunt proberen.
+Na 30 verkeerde sleutels binnen een minuut vanaf hetzelfde adres moet je even wachten voordat je het opnieuw kunt proberen.
 
 ### Voor groepen: het dashboard van je groep
 
@@ -146,7 +149,8 @@ Jouw eigen dashboard blijft altijd de actuele stand tonen.
 ### Zo wordt de score berekend
 
 - Goedgekeurd geeft de standaardpunten van de opdracht, Awesome de awesome-punten. Open en Afgekeurd geven 0.
-- Elke opdracht telt één keer per groep: de beste beoordeling van al haar inzendingen voor die opdracht.
+- Elke opdracht telt één keer per groep: de beste beoordeling van al haar inzendingen voor die opdracht. Twee foto's in één bericht leveren dus niet dubbel punten op.
+- Daarbij komen de extra punten uit de puntencategorieën die in gebruik zijn, zoals Avonturiers en Reisbureau.
 - Groepen met evenveel punten delen een plaats.
 
 ### Gebeurtenissen
@@ -191,7 +195,7 @@ Komt er een nieuwe inzending binnen, dan verschijnt rechtsonder een melding. Je 
 
 Met de bel 🔔 rechtsboven zet je de meldingen uit of aan. Daar zet je ook een zacht geluidje aan; dat staat standaard uit. Deze keuze geldt alleen voor jouw browser. Na het herladen van de pagina speelt het geluid pas als je één keer ergens op de pagina hebt geklikt; zo werken browsers.
 
-Er komen geen meldingen bij opnieuw opbouwen uit Slack, en niet in de diavoorstelling.
+Er komen geen meldingen bij opnieuw opbouwen uit Slack, en niet in de diavoorstelling. Groepen krijgen nooit meldingen: die zijn alleen voor de jury.
 
 ## Voor de organisatie: beheer
 
@@ -233,7 +237,18 @@ Gebruik dit alleen als Slack hapert en een beoordeling niet aankomt.
 2. Kies onder **Status handmatig aanpassen** de juiste status.
 3. Vul een reden in en bevestig.
 
+De aanpassing geldt voor alle bestanden van hetzelfde bericht, net als een emoji in Slack. Staan er twee foto's in het bericht, dan krijgen ze dus allebei de nieuwe status, en veranderen de punten mee.
+
 De aanpassing komt in de beoordelingsgeschiedenis. Slack blijft leidend: zet een jurylid later een emoji op het bericht, dan telt die emoji. Na **Opnieuw opbouwen uit Slack** verdwijnen handmatige aanpassingen. Bij het automatisch inhalen blijft een aanpassing staan zolang er in Slack geen beoordeling op het bericht staat.
+
+### Extra punten en puntencategorieën
+
+Op **Beheer** (alleen in beheermodus):
+
+- **Extra punten**: vul per groep de punten per categorie in en klik op **Opslaan**. Ze tellen direct mee in de score en de stand.
+- **Puntencategorieën**: voeg een categorie toe (bijvoorbeeld een fotowedstrijd), wijzig de naam met het potlood, of haal er een weg met de prullenbak. De sleutel wordt uit de naam gemaakt als je hem leeg laat, en blijft daarna altijd hetzelfde.
+
+Haal je een categorie weg, dan tellen de punten ervan niet meer mee, maar ze blijven bewaard. Voeg je dezelfde sleutel later weer toe, dan zijn de punten terug. De standaardlijst staat in `appsettings.json` (`Scouting:BonusCategories`); **Terug naar appsettings** zet die terug.
 
 ### Handmatige modus
 
@@ -245,6 +260,7 @@ Slack stuurt elk bericht en elke emoji maar één keer. Draaide de app even niet
 
 - De app leest de berichten van vandaag uit alle groepskanalen en registreert wat ontbreekt.
 - Beoordelingen worden gelijkgezet met de emoji's die nu in Slack staan.
+- Berichten die al in de app staan, krijgen geen 🔒, ook niet als de groep de opdracht in een ander bericht al goedgekeurd heeft. Alleen een gemist bericht dat ná de eerste goedkeuring is geplaatst, wordt geweigerd.
 - Er wordt niets weggegooid. Het logboek meldt wat er is ingehaald.
 - In handmatige modus wordt niet ingehaald. Gebruik dan **Opnieuw opbouwen uit Slack**.
 
@@ -280,7 +296,8 @@ Doe de generale repetitie een paar dagen vóór het spel, op dezelfde server en 
 
 - [ ] Elk groepskanaal bestaat en de bot is lid van elk kanaal (`/invite @DU Review`).
 - [ ] Alle juryleden staan op **Configuratie**, met hun naam.
-- [ ] `opdrachtenpunten.csv` bevat alle opdrachten met de juiste punten.
+- [ ] `opdrachtenpunten.csv` bevat alle opdrachten met de juiste punten, ook de speciale opdrachten met een letter (`A`, `B`, ...). Titel en beschrijving zijn optioneel.
+- [ ] De puntencategorieën kloppen (**Beheer** > **Puntencategorieën**, of `Scouting:BonusCategories`).
 - [ ] De tijdzone (`Scouting:TimeZone`) staat op `Europe/Amsterdam`.
 - [ ] De starttijd (`Scouting:EventStart`) staat op het begin van het spel, bijvoorbeeld `"2026-10-03T09:00"`. Berichten van daarvoor tellen niet mee. Een testbericht van vóór de starttijd verschijnt dus niet op het dashboard. Op de starttijd plaatst de bot het startbericht in elk groepskanaal.
 - [ ] Controleer de tekst van het startbericht: **Configuratie** > **Startbericht in Slack** > **Voorbeeld**. Pas hem zo nodig aan met het potlood (in beheermodus).

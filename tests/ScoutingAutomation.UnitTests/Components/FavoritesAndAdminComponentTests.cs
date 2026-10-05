@@ -103,7 +103,7 @@ public class FavoriteComponentTests : PageTestBase
         var detail = Render<SubmissionDetail>(p => p.Add(c => c.Id, seeded.Approved.Id));
         detail.WaitForAssertion(() => detail.Find(".favorite-star").GetAttribute("aria-pressed").Should().Be("true"));
 
-        var assignment = Render<AssignmentDetail>(p => p.Add(c => c.Number, 1));
+        var assignment = Render<AssignmentDetail>(p => p.Add(c => c.Code, "1"));
         assignment.WaitForAssertion(() => assignment.FindAll(".favorite-star").Should().HaveCount(3));
         assignment.FindAll(".favorite-star[aria-pressed=true]").Should().ContainSingle();
     }

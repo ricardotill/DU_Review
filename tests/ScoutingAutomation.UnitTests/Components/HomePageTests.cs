@@ -28,8 +28,8 @@ public class HomePageTests : PageTestBase
         rows[0].TextContent.Should().Contain("De Wolven").And.Contain("DWO");
         rows[0].QuerySelectorAll("td")[0].TextContent.Should().Be("1");
         rows[0].QuerySelector(".score-value")!.TextContent.Should().Be("5", "approved #1 (1) + awesome #2 (4)");
-        rows[0].QuerySelector(".bonus-adventurers")!.TextContent.Should().Be("0", "no Avonturiers points entered");
-        rows[0].QuerySelector(".bonus-travel")!.TextContent.Should().Be("0", "no Reisbureau points entered");
+        rows[0].QuerySelector(".bonus-avonturiers")!.TextContent.Should().Be("0", "no Avonturiers points entered");
+        rows[0].QuerySelector(".bonus-reisbureau")!.TextContent.Should().Be("0", "no Reisbureau points entered");
         rows[0].QuerySelector(".submission-count")!.TextContent.Should().Be("2");
         rows[0].QuerySelector(".count-approved")!.TextContent.Should().Be("1");
         rows[0].QuerySelector(".count-awesome")!.TextContent.Should().Be("1");

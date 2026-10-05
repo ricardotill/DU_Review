@@ -156,13 +156,13 @@ public class LoginAttemptLimiterHardeningTests
     }
 
     [Fact]
-    public void RightKey_ShouldClearTheCount()
+    public void RightKey_ShouldNotCountAsAFailure()
     {
         var limiter = new LoginAttemptLimiter(new Clock());
         for (var i = 0; i < LoginAttemptLimiter.MaxFailures - 1; i++) limiter.TryAttempt("x");
 
         limiter.TryAttempt("x").Should().BeTrue();
-        limiter.Reset("x");
+        limiter.Succeeded("x");
 
         limiter.IsBlocked("x").Should().BeFalse();
     }

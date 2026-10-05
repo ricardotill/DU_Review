@@ -93,6 +93,38 @@ public class ScoutingSettings
     public Dictionary<string, string> ReviewerNames { get; set; } = new();
     public ReviewStatusReactionsConfig ReviewStatusReactions { get; set; } = new();
     public SlackSettings Slack { get; set; } = new();
+
+    /// <summary>
+    /// Point categories outside the Slack assignments, entered by hand per group (e.g. a pubquiz).
+    /// Null when the section is left out: then <see cref="BonusCategoryConfig.Defaults"/> apply.
+    /// Categories added or removed in the app win over these.
+    /// </summary>
+    public List<BonusCategoryConfig>? BonusCategories { get; set; }
+}
+
+public class BonusCategoryConfig
+{
+    /// <summary>The longest key; the database column holds this many characters.</summary>
+    public const int MaxKeyLength = 20;
+
+    /// <summary>Stays the same for good: the points are stored under it. Lower case letters, digits and dashes.</summary>
+    public string Key { get; set; } = string.Empty;
+
+    /// <summary>The name in the app, e.g. "Reisbureau (pubquiz)".</summary>
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>For narrow places such as the home page; the name when left out.</summary>
+    public string? ShortName { get; set; }
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string DisplayShortName => string.IsNullOrWhiteSpace(ShortName) ? Name : ShortName;
+
+    /// <summary>The categories of the first game, for settings without a BonusCategories section.</summary>
+    public static IReadOnlyList<BonusCategoryConfig> Defaults { get; } = new[]
+    {
+        new BonusCategoryConfig { Key = "avonturiers", Name = "Avonturiers", ShortName = "Av" },
+        new BonusCategoryConfig { Key = "reisbureau", Name = "Reisbureau (pubquiz)", ShortName = "Rb" }
+    };
 }
 
 public class GroupConfig

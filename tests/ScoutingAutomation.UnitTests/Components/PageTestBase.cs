@@ -107,9 +107,9 @@ public abstract class PageTestBase : BunitContext
         {
             db.Groups.AddRange(Wolves, Owls, Foxes);
             db.Assignments.AddRange(
-                new Assignment { Number = 1, StandardPoints = 1, AwesomePoints = 2 },
-                new Assignment { Number = 2, StandardPoints = 2, AwesomePoints = 4 },
-                new Assignment { Number = 3, StandardPoints = 1, AwesomePoints = 2 });
+                new Assignment { Code = "1", StandardPoints = 1, AwesomePoints = 2 },
+                new Assignment { Code = "2", StandardPoints = 2, AwesomePoints = 4 },
+                new Assignment { Code = "3", StandardPoints = 1, AwesomePoints = 2 });
             db.Submissions.AddRange(rejected, approved, awesome, pending, unresolved);
             db.SaveChanges();
         });
@@ -127,7 +127,7 @@ public abstract class PageTestBase : BunitContext
         return new Submission
         {
             GroupId = group.Id,
-            AssignmentNumber = number,
+            AssignmentCode = number?.ToString(),
             Status = status,
             FileName = fileName,
             StoragePath = stored,

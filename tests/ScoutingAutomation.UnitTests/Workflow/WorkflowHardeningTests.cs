@@ -42,7 +42,7 @@ public class WorkflowHardeningTests : IDisposable
         _db = new ScoutingDbContext(new DbContextOptionsBuilder<ScoutingDbContext>().UseSqlite(_connection).Options);
         _db.Database.EnsureCreated();
         _db.Groups.Add(_group);
-        _db.Assignments.Add(new Assignment { Number = 4, StandardPoints = 1, AwesomePoints = 2 });
+        _db.Assignments.Add(new Assignment { Code = "4", StandardPoints = 1, AwesomePoints = 2 });
         _db.SaveChanges();
         _submissions = new FailingRepository(new SubmissionRepository(_db));
 

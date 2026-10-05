@@ -26,7 +26,7 @@ public class StorageHardeningTests : IDisposable
     [InlineData("geen-extensie", "DWO 4 14-32-05")]
     public void FileName_ShouldOnlyKeepAPlainExtension(string original, string expected)
     {
-        SubmissionFileName.Build(Wolves, 4, original, At).Should().Be(expected);
+        SubmissionFileName.Build(Wolves, "4", original, At).Should().Be(expected);
     }
 
     [Fact]
@@ -34,7 +34,7 @@ public class StorageHardeningTests : IDisposable
     {
         var original = new string('a', 300) + "." + new string('b', 200);
 
-        var name = SubmissionFileName.Build(Wolves, assignmentNumber: null, original, At);
+        var name = SubmissionFileName.Build(Wolves, assignmentCode: null, original, At);
         var path = await Storage().SaveInitialFileAsync("De Wolven", name, new MemoryStream(new byte[] { 1 }));
 
         File.Exists(path).Should().BeTrue();
@@ -92,8 +92,8 @@ public class StorageHardeningTests : IDisposable
     [InlineData("Opdracht,standaard,awesome,\r\n1,1,2,,\r\n2,2,4")]
     public void PointsFile_FromExcel_ShouldBeRead(string csv)
     {
-        AssignmentPointsCsvReader.Read(new StringReader(csv)).Select(a => (a.Number, a.StandardPoints, a.AwesomePoints))
-            .Should().Equal((1, 1, 2), (2, 2, 4));
+        AssignmentPointsCsvReader.Read(new StringReader(csv)).Select(a => (a.Code, a.StandardPoints, a.AwesomePoints))
+            .Should().Equal(("1", 1, 2), ("2", 2, 4));
     }
 
     [Fact]

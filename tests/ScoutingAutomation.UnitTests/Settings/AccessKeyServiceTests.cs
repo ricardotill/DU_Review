@@ -173,13 +173,29 @@ public class LoginAttemptLimiterTests
     }
 
     [Fact]
-    public void Reset_ShouldClearFailures()
+    public void Succeeded_ShouldTakeBackOnlyTheLastAttempt()
     {
         var limiter = new LoginAttemptLimiter(new Clock());
-        for (var i = 0; i < LoginAttemptLimiter.MaxFailures; i++) limiter.RecordFailure("x");
+        for (var i = 0; i < LoginAttemptLimiter.MaxFailures - 1; i++) limiter.TryAttempt("x");
 
-        limiter.Reset("x");
+        // A right key: that attempt is not a failure
+        limiter.TryAttempt("x").Should().BeTrue();
+        limiter.Succeeded("x");
+        limiter.IsBlocked("x").Should().BeFalse();
+
+        // The wrong keys before it still count: a key of your own does not buy more guesses
+        limiter.TryAttempt("x").Should().BeTrue();
+        limiter.TryAttempt("x").Should().BeFalse();
+    }
+
+    [Fact]
+    public void Succeeded_WithoutAttempts_ShouldDoNothing()
+    {
+        var limiter = new LoginAttemptLimiter(new Clock());
+
+        limiter.Succeeded("x");
 
         limiter.IsBlocked("x").Should().BeFalse();
+        limiter.TryAttempt("x").Should().BeTrue();
     }
 }

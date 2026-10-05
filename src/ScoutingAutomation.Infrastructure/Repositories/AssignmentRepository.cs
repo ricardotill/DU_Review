@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ScoutingAutomation.Domain.Entities;
 using ScoutingAutomation.Domain.Interfaces;
+using ScoutingAutomation.Domain.Models;
 using ScoutingAutomation.Infrastructure.Data;
 
 namespace ScoutingAutomation.Infrastructure.Repositories;
@@ -14,21 +15,21 @@ public class AssignmentRepository : IAssignmentRepository
         _context = context;
     }
 
-    public async Task<Assignment?> GetByNumberAsync(int number, CancellationToken ct = default)
+    public async Task<Assignment?> GetByCodeAsync(string code, CancellationToken ct = default)
     {
-        return await _context.Assignments.FirstOrDefaultAsync(a => a.Number == number, ct);
+        return await _context.Assignments.FirstOrDefaultAsync(a => a.Code == code, ct);
     }
 
     public async Task<IReadOnlyList<Assignment>> GetAllAsync(CancellationToken ct = default)
     {
-        return await _context.Assignments
-            .OrderBy(a => a.Number)
-            .ToListAsync(ct);
+        // Sorted here: the database sorts text codes as text, which puts 10 before 2
+        var assignments = await _context.Assignments.ToListAsync(ct);
+        return assignments.OrderBy(a => a.Code, AssignmentCode.Comparer).ToList();
     }
 
     public async Task UpsertAsync(Assignment assignment, CancellationToken ct = default)
     {
-        var existing = await _context.Assignments.FirstOrDefaultAsync(a => a.Number == assignment.Number, ct);
+        var existing = await _context.Assignments.FirstOrDefaultAsync(a => a.Code == assignment.Code, ct);
         if (existing == null)
         {
             await _context.Assignments.AddAsync(assignment, ct);
@@ -37,6 +38,8 @@ public class AssignmentRepository : IAssignmentRepository
         {
             existing.StandardPoints = assignment.StandardPoints;
             existing.AwesomePoints = assignment.AwesomePoints;
+            existing.Title = assignment.Title;
+            existing.Description = assignment.Description;
         }
 
         await _context.SaveChangesAsync(ct);

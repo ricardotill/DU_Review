@@ -63,8 +63,9 @@ Two separate HTTP clients talk to Slack: `SlackClient` (Web API calls + file dow
 
 - EF Core `ScoutingDbContext`; PostgreSQL under Aspire, otherwise SQLite (`Program.cs` decides). There are **no EF migrations**: `DatabaseInitializer` calls `EnsureCreated` and then adds later columns/tables/indexes with idempotent raw SQL, for both PostgreSQL and SQLite. New schema changes must be added there for both providers.
 - Files: `LocalFileStorageService` under `Scouting:StorageRoot`, per-group folder with `approved/`, `awesome/`, `rejected/` subfolders; names built by `SubmissionFileName`. Downloads go to a temp name then rename; a failed DB save moves the file back.
-- `runtime-settings.json` (`RuntimeSettingsService`: in-app changes to reviewers, bot texts, event times, rules — these win over `appsettings.json`) and `access-keys.json` (`AccessKeyService`) are written atomically via `DurableFile`.
-- Assignment points come from `src/ScoutingAutomation.Web/opdrachtenpunten.csv`, read at startup.
+- `runtime-settings.json` (`RuntimeSettingsService`: in-app changes to reviewers, bot texts, event times, rules, bonus categories — these win over `appsettings.json`) and `access-keys.json` (`AccessKeyService`) are written atomically via `DurableFile`.
+- Assignments come from `src/ScoutingAutomation.Web/opdrachtenpunten.csv` (code, points, optional title/description), read at startup. An assignment is identified by a **string code**: a number ("12") or letters for a special assignment ("A"). Normalise and sort with `Domain/Models/AssignmentCode` (numbers by value, then letters), never with plain string ordering.
+- Hand-entered bonus points live per group and category key in `GroupBonusPoints` (history in `BonusPointsEntries`). The categories in use come from `RuntimeSettingsService.BonusCategories` (`RuntimeSettingsService.BonusCategories.cs`); points of a removed category are kept but count nowhere.
 - Relative paths in config are resolved against the content root in `Program.cs`.
 
 ### UI

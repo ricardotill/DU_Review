@@ -29,7 +29,7 @@ public class WorkflowImportTests
     public WorkflowImportTests()
     {
         _groups.Setup(g => g.GetBySlackChannelIdAsync("C1", It.IsAny<CancellationToken>())).ReturnsAsync(_group);
-        _assignments.Setup(a => a.GetByNumberAsync(4, It.IsAny<CancellationToken>())).ReturnsAsync(new Assignment { Number = 4 });
+        _assignments.Setup(a => a.GetByCodeAsync("4", It.IsAny<CancellationToken>())).ReturnsAsync(new Assignment { Code = "4" });
         _slack.Setup(s => s.DownloadFileAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(() => new MemoryStream(new byte[] { 1 }));
         _slack.Setup(s => s.AddReactionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
         _storage.Setup(s => s.SaveInitialFileAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
@@ -71,7 +71,7 @@ public class WorkflowImportTests
     [InlineData("Opdracht 4", "a.zip")]    // unsupported file
     public async Task Import_ShouldNeverPostToSlack(string text, string file)
     {
-        _assignments.Setup(a => a.GetByNumberAsync(9, It.IsAny<CancellationToken>())).ReturnsAsync((Assignment?)null);
+        _assignments.Setup(a => a.GetByCodeAsync("9", It.IsAny<CancellationToken>())).ReturnsAsync((Assignment?)null);
 
         await Create().ImportSlackMessageAsync(Message(text, file));
 

@@ -23,11 +23,11 @@ public class StatusTransitionTests
             FileName = "vuur.jpg"
         };
 
-        submission.MarkPending("/storage/group/vuur.jpg", 1);
+        submission.MarkPending("/storage/group/vuur.jpg", "1");
 
         submission.Status.Should().Be(SubmissionStatus.Pending);
         submission.StoragePath.Should().Be("/storage/group/vuur.jpg");
-        submission.AssignmentNumber.Should().Be(1);
+        submission.AssignmentCode.Should().Be("1");
         submission.UnresolvedReason.Should().BeNull();
         submission.UpdatedAt.Should().NotBeNull();
     }
@@ -42,7 +42,7 @@ public class StatusTransitionTests
         {
             FileName = "vlaggenmast.png"
         };
-        submission.MarkPending("/storage/group/vlaggenmast.png", 2);
+        submission.MarkPending("/storage/group/vlaggenmast.png", "2");
 
         var newPath = $"/storage/group/{newStatus.ToString().ToLower()}/vlaggenmast.png";
         var review = submission.TransitionStatus(newStatus, newPath, reviewer, reactionEmoji, "Looks great!");

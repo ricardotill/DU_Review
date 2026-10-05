@@ -4,16 +4,23 @@
 @inject ISubmissionChangeNotifier ChangeNotifier
 @inject ILogger<BonusPointsPanel> Logger
 
-@* Points earned outside Slack, entered by hand: one field per category per group. *@
+@inject RuntimeSettingsService Runtime
+@implements IDisposable
+
+@* Points earned outside Slack, entered by hand: one field per category in use, per group. *@
 <AuthorizeView Roles="@KeyAuth.AdminRole">
     <div class="glass-panel p-4 bonus-points">
         <h2 class="panel-title"><i class="bi bi-trophy text-warning"></i> Extra punten</h2>
         <p class="text-secondary small">
-            Punten voor @BonusCategory.Adventurers.Label() en @BonusCategory.TravelAgency.Label(). Ze tellen mee in de score en de stand,
-            en blijven staan bij opnieuw opbouwen uit Slack.
+            Punten die buiten Slack worden verdiend@(categories.Count > 0 ? $", zoals {string.Join(" en ", categories.Select(c => c.Name))}" : "").
+            Ze tellen mee in de score en de stand, en blijven staan bij opnieuw opbouwen uit Slack.
         </p>
 
-        @if (rows.Count == 0)
+        @if (categories.Count == 0)
+        {
+            <div class="text-secondary small">Er zijn geen categorieën. Voeg er een toe bij Puntencategorieën.</div>
+        }
+        else if (rows.Count == 0)
         {
             <div class="text-secondary small">Nog geen groepen.</div>
         }
@@ -24,8 +31,10 @@
                     <thead>
                         <tr>
                             <th>Groep</th>
-                            <th style="width: 10rem;">@BonusCategory.Adventurers.Label()</th>
-                            <th style="width: 10rem;">@BonusCategory.TravelAgency.Label()</th>
+                            @foreach (var category in categories)
+                            {
+                                <th style="width: 10rem;">@category.Name</th>
+                            }
                         </tr>
                     </thead>
                     <tbody>
@@ -33,10 +42,14 @@
                         {
                             <tr @key="row.GroupId">
                                 <td class="text-white">@row.Name</td>
-                                <td><input type="number" min="0" max="@BonusPointsChange.MaxPoints" step="1" class="form-control form-control-dark form-control-sm adventurers"
-                                           aria-label="@($"{BonusCategory.Adventurers.Label()} voor {row.Name}")" @bind="row.Adventurers" /></td>
-                                <td><input type="number" min="0" max="@BonusPointsChange.MaxPoints" step="1" class="form-control form-control-dark form-control-sm travel-agency"
-                                           aria-label="@($"{BonusCategory.TravelAgency.Label()} voor {row.Name}")" @bind="row.TravelAgency" /></td>
+                                @foreach (var category in categories)
+                                {
+                                    var key = category.Key;
+                                    <td><input type="number" min="0" max="@BonusPointsChange.MaxPoints" step="1" class="form-control form-control-dark form-control-sm bonus-input bonus-@key"
+                                               aria-label="@($"{category.Name} voor {row.Name}")"
+                                               value="@row.Values.GetValueOrDefault(key)"
+                                               @onchange="e => row.Values[key] = int.TryParse(e.Value?.ToString(), out var v) ? v : null" /></td>
+                                }
                             </tr>
                         }
                     </tbody>
@@ -64,36 +77,70 @@
         public Guid GroupId { get; init; }
         public string Name { get; init; } = "";
 
-        /// <summary>As loaded: a save checks nobody changed them since.</summary>
-        public int SavedAdventurers { get; init; }
-        public int SavedTravelAgency { get; init; }
+        /// <summary>As loaded, per category key: a save checks nobody changed them since.</summary>
+        public Dictionary<string, int> Saved { get; init; } = new();
 
-        public int? Adventurers { get; set; }
-        public int? TravelAgency { get; set; }
+        /// <summary>As entered, per category key; null for an empty or unreadable field.</summary>
+        public Dictionary<string, int?> Values { get; init; } = new();
 
-        public bool IsChanged => Adventurers != SavedAdventurers || TravelAgency != SavedTravelAgency;
+        public IEnumerable<string> ChangedKeys => Values.Where(v => v.Value != Saved.GetValueOrDefault(v.Key)).Select(v => v.Key);
     }
 
+    private IReadOnlyList<BonusCategoryConfig> categories = Array.Empty<BonusCategoryConfig>();
     private List<Row> rows = new();
     private bool saving;
     private string? message;
     private bool messageIsError;
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        Runtime.Changed += OnRuntimeChanged;
+        await LoadAsync(keepEdits: false);
+    }
 
-    private async Task LoadAsync()
+    /// <param name="keepEdits">Keep what was typed but not saved, e.g. when another admin added a category.</param>
+    private async Task LoadAsync(bool keepEdits)
     {
         // A fresh scope: the circuit's own DbContext would live as long as the tab
         await using var scope = ScopeFactory.CreateAsyncScope();
-        var groups = await scope.ServiceProvider.GetRequiredService<IGroupRepository>().GetAllAsync();
+        var repository = scope.ServiceProvider.GetRequiredService<IGroupRepository>();
+        var groups = await repository.GetAllAsync();
+        var points = (await repository.GetBonusPointsAsync()).ToDictionary(p => (p.GroupId, p.CategoryKey), p => p.Points);
+        var previous = keepEdits ? rows.ToDictionary(r => r.GroupId) : new Dictionary<Guid, Row>();
+
+        categories = Runtime.BonusCategories;
         rows = groups
-            .Select(g => new Row
+            .Select(g =>
             {
-                GroupId = g.Id, Name = g.Name,
-                SavedAdventurers = g.AdventurersPoints, SavedTravelAgency = g.TravelAgencyPoints,
-                Adventurers = g.AdventurersPoints, TravelAgency = g.TravelAgencyPoints
+                var saved = categories.ToDictionary(c => c.Key, c => points.GetValueOrDefault((g.Id, c.Key)));
+                var values = saved.ToDictionary(v => v.Key, v => (int?)v.Value);
+                if (previous.TryGetValue(g.Id, out var old))
+                {
+                    foreach (var key in old.ChangedKeys.Where(values.ContainsKey)) values[key] = old.Values[key];
+                }
+
+                return new Row { GroupId = g.Id, Name = g.Name, Saved = saved, Values = values };
             })
             .ToList();
+    }
+
+    private void OnRuntimeChanged()
+    {
+        // Only a change to the categories matters here
+        if (Runtime.BonusCategories.Select(c => (c.Key, c.Name)).SequenceEqual(categories.Select(c => (c.Key, c.Name)))) return;
+
+        _ = InvokeAsync(async () =>
+        {
+            try
+            {
+                await LoadAsync(keepEdits: true);
+                StateHasChanged();
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Logger.LogWarning(ex, "Reloading the bonus points after a category change failed");
+            }
+        });
     }
 
     private static bool IsValid(int? points) => points is >= 0 and <= BonusPointsChange.MaxPoints;
@@ -101,17 +148,16 @@
     private async Task SaveAsync()
     {
         // An empty field or a typo saves nothing: half a pubquiz result on the scoreboard would mislead
-        var invalid = rows.FirstOrDefault(r => !IsValid(r.Adventurers) || !IsValid(r.TravelAgency));
+        var invalid = rows.FirstOrDefault(r => r.Values.Values.Any(v => !IsValid(v)));
         if (invalid != null)
         {
             (message, messageIsError) = ($"Vul voor {invalid.Name} hele getallen van 0 tot en met {BonusPointsChange.MaxPoints} in. Er is niets opgeslagen.", true);
             return;
         }
 
-        // Only what this tab changed: rows left alone never undo what another admin entered meanwhile
+        // Only what this tab changed: fields left alone never undo what another admin entered meanwhile
         var changes = rows
-            .Where(r => r.IsChanged)
-            .Select(r => new BonusPointsChange(r.GroupId, r.SavedAdventurers, r.SavedTravelAgency, r.Adventurers!.Value, r.TravelAgency!.Value))
+            .SelectMany(r => r.ChangedKeys.Select(key => new BonusPointsChange(r.GroupId, key, r.Saved.GetValueOrDefault(key), r.Values[key]!.Value)))
             .ToList();
         if (changes.Count == 0)
         {
@@ -137,12 +183,12 @@
 
             ChangeNotifier.NotifyChanged();
             (message, messageIsError) = ("Opgeslagen.", false);
-            await LoadAsync();
+            await LoadAsync(keepEdits: false);
         }
         catch (BonusPointsConflictException ex)
         {
             (message, messageIsError) = (ex.Message, true);
-            await LoadAsync();
+            await LoadAsync(keepEdits: false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -154,4 +200,6 @@
             saving = false;
         }
     }
+
+    public void Dispose() => Runtime.Changed -= OnRuntimeChanged;
 }

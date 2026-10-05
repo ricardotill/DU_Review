@@ -22,13 +22,13 @@ public class GroupScoreTests
         var group = new Group { Name = "De Wolven", SlackChannelId = "C03WOLVEN" };
         context.Groups.Add(group);
         context.Assignments.AddRange(
-            new Assignment { Number = 1, StandardPoints = 1, AwesomePoints = 2 },
-            new Assignment { Number = 2, StandardPoints = 2, AwesomePoints = 4 },
-            new Assignment { Number = 3, StandardPoints = 1, AwesomePoints = 2 },
-            new Assignment { Number = 4, StandardPoints = 2, AwesomePoints = 4 });
+            new Assignment { Code = "1", StandardPoints = 1, AwesomePoints = 2 },
+            new Assignment { Code = "2", StandardPoints = 2, AwesomePoints = 4 },
+            new Assignment { Code = "3", StandardPoints = 1, AwesomePoints = 2 },
+            new Assignment { Code = "4", StandardPoints = 2, AwesomePoints = 4 });
 
         Submission Sub(int? number, SubmissionStatus status) =>
-            new() { GroupId = group.Id, AssignmentNumber = number, Status = status };
+            new() { GroupId = group.Id, AssignmentCode = number?.ToString(), Status = status };
 
         context.Submissions.AddRange(
             Sub(1, SubmissionStatus.Approved),  // 1
@@ -62,12 +62,12 @@ public class GroupScoreTests
         var group = new Group { Name = "De Bosuilen", SlackChannelId = "C02BOSUILEN" };
         context.Groups.Add(group);
         context.Assignments.AddRange(
-            new Assignment { Number = 1, StandardPoints = 1, AwesomePoints = 2 },
-            new Assignment { Number = 2, StandardPoints = 2, AwesomePoints = 4 },
-            new Assignment { Number = 3, StandardPoints = 1, AwesomePoints = 2 });
+            new Assignment { Code = "1", StandardPoints = 1, AwesomePoints = 2 },
+            new Assignment { Code = "2", StandardPoints = 2, AwesomePoints = 4 },
+            new Assignment { Code = "3", StandardPoints = 1, AwesomePoints = 2 });
 
         Submission Sub(int? number, SubmissionStatus status) =>
-            new() { GroupId = group.Id, AssignmentNumber = number, Status = status };
+            new() { GroupId = group.Id, AssignmentCode = number?.ToString(), Status = status };
 
         context.Submissions.AddRange(
             Sub(1, SubmissionStatus.Rejected),
@@ -96,7 +96,7 @@ public class GroupScoreTests
         groupStat.RejectedCount.Should().Be(1);
         groupStat.Score.Should().Be(1);
 
-        var assignment1 = stats.AssignmentStatistics.Single(a => a.AssignmentNumber == 1);
+        var assignment1 = stats.AssignmentStatistics.Single(a => a.AssignmentCode == "1");
         assignment1.TotalSubmissions.Should().Be(1);
         assignment1.ApprovedCount.Should().Be(1);
         assignment1.RejectedCount.Should().Be(0);
@@ -115,10 +115,10 @@ public class GroupScoreTests
         var b = new Group { Name = "B", SlackChannelId = "CB" };
         var c = new Group { Name = "C", SlackChannelId = "CC" };
         context.Groups.AddRange(a, b, c);
-        context.Assignments.Add(new Assignment { Number = 1, StandardPoints = 2, AwesomePoints = 4 });
+        context.Assignments.Add(new Assignment { Code = "1", StandardPoints = 2, AwesomePoints = 4 });
         context.Submissions.AddRange(
-            new Submission { GroupId = a.Id, AssignmentNumber = 1, Status = SubmissionStatus.Approved },
-            new Submission { GroupId = b.Id, AssignmentNumber = 1, Status = SubmissionStatus.Approved });
+            new Submission { GroupId = a.Id, AssignmentCode = "1", Status = SubmissionStatus.Approved },
+            new Submission { GroupId = b.Id, AssignmentCode = "1", Status = SubmissionStatus.Approved });
         await context.SaveChangesAsync();
 
         // Act

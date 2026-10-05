@@ -52,8 +52,8 @@ public class AttemptAfterApprovalTests : IDisposable
 
         _groups.Setup(g => g.GetBySlackChannelIdAsync("C1", It.IsAny<CancellationToken>())).ReturnsAsync(_group);
         _groups.Setup(g => g.GetByIdAsync(_group.Id, It.IsAny<CancellationToken>())).ReturnsAsync(_group);
-        _assignments.Setup(a => a.GetByNumberAsync(It.IsIn(4, 5), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((int number, CancellationToken _) => new Assignment { Number = number });
+        _assignments.Setup(a => a.GetByCodeAsync(It.IsIn("4", "5"), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string code, CancellationToken _) => new Assignment { Code = code });
         _slack.Setup(s => s.DownloadFileAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(() => new MemoryStream(new byte[] { 1 }));
         _slack.Setup(s => s.AddReactionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
         _storage.Setup(s => s.SaveInitialFileAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
@@ -66,7 +66,7 @@ public class AttemptAfterApprovalTests : IDisposable
         _submissions.Setup(s => s.SearchSubmissionsAsync(It.IsAny<SubmissionFilter>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((SubmissionFilter f, CancellationToken _) => _existing
                 .Where(s => f.GroupId == null || s.GroupId == f.GroupId)
-                .Where(s => f.AssignmentNumber == null || s.AssignmentNumber == f.AssignmentNumber)
+                .Where(s => f.AssignmentCode == null || s.AssignmentCode == f.AssignmentCode)
                 .ToList());
     }
 
@@ -87,8 +87,9 @@ public class AttemptAfterApprovalTests : IDisposable
     {
         var submission = new Submission
         {
-            GroupId = _group.Id, Group = _group, AssignmentNumber = number, Status = status,
-            SlackChannelId = "C1", SlackMessageId = ts, FileName = "eerder.jpg", StoragePath = $"/s/eerder-{ts}.jpg"
+            GroupId = _group.Id, Group = _group, AssignmentCode = number.ToString(), Status = status,
+            SlackChannelId = "C1", SlackMessageId = ts, FileName = "eerder.jpg", StoragePath = $"/s/eerder-{ts}.jpg",
+            CreatedAt = SlackTimestamp.ToDateTimeOffset(ts)!.Value
         };
         _existing.Add(submission);
         return submission;
@@ -161,6 +162,59 @@ public class AttemptAfterApprovalTests : IDisposable
     }
 
     [Fact]
+    public async Task CatchUp_OfARegisteredEarlierAttempt_ShouldNotBeBlocked()
+    {
+        // Rejected first, approved in a later message: the catch-up reads the rejected one again
+        var rejected = Earlier(4, SubmissionStatus.Rejected, ts: Ts);
+        Earlier(4, SubmissionStatus.Approved, ts: "1727708400.000100");
+        _submissions.Setup(s => s.ExistsAsync("C1", Ts, "F1", "a.jpg", It.IsAny<CancellationToken>())).ReturnsAsync(true);
+
+        var result = await Create().ProcessMissedMessageAsync(Message("Opdracht 4"));
+
+        result.Message.Should().NotContain("al goedgekeurd");
+        rejected.Status.Should().Be(SubmissionStatus.Rejected);
+        _slack.Verify(s => s.AddReactionAsync(It.IsAny<string>(), It.IsAny<string>(), "lock", It.IsAny<CancellationToken>()), Times.Never);
+        _slack.Verify(s => s.PostThreadReplyAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CatchUp_OfTwoApprovedMessages_ShouldNotBlockEitherOne()
+    {
+        // One photo per message, both approved: neither is an attempt after the other's approval
+        Earlier(4, SubmissionStatus.Approved, ts: Ts);
+        Earlier(4, SubmissionStatus.Approved, ts: "1727700000.000100");
+        _submissions.Setup(s => s.ExistsAsync("C1", Ts, "F1", "a.jpg", It.IsAny<CancellationToken>())).ReturnsAsync(true);
+
+        var result = await Create().ProcessMissedMessageAsync(Message("Opdracht 4"));
+
+        result.Message.Should().NotContain("al goedgekeurd");
+        _slack.Verify(s => s.PostThreadReplyAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task MissedMessage_PostedBeforeTheApproval_ShouldBeStored()
+    {
+        // The app was down when this attempt came in; the approved one was posted after it
+        Earlier(4, SubmissionStatus.Approved, ts: "1727708400.000100");
+
+        var result = await Create().ProcessMissedMessageAsync(Message("Opdracht 4"));
+
+        result.CreatedSubmissionIds.Should().ContainSingle();
+        _slack.Verify(s => s.AddReactionAsync(It.IsAny<string>(), It.IsAny<string>(), "lock", It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task MissedMessage_PostedAfterTheApproval_ShouldStillBeBlocked()
+    {
+        Earlier(4, SubmissionStatus.Approved);
+
+        var result = await Create().ProcessMissedMessageAsync(Message("Opdracht 4"));
+
+        result.CreatedSubmissionIds.Should().BeEmpty();
+        VerifyBlockedFeedback(4);
+    }
+
+    [Fact]
     public async Task ManualMode_ShouldStillSaveTheFile()
     {
         Earlier(4, SubmissionStatus.Approved);
@@ -186,7 +240,7 @@ public class AttemptAfterApprovalTests : IDisposable
         });
 
         result.Message.Should().Contain("al goedgekeurd");
-        mine.AssignmentNumber.Should().Be(4);
+        mine.AssignmentCode.Should().Be("4");
         VerifyBlockedFeedback(5);
     }
 

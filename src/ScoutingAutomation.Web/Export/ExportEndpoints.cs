@@ -22,29 +22,37 @@ public static class ExportEndpoints
         export.MapGet("/files.zip", FilesZipAsync);
     }
 
-    private static async Task<IResult> ScoresCsvAsync(ISubmissionRepository submissions, IGroupRepository groups, TimeProvider time)
+    private static async Task<IResult> ScoresCsvAsync(ISubmissionRepository submissions, IGroupRepository groups, RuntimeSettingsService runtime, TimeProvider time)
     {
         var stats = await submissions.GetStatisticsAsync();
+        var categories = runtime.BonusCategories;
         var groupsById = (await groups.GetAllAsync()).ToDictionary(g => g.Id);
 
         // Semicolons and a BOM: what Dutch Excel expects when the file is double-clicked
         var csv = new StringBuilder();
-        csv.Append("Plaats;Groep;Afkorting;Punten;Avonturiers;Reisbureau;Opdrachten;Open;Goedgekeurd;Awesome;Afgekeurd;Laatste upload\r\n");
+        csv.AppendJoin(';', new[] { "Plaats", "Groep", "Afkorting", "Punten" }
+            .Concat(categories.Select(c => Field(c.Name)))
+            .Concat(new[] { "Opdrachten", "Open", "Goedgekeurd", "Awesome", "Afgekeurd", "Laatste upload" }));
+        csv.Append("\r\n");
         foreach (var g in stats.GroupStatistics.OrderBy(g => g.Rank).ThenBy(g => g.GroupName))
         {
-            csv.AppendJoin(';',
+            csv.AppendJoin(';', new object?[]
+            {
                 g.Rank,
                 Field(g.GroupName),
                 Field(groupsById.GetValueOrDefault(g.GroupId)?.Abbreviation),
-                g.Score,
-                g.AdventurersPoints,
-                g.TravelAgencyPoints,
+                g.Score
+            }
+            .Concat(categories.Select(c => (object?)g.BonusPoints.GetValueOrDefault(c.Key)))
+            .Concat(new object?[]
+            {
                 g.TotalSubmissions,
                 g.PendingCount,
                 g.ApprovedCount,
                 g.AwesomeCount,
                 g.RejectedCount,
-                g.LastSubmissionAt is { } at ? at.ToGameTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) : "");
+                g.LastSubmissionAt is { } at ? at.ToGameTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) : ""
+            }));
             csv.Append("\r\n");
         }
 
@@ -73,7 +81,7 @@ public static class ExportEndpoints
 
         var files = (await submissions.SearchSubmissionsAsync(new SubmissionFilter { GroupId = group }))
             .Where(s => s.Status == SubmissionStatus.Awesome || (!awesomeOnly && s.Status == SubmissionStatus.Approved))
-            .OrderBy(s => s.Group?.Name).ThenBy(s => s.AssignmentNumber).ThenBy(s => s.CreatedAt)
+            .OrderBy(s => s.Group?.Name).ThenBy(s => s.AssignmentCode, AssignmentCode.Comparer).ThenBy(s => s.CreatedAt)
             .ToList();
 
         var name = $"DU {(awesomeOnly ? "awesome" : "goedgekeurd")} {Today(time)}.zip";
@@ -96,7 +104,7 @@ public static class ExportEndpoints
                 if (source == null)
                 {
                     logger.LogWarning("Export skipped {Submission}: file {Path} not found", submission.Id, submission.StoragePath);
-                    missing.Add($"{submission.Group?.Name}, opdracht {submission.AssignmentNumber}: {Path.GetFileName(submission.StoragePath)}");
+                    missing.Add($"{submission.Group?.Name}, opdracht {submission.AssignmentCode}: {Path.GetFileName(submission.StoragePath)}");
                     continue;
                 }
 

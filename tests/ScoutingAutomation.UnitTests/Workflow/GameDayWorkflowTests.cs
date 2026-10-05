@@ -38,7 +38,7 @@ public class GameDayWorkflowTests : IDisposable
         _db = new ScoutingDbContext(new DbContextOptionsBuilder<ScoutingDbContext>().UseSqlite(_connection).Options);
         _db.Database.EnsureCreated();
         _db.Groups.Add(_group);
-        _db.Assignments.AddRange(new Assignment { Number = 4, StandardPoints = 1, AwesomePoints = 2 }, new Assignment { Number = 7, StandardPoints = 1, AwesomePoints = 2 });
+        _db.Assignments.AddRange(new Assignment { Code = "4", StandardPoints = 1, AwesomePoints = 2 }, new Assignment { Code = "7", StandardPoints = 1, AwesomePoints = 2 });
         _db.SaveChanges();
 
         _settings = Options.Create(new ScoutingSettings
@@ -204,7 +204,7 @@ public class GameDayWorkflowTests : IDisposable
         var result = await Create().ProcessSlackMessageChangedAsync(Edit("kijk!", "kijk! Opdracht 4", File("a.jpg")));
 
         result.CreatedSubmissionIds.Should().HaveCount(1);
-        Stored().Single().AssignmentNumber.Should().Be(4);
+        Stored().Single().AssignmentCode.Should().Be("4");
         Name(Stored().Single()).Should().Be($"DWO 4 {Time}.jpg");
         _slack.Verify(s => s.RemoveReactionAsync("C1", Ts, "question", It.IsAny<CancellationToken>()), Times.Once);
     }
@@ -244,7 +244,7 @@ public class GameDayWorkflowTests : IDisposable
         var result = await Create().ProcessSlackMessageChangedAsync(Edit("Opdracht 4", "Opdracht 7", File("a.jpg"), File("b.jpg")));
 
         result.Success.Should().BeTrue();
-        Stored().Should().OnlyContain(s => s.AssignmentNumber == 7 && s.Status == SubmissionStatus.Approved);
+        Stored().Should().OnlyContain(s => s.AssignmentCode == "7" && s.Status == SubmissionStatus.Approved);
         Stored().Select(Name).Should().Equal($"DWO 7 {Time} (1).jpg", $"DWO 7 {Time} (2).jpg");
         Stored().Should().OnlyContain(s => System.IO.File.Exists(s.StoragePath) && s.StoragePath.Contains("approved"));
     }
@@ -256,7 +256,7 @@ public class GameDayWorkflowTests : IDisposable
 
         await Create().ProcessSlackMessageChangedAsync(Edit("Opdracht 4", "Opdracht 99", File("a.jpg")));
 
-        Stored().Single().AssignmentNumber.Should().Be(4);
+        Stored().Single().AssignmentCode.Should().Be("4");
         Name(Stored().Single()).Should().Be($"DWO 4 {Time}.jpg");
     }
 

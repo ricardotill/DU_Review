@@ -68,7 +68,7 @@ public class SlackRebuildServiceTests : IDisposable
         WithDb(db =>
         {
             db.Groups.AddRange(_wolves, _owls);
-            db.Assignments.AddRange(Enumerable.Range(1, 3).Select(n => new Assignment { Number = n, StandardPoints = 1, AwesomePoints = 2 }));
+            db.Assignments.AddRange(Enumerable.Range(1, 3).Select(n => new Assignment { Code = n.ToString(), StandardPoints = 1, AwesomePoints = 2 }));
             db.SaveChanges();
         });
     }
@@ -106,7 +106,7 @@ public class SlackRebuildServiceTests : IDisposable
         var path = await storage.SaveInitialFileAsync(_wolves.Name, "OUD 1.jpg", new MemoryStream(new byte[] { 1 }));
         WithDb(db =>
         {
-            var old = new Submission { GroupId = _wolves.Id, AssignmentNumber = 1, FileName = "oud.jpg", StoragePath = path, SlackChannelId = "C1", SlackMessageId = "1.0" };
+            var old = new Submission { GroupId = _wolves.Id, AssignmentCode = "1", FileName = "oud.jpg", StoragePath = path, SlackChannelId = "C1", SlackMessageId = "1.0" };
             old.TransitionStatus(SubmissionStatus.Approved, path, SubmissionWorkflowService.DashboardOverrideReviewer, notes: "handmatig");
             db.Submissions.Add(old);
             db.SaveChanges();
@@ -199,7 +199,7 @@ public class SlackRebuildServiceTests : IDisposable
         var owlsPath = await storage.SaveInitialFileAsync(_owls.Name, "DBU 2.jpg", new MemoryStream(new byte[] { 2 }));
         WithDb(db =>
         {
-            db.Submissions.Add(new Submission { GroupId = _owls.Id, AssignmentNumber = 2, FileName = "uil.jpg", StoragePath = owlsPath, SlackChannelId = "C2", SlackMessageId = "2.0" });
+            db.Submissions.Add(new Submission { GroupId = _owls.Id, AssignmentCode = "2", FileName = "uil.jpg", StoragePath = owlsPath, SlackChannelId = "C2", SlackMessageId = "2.0" });
             db.SaveChanges();
         });
         SlackHas("C1", Msg(Ts(100), "Opdracht 3", new[] { "nieuw.jpg" }, reactions: React("thumbsup", "U_JURY")));

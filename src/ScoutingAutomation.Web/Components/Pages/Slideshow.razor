@@ -26,11 +26,11 @@
             </div>
             <div class="col-sm-6">
                 <label class="form-label text-secondary small fw-semibold mb-1" for="slideshowAssignment">Opdracht</label>
-                <select class="form-select form-select-dark" id="slideshowAssignment" @bind="selectedAssignmentNumber">
+                <select class="form-select form-select-dark" id="slideshowAssignment" @bind="selectedAssignmentCode">
                     <option value="">Alle opdrachten</option>
-                    @foreach (var number in media.Select(s => s.AssignmentNumber).OfType<int>().Distinct().Order())
+                    @foreach (var assignmentCode in media.Select(s => s.AssignmentCode).OfType<string>().Distinct().Order(AssignmentCode.Comparer))
                     {
-                        <option value="@number">Opdracht @number</option>
+                        <option value="@assignmentCode">Opdracht @assignmentCode</option>
                     }
                 </select>
             </div>
@@ -211,7 +211,7 @@ else
     public Guid? GroupFromQuery { get; set; }
 
     [SupplyParameterFromQuery(Name = "assignment")]
-    public int? AssignmentFromQuery { get; set; }
+    public string? AssignmentFromQuery { get; set; }
 
     [SupplyParameterFromQuery(Name = "status")]
     public string? StatusFromQuery { get; set; }
@@ -222,7 +222,7 @@ else
     private bool favoritesOnly;
     private bool awesomeOnly;
     private string? selectedGroupId;
-    private string? selectedAssignmentNumber;
+    private string? selectedAssignmentCode;
     private bool loop = true;
     private bool shuffle;
     private int secondsPerImage = 8;
@@ -247,7 +247,7 @@ else
         .Where(s => !favoritesOnly || Favorites.IsFavorite(s))
         .Where(s => !awesomeOnly || s.Status == SubmissionStatus.Awesome)
         .Where(s => !Guid.TryParse(selectedGroupId, out var groupId) || s.GroupId == groupId)
-        .Where(s => !int.TryParse(selectedAssignmentNumber, out var number) || s.AssignmentNumber == number)
+        .Where(s => string.IsNullOrEmpty(selectedAssignmentCode) || s.AssignmentCode == selectedAssignmentCode)
         .ToList();
 
     /// <summary>The groups that have something to show.</summary>
@@ -278,7 +278,7 @@ else
         favoritesOnly = FavoritesFromQuery == true;
         awesomeOnly = StatusFromQuery == nameof(SubmissionStatus.Awesome);
         selectedGroupId = GroupFromQuery?.ToString();
-        selectedAssignmentNumber = AssignmentFromQuery?.ToString();
+        selectedAssignmentCode = AssignmentCode.Normalize(AssignmentFromQuery);
         return ReloadAsync();
     }
 
@@ -332,7 +332,7 @@ else
         contentType.StartsWith("image/") || contentType.StartsWith("video/") || contentType.StartsWith("audio/");
 
     private static string AssignmentLabel(Submission submission) =>
-        submission.AssignmentNumber.HasValue ? $"Opdracht {submission.AssignmentNumber}" : "Onbekende opdracht";
+        submission.AssignmentCode != null ? $"Opdracht {submission.AssignmentCode}" : "Onbekende opdracht";
 
     private Task StartAsync()
     {

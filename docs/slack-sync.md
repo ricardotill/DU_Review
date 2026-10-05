@@ -37,7 +37,8 @@ flowchart LR
 Een emoji van een jurylid op het bericht bepaalt de status van alle inzendingen in dat bericht. Haalt het jurylid de emoji weg, dan gaat de status terug naar open.
 
 - Alleen Slack-gebruikers in de lijst Reviewers tellen mee.
-- Een **override** op het dashboard zet een status zonder emoji. De app noteert die als "Dashboard override".
+- Een **override** op het dashboard zet een status zonder emoji. De app noteert die als "Dashboard override". Net als een emoji geldt een override voor alle inzendingen van het bericht.
+- Een emoji op een bericht zonder inzending (geen foto, verwijderd, of zonder geldig opdrachtnummer) wordt genegeerd, niet als fout bewaard. Krijgt het bericht later toch een inzending, dan neemt de catch-up de emoji mee.
 - Catch-up en het opnieuw draaien van een event laten overrides staan.
 - Een volledige rebuild gooit overrides weg; ze staan dan alleen nog in de back-up-JSON.
 - Tijdens een rebuild kun je geen override zetten.
@@ -49,6 +50,7 @@ De catch-up leest de kanalen van vandaag (vanaf middernacht) opnieuw en vult aan
 - **Wanneer**: bij het starten van de app, en in Socket Mode bij elke herverbinding. Een admin kan hem ook zelf starten met **Catch-up nu draaien** op `/events`.
 - **Herstelt**: gemiste inzendingen en emoji die niet bij de status passen.
 - **Herstelt niet**: verwijderde berichten. Daarvoor zet je het mislukte event opnieuw in gang, of herbouw je de groep.
+- **Al goedgekeurd** (🔒): de catch-up weigert alleen een bericht dat nog niet in de app staat én na de eerste goedgekeurde inzending van die opdracht is geplaatst. Berichten die al als inzending in de app staan, krijgen geen 🔒 en geen reactie van de bot.
 - Het resultaat verschijnt als melding in de eventlog op `/events`.
 - In handmatige modus draait de catch-up niet.
 
@@ -60,10 +62,10 @@ Elk event dat mislukt, wordt bewaard en staat bovenaan `/events` onder **Mislukt
 | --- | --- |
 | Opnieuw | Draait dit ene event nog een keer. |
 | Alles opnieuw | Draait alle open fouten, oudste eerst: eerst het bericht, dan de beoordeling ervan. |
-| Negeren | Haalt de fout uit de lijst, bijvoorbeeld een emoji op een bericht zonder bestand. |
+| Negeren | Haalt de fout uit de lijst. |
 | Catch-up nu draaien | Leest de kanalen van vandaag opnieuw; zie Catch-up. |
 
-- **Bericht, bewerking, verwijdering**: de app draait het event precies zoals Slack het stuurde. Bestanden die al binnen zijn, worden niet dubbel opgeslagen.
+- **Bericht, bewerking, verwijdering**: de app draait het event precies zoals Slack het stuurde. Bestanden die al binnen zijn, worden niet dubbel opgeslagen. Lukt een bericht, dan leest de app ook de emoji die nu op dat bericht staan: een beoordeling die binnenkwam toen het bestand nog niet binnen was, telt zo alsnog.
 - **Emoji**: de app draait het oude event niet na. Hij leest de emoji die nu in Slack op het bericht staan. Zo telt wat het jurylid inmiddels besloten heeft.
 - Lukt het nog steeds niet, dan telt de kolom **Pogingen** op en staat de nieuwe fout erbij.
 - Stuurt Slack hetzelfde event zelf nog eens en lukt het dan, dan verdwijnt de fout vanzelf.

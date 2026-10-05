@@ -1,11 +1,11 @@
-@page "/assignments/{Number:int}"
+@page "/assignments/{Code}"
 @rendermode InteractiveServer
 @inherits LiveComponentBase
 @inject NavigationManager Navigation
 
-<PageTitle>Opdracht @Number - DU Review</PageTitle>
+<PageTitle>Opdracht @Current - DU Review</PageTitle>
 
-<PageHeader Title="@($"Opdracht {Number}")" BackHref="assignments" BackText="Opdrachten">
+<PageHeader Title="@($"Opdracht {Current}")" Subtitle="@assignment?.Title" BackHref="assignments" BackText="Opdrachten">
     <Details>
         <div class="d-flex gap-2 flex-wrap mt-2">
             @if (assignment != null)
@@ -19,21 +19,25 @@
                 <span class="badge bg-danger">Staat niet in de opdrachtenlijst</span>
             }
         </div>
+        @if (!string.IsNullOrWhiteSpace(assignment?.Description))
+        {
+            <p class="assignment-description text-white-50 mt-2 mb-0">@assignment.Description</p>
+        }
     </Details>
     <Actions>
-        <a href="slideshow?assignment=@Number" class="btn btn-scout-secondary d-flex align-items-center gap-1" title="Diavoorstelling van deze opdracht">
+        <a href="slideshow?assignment=@Current" class="btn btn-scout-secondary d-flex align-items-center gap-1" title="Diavoorstelling van deze opdracht">
             <i class="bi bi-play-btn"></i>
             <span class="d-none d-md-inline">Diavoorstelling</span>
         </a>
-        <a href="@AssignmentHref(nextOpenNumber)" data-hotkey="n" class="btn btn-scout-secondary d-flex align-items-center gap-1 next-open @(nextOpenNumber == null ? "disabled" : "")"
+        <a href="@AssignmentHref(nextOpenCode)" data-hotkey="n" class="btn btn-scout-secondary d-flex align-items-center gap-1 next-open @(nextOpenCode == null ? "disabled" : "")"
            title="Volgende opdracht met open inzendingen (N)">
             <i class="bi bi-inbox"></i>
             <span class="d-none d-md-inline">Volgende met open</span>
         </a>
-        <a href="@AssignmentHref(previousNumber)" data-hotkey="ArrowLeft" class="btn btn-scout-secondary @(previousNumber == null ? "disabled" : "")" title="Vorige opdracht (←)" aria-label="Vorige opdracht">
+        <a href="@AssignmentHref(previousCode)" data-hotkey="ArrowLeft" class="btn btn-scout-secondary @(previousCode == null ? "disabled" : "")" title="Vorige opdracht (←)" aria-label="Vorige opdracht">
             <i class="bi bi-chevron-left"></i>
         </a>
-        <a href="@AssignmentHref(nextNumber)" data-hotkey="ArrowRight" class="btn btn-scout-secondary @(nextNumber == null ? "disabled" : "")" title="Volgende opdracht (→)" aria-label="Volgende opdracht">
+        <a href="@AssignmentHref(nextCode)" data-hotkey="ArrowRight" class="btn btn-scout-secondary @(nextCode == null ? "disabled" : "")" title="Volgende opdracht (→)" aria-label="Volgende opdracht">
             <i class="bi bi-chevron-right"></i>
         </a>
     </Actions>
@@ -137,7 +141,10 @@ else
 
 @code {
     [Parameter]
-    public int Number { get; set; }
+    public string Code { get; set; } = string.Empty;
+
+    /// <summary>The code from the address as stored: "/assignments/a" opens assignment A, "/assignments/007" assignment 7.</summary>
+    private string Current => AssignmentCode.Normalize(Code) ?? Code;
 
     /// <summary>Only groups with open submissions, and only those submissions: for reviewing one assignment in one pass.</summary>
     [SupplyParameterFromQuery(Name = "open")]
@@ -150,40 +157,40 @@ else
     private List<GroupResult> groupResults = new();
     private List<GroupResult> submittedGroups = new();
     private List<GroupResult> missingGroups = new();
-    private int? previousNumber;
-    private int? nextNumber;
-    private int? nextOpenNumber;
+    private string? previousCode;
+    private string? nextCode;
+    private string? nextOpenCode;
 
-    private int? loadedNumber;
+    private string? loadedCode;
 
     protected override async Task OnParametersSetAsync()
     {
         // Only show the spinner when navigating to another assignment, not on live reloads
-        if (loadedNumber != Number)
+        if (loadedCode != Current)
         {
             loaded = false;
         }
 
         await ReloadAsync();
-        loadedNumber = Number;
+        loadedCode = Current;
     }
 
     protected override async Task LoadAsync(IServiceProvider services)
     {
         var assignments = await services.GetRequiredService<IAssignmentRepository>().GetAllAsync();
-        assignment = assignments.FirstOrDefault(a => a.Number == Number);
-        previousNumber = assignments.Where(a => a.Number < Number).Select(a => (int?)a.Number).LastOrDefault();
-        nextNumber = assignments.Where(a => a.Number > Number).Select(a => (int?)a.Number).FirstOrDefault();
+        // Sorted numbers first, then letters: ← and → step through them in that order
+        assignment = assignments.FirstOrDefault(a => a.Code == Current);
+        previousCode = assignments.Where(a => AssignmentCode.Compare(a.Code, Current) < 0).Select(a => a.Code).LastOrDefault();
+        nextCode = assignments.Where(a => AssignmentCode.Compare(a.Code, Current) > 0).Select(a => a.Code).FirstOrDefault();
 
         var repository = services.GetRequiredService<ISubmissionRepository>();
         var groups = await services.GetRequiredService<IGroupRepository>().GetAllAsync();
-        var submissions = await repository.SearchSubmissionsAsync(new SubmissionFilter { AssignmentNumber = Number });
+        var submissions = await repository.SearchSubmissionsAsync(new SubmissionFilter { AssignmentCode = Current });
 
         // The next assignment with something to review, starting again at the first one after the last
-        var openNumbers = (await repository.SearchSubmissionsAsync(new SubmissionFilter { Status = SubmissionStatus.Pending }))
-            .Select(s => s.AssignmentNumber).OfType<int>().Where(n => n != Number).Distinct().Order().ToList();
-        nextOpenNumber = openNumbers.Where(n => n > Number).Select(n => (int?)n).FirstOrDefault()
-                         ?? openNumbers.Select(n => (int?)n).FirstOrDefault();
+        var openCodes = (await repository.SearchSubmissionsAsync(new SubmissionFilter { Status = SubmissionStatus.Pending }))
+            .Select(s => s.AssignmentCode).OfType<string>().Where(c => c != Current).Distinct().Order(AssignmentCode.Comparer).ToList();
+        nextOpenCode = openCodes.FirstOrDefault(c => AssignmentCode.Compare(c, Current) > 0) ?? openCodes.FirstOrDefault();
 
         groupResults = groups
             .Select(g =>
@@ -219,7 +226,7 @@ else
         result.Submissions.First(s => s.SlackChannelId == sub.SlackChannelId && s.SlackMessageId == sub.SlackMessageId).Id == sub.Id;
 
     /// <summary>Another assignment's page, keeping the open-only choice.</summary>
-    private string AssignmentHref(int? number) => number == null ? "" : OpenOnly ? $"assignments/{number}?open=true" : $"assignments/{number}";
+    private string AssignmentHref(string? code) => code == null ? "" : OpenOnly ? $"assignments/{code}?open=true" : $"assignments/{code}";
 
     private void OnOpenOnlyChanged(ChangeEventArgs e) =>
         Navigation.NavigateTo(Navigation.GetUriWithQueryParameter("open", e.Value is true ? true : null));

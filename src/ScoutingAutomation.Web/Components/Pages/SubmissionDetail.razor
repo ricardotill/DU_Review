@@ -29,17 +29,17 @@ else
                 {
                     <a href="groups/@submission.GroupId" class="badge bg-secondary text-decoration-none">@(submission.Group?.Name ?? "Onbekende groep")</a>
                 }
-                @if (!submission.AssignmentNumber.HasValue)
+                @if (submission.AssignmentCode == null)
                 {
                     <span class="badge bg-danger">Onopgelost</span>
                 }
                 else if (IsGroup)
                 {
-                    <span class="badge assignment-badge">Opdracht @submission.AssignmentNumber</span>
+                    <span class="badge assignment-badge">Opdracht @submission.AssignmentCode</span>
                 }
                 else
                 {
-                    <a href="assignments/@submission.AssignmentNumber" class="badge assignment-badge text-decoration-none">Opdracht @submission.AssignmentNumber</a>
+                    <a href="assignments/@submission.AssignmentCode" class="badge assignment-badge text-decoration-none">Opdracht @submission.AssignmentCode</a>
                 }
             </div>
         </Details>
@@ -185,6 +185,10 @@ else
                                 <li>Slack verandert niet: er komt geen reactie op het bericht.</li>
                                 <li>Een latere reactie van een jurylid in Slack overschrijft deze status.</li>
                                 <li>De aanpassing komt met je reden bij de beoordelingen te staan.</li>
+                                @if (filesInMessage > 1)
+                                {
+                                    <li class="override-siblings">Geldt voor alle @filesInMessage bestanden van dit bericht, net als een reactie in Slack.</li>
+                                }
                             </ul>
                         </div>
 
@@ -235,6 +239,9 @@ else
     private Submission? submission;
     private bool loaded;
 
+    // An override reviews every file of the Slack message, like an emoji does
+    private int filesInMessage;
+
     private string StoredFileName =>
         submission == null ? string.Empty
         : string.IsNullOrWhiteSpace(submission.StoragePath) ? submission.FileName
@@ -272,6 +279,8 @@ else
         submission = await services.GetRequiredService<ISubmissionRepository>().GetByIdAsync(Id);
         // Another group's submission looks the same as one that does not exist
         if (ownGroup is { } own && submission?.GroupId != own) submission = null;
+        filesInMessage = submission == null ? 0
+            : (await services.GetRequiredService<ISubmissionRepository>().GetBySlackMessageIdAsync(submission.SlackChannelId, submission.SlackMessageId)).Count;
         loaded = true;
 
         // Keep what the user picked in the override form, unless it became the current status

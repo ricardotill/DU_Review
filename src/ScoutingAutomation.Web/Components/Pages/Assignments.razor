@@ -11,7 +11,7 @@
     <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
         <div class="search-box number-search">
             <i class="bi bi-search"></i>
-            <input type="number" min="1" class="form-control form-control-dark" placeholder="Opdrachtnummer"
+            <input type="search" class="form-control form-control-dark" placeholder="Nummer, letter of titel"
                    @bind="numberSearch" @bind:event="oninput" />
         </div>
         <div class="form-check form-switch mb-0">
@@ -52,9 +52,13 @@
                 <tbody>
                     @foreach (var row in VisibleRows)
                     {
-                        <tr class="clickable-row" @onclick="@(() => Navigation.NavigateTo($"assignments/{row.Number}"))">
+                        <tr class="clickable-row" @onclick="@(() => Navigation.NavigateTo($"assignments/{row.Code}"))">
                             <td>
-                                <a href="assignments/@row.Number" class="fw-bold text-white text-decoration-none hover-underline">#@row.Number</a>
+                                <a href="assignments/@row.Code" class="fw-bold text-white text-decoration-none hover-underline">#@row.Code</a>
+                                @if (row.Title != null)
+                                {
+                                    <span class="assignment-title text-white-50 small ms-1">@row.Title</span>
+                                }
                             </td>
                             <td class="text-center text-white-50">
                                 @row.StandardPoints <span class="text-muted">/</span> <span class="text-awesome">@row.AwesomePoints</span>
@@ -75,32 +79,39 @@
 </div>
 
 @code {
-    private sealed record Row(int Number, int StandardPoints, int AwesomePoints, AssignmentStatistic Stats);
+    private sealed record Row(string Code, string? Title, int StandardPoints, int AwesomePoints, AssignmentStatistic Stats);
 
     private List<Row>? rows;
     private int groupCount;
-    private int? numberSearch;
+    private string? numberSearch;
     private bool onlyWithSubmissions = true;
 
     private IEnumerable<Row> VisibleRows => (rows ?? new List<Row>())
         .Where(r => !onlyWithSubmissions || r.Stats.TotalSubmissions > 0)
-        .Where(r => numberSearch == null || r.Number.ToString().StartsWith(numberSearch.Value.ToString()));
+        .Where(r => Matches(r, numberSearch?.Trim()));
+
+    /// <summary>A code starting with the search ("1" finds 1, 12, 100; "a" finds A), or a title containing it.</summary>
+    private static bool Matches(Row row, string? search) =>
+        string.IsNullOrEmpty(search)
+        || row.Code.StartsWith(search.TrimStart('#'), StringComparison.OrdinalIgnoreCase)
+        || (row.Title?.Contains(search, StringComparison.CurrentCultureIgnoreCase) ?? false);
 
     protected override Task OnInitializedAsync() => ReloadAsync();
 
     protected override async Task LoadAsync(IServiceProvider services)
     {
         var stats = await services.GetRequiredService<ISubmissionRepository>().GetStatisticsAsync();
-        var assignments = (await services.GetRequiredService<IAssignmentRepository>().GetAllAsync()).ToDictionary(a => a.Number);
+        var assignments = (await services.GetRequiredService<IAssignmentRepository>().GetAllAsync()).ToDictionary(a => a.Code);
         groupCount = (await services.GetRequiredService<IGroupRepository>().GetAllAsync()).Count;
 
         rows = stats.AssignmentStatistics
             .Select(s => new Row(
-                s.AssignmentNumber,
-                assignments.GetValueOrDefault(s.AssignmentNumber)?.StandardPoints ?? 0,
-                assignments.GetValueOrDefault(s.AssignmentNumber)?.AwesomePoints ?? 0,
+                s.AssignmentCode,
+                assignments.GetValueOrDefault(s.AssignmentCode)?.Title,
+                assignments.GetValueOrDefault(s.AssignmentCode)?.StandardPoints ?? 0,
+                assignments.GetValueOrDefault(s.AssignmentCode)?.AwesomePoints ?? 0,
                 s))
-            .OrderBy(r => r.Number)
+            .OrderBy(r => r.Code, AssignmentCode.Comparer)
             .ToList();
     }
 }

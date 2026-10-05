@@ -21,7 +21,7 @@ Klopt er iets niet aan een inzending, dan reageert de bot zelf in Slack met een 
 - **Geen opdrachtnummer**, of een nummer dat niet bestaat: de inzending wordt niet opgeslagen. De groep kan het bericht bewerken en het nummer toevoegen; dan wordt de inzending alsnog geregistreerd en haalt de bot zijn ❓ weg. Opnieuw plaatsen kan ook.
 - **Bestandstype niet ondersteund**, bijvoorbeeld een `.zip`: dat bestand wordt overgeslagen.
 - **Bestand kon niet worden gedownload**: dat bestand wordt overgeslagen, en de groep wordt gevraagd het opnieuw te plaatsen. De app slaat nooit een leeg of vervangend bestand op.
-- **Opdracht al goedgekeurd** (alleen als `BlockAttemptsAfterApproval` aan staat): heeft de groep deze opdracht al goedgekeurd of awesome in een ander bericht, dan wordt de nieuwe poging niet opgeslagen. De bot zet er 🔒 op. Een open of afgekeurde eerdere poging houdt een nieuwe poging niet tegen. Zie **Nieuwe poging na goedkeuring**.
+- **Opdracht al goedgekeurd** (alleen als `BlockAttemptsAfterApproval` aan staat): heeft de groep deze opdracht al goedgekeurd of awesome in een eerder geplaatst bericht, dan wordt de nieuwe poging niet opgeslagen. De bot zet er 🔒 op. Een open of afgekeurde eerdere poging houdt een nieuwe poging niet tegen. Zie **Nieuwe poging na goedkeuring**.
 
 Bewerken en verwijderen in Slack:
 
@@ -52,16 +52,18 @@ Bekijken, zoeken, filteren en favorieten markeren kan iedereen met de toegangssl
 
 **Sleutel opnieuw aanmaken:** op de pagina **Beheer** maak je een nieuwe toegangssleutel of beheerderssleutel aan. Iedereen die met de oude sleutel is ingelogd, wordt direct uitgelogd, ook in pagina's die al open staan. Jij blijft zelf ingelogd. Een nieuwe beheerderssleutel wordt maar één keer getoond: noteer hem meteen.
 
-Na 5 verkeerde sleutels binnen een minuut moet een apparaat even wachten voordat het opnieuw mag proberen.
+Na 30 verkeerde sleutels binnen een minuut moet een adres even wachten voordat het opnieuw mag proberen. De grens is ruim, omdat alle groepen en de jury op de locatie vaak hetzelfde internetadres delen: een paar tikfouten van één groep blokkeren zo niet iedereen. Een goede sleutel wist eerdere fouten niet, dus wie zelf een sleutel heeft (zoals een groep) kan daarmee niet onbeperkt andere sleutels proberen.
 
 **Groepssleutels.** Elke groep kan een eigen sleutel krijgen. Een groep logt daarmee in op hetzelfde loginscherm en ziet alleen:
 
 - een eigen dashboard met haar score, plaats, de stand en de punten in de loop van het spel;
 - haar eigen inzendingen (**Onze inzendingen**) met de beoordeling, en de bestanden zelf.
 
+Meldingen van nieuwe inzendingen (rechtsonder) krijgt alleen de jury; een groep ziet zo niet wat andere groepen insturen.
+
 Inzendingen en bestanden van andere groepen, de namen van juryleden, opmerkingen bij beoordelingen en alle pagina's voor de jury (zoals **Te beoordelen**, **Groepen**, **Opdrachten**, **Scorebord** en **Configuratie**) zijn voor een groep afgeschermd; die komt dan op **Geen toegang** uit. Nieuwe pagina's zijn standaard ook afgeschermd: alleen pagina's met `[GroupAccess]` staan open voor groepen, en zulke pagina's tonen een groep alleen haar eigen gegevens. Groepssleutels beheer je in beheermodus op **Beheer** > **Groepssleutels**: maak sleutels voor alle groepen, maak voor één groep een nieuwe sleutel of trek een sleutel in. Een nieuwe of ingetrokken sleutel logt die groep direct uit; de jury en andere groepen merken er niets van. De sleutels staan per Slack-kanaal in `access-keys.json`.
 
-> **Let op:** de sleutel en het login-cookie gaan onversleuteld over het netwerk als de app via gewone `http://` wordt geopend. Iedereen op hetzelfde netwerk kan ze dan meelezen. Gebruik HTTPS (bijvoorbeeld via een reverse proxy) als de app buiten een vertrouwd netwerk bereikbaar is.
+> **Let op:** de sleutel en het login-cookie gaan onversleuteld over het netwerk als de app via gewone `http://` wordt geopend. Iedereen op hetzelfde netwerk kan ze dan meelezen. Gebruik HTTPS (bijvoorbeeld via een reverse proxy of tunnel) als de app buiten een vertrouwd netwerk bereikbaar is, en geef groepen alleen het HTTPS-adres. Logt een groep toch in via gewone `http://` van een ander apparaat, dan staat er een waarschuwing in het logboek. De app vertrouwt alleen een proxy op dezelfde computer (zoals `cloudflared` of `ngrok`); draait de proxy op een andere machine, voeg die dan toe aan de bekende proxy's, anders ziet de app voor iedereen hetzelfde adres.
 
 ## Favorieten
 
@@ -86,6 +88,7 @@ Bovenaan elke pagina staat dan **Handmatige modus**. Met `Scouting:ManualMode` i
 Met `Scouting:BlockAttemptsAfterApproval` aan is een opdracht klaar zodra de groep er een goedkeuring of awesome voor heeft. Een nieuwe poging voor die opdracht wordt dan niet opgeslagen. De bot reageert met de emoji en tekst uit `SlackFeedback:AlreadyCompleted`. Zo kan een groep een goedgekeurde opdracht niet blijven insturen in de hoop op awesome.
 
 - In beheermodus zet je de regel aan of uit op **Configuratie**, onder **Beoordelingsregels**. Dat geldt direct en blijft bewaard na een herstart, in `runtime-settings.json`. **Terug naar appsettings** zet de waarde uit `appsettings.json` terug.
+- Alleen een **nieuw** bericht dat **na** de eerste goedgekeurde inzending is geplaatst, wordt geweigerd. Een bericht dat al als inzending in de app staat, wordt nooit geweigerd. Dat geldt ook bij inhalen: een eerdere afgekeurde poging, of een tweede bericht dat al was goedgekeurd, krijgt dan geen 🔒. Een bericht dat de app gemist heeft en dat vóór de goedkeuring is geplaatst, telt gewoon mee; de beste beoordeling telt.
 - Verandert een groep met een bewerking het nummer naar een opdracht die al klaar is, dan blijft de inzending bij het oude nummer en reageert de bot op dezelfde manier.
 - In handmatige modus geldt de regel niet: dan worden alleen bestanden opgeslagen.
 - **Opnieuw opbouwen uit Slack** slaat berichten met de 🔒 van de bot over. Zo komen pogingen die live werden geweigerd er ook bij het herbouwen niet bij.
@@ -93,16 +96,20 @@ Met `Scouting:BlockAttemptsAfterApproval` aan is een opdracht klaar zodra de gro
 
 ## Punten
 
-De punten per opdracht staan in `src/ScoutingAutomation.Web/opdrachtenpunten.csv`:
+De opdrachten en hun punten staan in `src/ScoutingAutomation.Web/opdrachtenpunten.csv`:
 
 ```csv
-Opdracht,standaard,awesome
-1,1,2
+Opdracht,standaard,awesome,titel,beschrijving
+1,1,2,Kampvuur,Maak een vuur zonder aansteker
 2,2,4
+A,3,6,Speciale toren,"Bouw een toren, minstens 2 meter hoog"
 ```
 
+- De eerste kolom is het opdrachtnummer, of voor een **speciale opdracht** één tot drie letters (`A`, `B`, `AB`). Hoofd- en kleine letters maken niet uit. Speciale opdrachten staan in de lijsten na de genummerde.
+- `titel` en `beschrijving` zijn optioneel. De titel staat bij de opdracht op de pagina's **Opdrachten**, de opdrachtpagina, de pagina van een groep en in het filter van **Inzendingen**. De beschrijving staat op de opdrachtpagina.
+- Komma's of puntkomma's mogen allebei (Nederlandse Excel slaat op met puntkomma's); de eerste regel bepaalt welke. Zet een veld tussen aanhalingstekens als er een komma, puntkomma of regelovergang in staat. Een aanhalingsteken in zo'n veld schrijf je dubbel (`""`).
 - **Goedgekeurd** geeft de `standaard`-punten, **Awesome** de `awesome`-punten. **Open** en **Afgekeurd** geven 0 punten.
-- Elke opdracht telt **één keer per groep**. Heeft een groep een opdracht vaker ingestuurd, dan telt de beste beoordeling. Met `BlockAttemptsAfterApproval` aan kan een groep na een goedkeuring niet opnieuw insturen.
+- Elke opdracht telt **één keer per groep**, ook als er meerdere foto's in één bericht staan. Heeft een groep een opdracht vaker ingestuurd, dan telt de beste beoordeling. Met `BlockAttemptsAfterApproval` aan kan een groep na een goedkeuring niet opnieuw insturen.
   - Eerst afgekeurd en daarna goedgekeurd? Dan telt alleen de goedkeuring. De afkeuring is ook niet meer zichtbaar in de statistieken.
 - Groepen met evenveel punten delen een plaats op het scorebord.
 
@@ -116,10 +123,11 @@ De app herkent deze schrijfwijzen:
 |---|---|
 | `Opdracht 12`, `taak 12`, `assignment 12` | trefwoord + nummer |
 | `#12` | hekje + nummer |
-| `A12` | letter A + nummer |
+| `A12` | letter A + nummer (dat is opdracht 12, niet opdracht A) |
 | `12 - kampvuur`, `12: kampvuur` | nummer aan het begin, gevolgd door een scheidingsteken |
+| `Opdracht A`, `opdracht: b`, `#A` | trefwoord of hekje + letter(s), voor een speciale opdracht |
 
-Een los getal ergens in de tekst telt **niet**. Zo wordt "we deden het met 3 man" niet per ongeluk opdracht 3.
+Een los getal ergens in de tekst telt **niet**. Zo wordt "we deden het met 3 man" niet per ongeluk opdracht 3. Een letter telt alleen na een trefwoord of een hekje, en alleen als er geen nummer in de tekst staat: "a photo" of "taak a 12" (opdracht 12) wordt nooit opdracht A. Staan de letters niet in het puntenbestand, bijvoorbeeld bij "opdracht is klaar", dan vraagt de bot om het opdrachtnummer.
 
 ## Pagina's
 
@@ -140,19 +148,27 @@ Een los getal ergens in de tekst telt **niet**. Zo wordt "we deden het met 3 man
 
 Een groep die met haar groepssleutel inlogt, ziet alleen **Dashboard** en **Onze inzendingen**. Zie **Toegang**.
 
-Beoordelen gebeurt in Slack. Voor noodgevallen kan een status op de detailpagina van een inzending handmatig worden aangepast, onder **Status handmatig aanpassen** (alleen in beheermodus). Dit vraagt om een reden en wordt vastgelegd in de beoordelingsgeschiedenis. Een latere emoji in Slack overschrijft zo'n aanpassing weer.
+Beoordelen gebeurt in Slack. Voor noodgevallen kan een status op de detailpagina van een inzending handmatig worden aangepast, onder **Status handmatig aanpassen** (alleen in beheermodus). Dit vraagt om een reden en wordt vastgelegd in de beoordelingsgeschiedenis. Net als een emoji in Slack geldt de aanpassing voor alle bestanden van hetzelfde bericht: anders zou bij twee foto's de andere foto haar status houden, en omdat de beste beoordeling telt, zouden de punten niet veranderen. Een latere emoji in Slack overschrijft zo'n aanpassing weer.
+
+## Extra punten en puntencategorieën
+
+Punten die buiten Slack worden verdiend, zoals de **Avonturiers** en het **Reisbureau** (pubquiz), vul je in beheermodus in op **Beheer**, onder **Extra punten**: één kolom per categorie, één rij per groep. Ze tellen mee in de score, de stand en de grafiek, en blijven staan bij **Opnieuw opbouwen uit Slack**.
+
+Welke categorieën er zijn, staat in `Scouting:BonusCategories`. Elke categorie heeft een `Key` (kleine letters, cijfers en streepjes; de punten worden eronder bewaard), een `Name` en optioneel een `ShortName` voor smalle plekken zoals het **Dashboard**. Ontbreekt de lijst, dan gelden Avonturiers en Reisbureau.
+
+Tijdens het spel pas je de categorieën aan op **Beheer**, onder **Puntencategorieën**: toevoegen, hernoemen en weghalen. Dat geldt direct, voor iedereen, en blijft bewaard in `runtime-settings.json`. **Terug naar appsettings** zet de lijst uit `appsettings.json` terug. Een categorie weghalen haalt haar punten uit de score, de stand en de export, maar de punten blijven bewaard: voeg je een categorie met dezelfde sleutel later weer toe, dan zijn ze terug.
 
 ## Scorebord en export
 
 **Laatst actief.** Het scorebord op het **Dashboard** en de kaarten op **Groepen** tonen wanneer een groep voor het laatst iets in Slack plaatste. Een upload zonder geldig opdrachtnummer telt ook mee. Tijdens het spel (tussen `EventStart` en `EventEnd`) wordt dat geel na 30 minuten zonder upload en rood na een uur. Heeft een groep nog niets ingestuurd, dan telt de tijd vanaf de start. Voor de start en na het einde blijft het grijs.
 
-**Punten in de loop van het spel.** Het **Dashboard** en de pagina **Scorebord** tonen per groep een lijn met de punten. De pagina van een groep toont die groep in kleur en de andere groepen in grijs. Een opdracht telt vanaf het moment waarop de inzending met de beste beoordeling in Slack is geplaatst, niet vanaf het moment van beoordelen. Zo blijft de lijn hetzelfde na **Opnieuw opbouwen uit Slack**. Een open inzending die later wordt goedgekeurd, verschijnt dus achteraf op het tijdstip van plaatsen. Punten voor **Avonturiers** en **Reisbureau** staan op het moment dat ze zijn ingevoerd, bij elke wijziging opnieuw: een verhoging is een stap omhoog, een verlaging een stap omlaag. Wijzigingen binnen 5 minuten na elkaar tellen als één stap, zodat een tikfout die je meteen herstelt (100 in plaats van 10) geen piek in de grafiek geeft. Elke groep houdt dezelfde kleur, op alfabetische volgorde van naam; vanaf de negende groep zijn de lijnen grijs.
+**Punten in de loop van het spel.** Het **Dashboard** en de pagina **Scorebord** tonen per groep een lijn met de punten. De pagina van een groep toont die groep in kleur en de andere groepen in grijs. Een opdracht telt vanaf het moment waarop de inzending met de beste beoordeling in Slack is geplaatst, niet vanaf het moment van beoordelen. Zo blijft de lijn hetzelfde na **Opnieuw opbouwen uit Slack**. Een open inzending die later wordt goedgekeurd, verschijnt dus achteraf op het tijdstip van plaatsen. Extra punten (zoals **Avonturiers** en **Reisbureau**) staan op het moment dat ze zijn ingevoerd, bij elke wijziging opnieuw: een verhoging is een stap omhoog, een verlaging een stap omlaag. Wijzigingen binnen 5 minuten na elkaar tellen als één stap, zodat een tikfout die je meteen herstelt (100 in plaats van 10) geen piek in de grafiek geeft. Elke groep houdt dezelfde kleur, op alfabetische volgorde van naam; vanaf de negende groep zijn de lijnen grijs.
 
 **Beamer.** De pagina **Scorebord** toont dezelfde totalen als het **Dashboard** en de stand in grote letters, met de resterende speeltijd en de grafiek. De knop rechtsboven zet hem op volledig scherm. In de **Diavoorstelling** kun je met **Scorebord tussendoor** elke 3, 5, 10 of 20 items 15 seconden de tussenstand tonen.
 
 **Exporteren** (alleen in beheermodus), via de knop op het **Dashboard**:
 
-- `/api/export/scores.csv`: het scorebord als CSV, met puntkomma's, zodat Excel het direct goed opent;
+- `/api/export/scores.csv`: het scorebord als CSV, met puntkomma's, zodat Excel het direct goed opent. Elke puntencategorie heeft een eigen kolom;
 - `/api/export/files.zip?status=awesome`: alle awesome bestanden;
 - `/api/export/files.zip?status=approved`: alle goedgekeurde en awesome bestanden. Op de pagina van een groep doet **Downloaden** hetzelfde voor alleen die groep (`&group={id}`).
 
@@ -256,18 +272,19 @@ Alles staat onder `Scouting` in `src/ScoutingAutomation.Web/appsettings.json`. W
 | `ReviewStatusReactions` | Welke emoji Goedgekeurd (`Approved`), Awesome (`Awesome`) of Afgekeurd (`Rejected`) betekent. |
 | `SlackFeedback` | Emoji en tekst waarmee de bot reageert op een probleem. `AlreadyCompleted` is de reactie op een nieuwe poging na goedkeuring (`{number}` = opdrachtnummer). `TooLate` is de reactie op een inzending na de eindtijd (`{end}` = eindtijd, bijvoorbeeld `17:00`). |
 | `BlockAttemptsAfterApproval` | Of een groep een opdracht die al goedgekeurd of awesome is niet opnieuw mag insturen. Ook in de app aan te passen. Zie **Nieuwe poging na goedkeuring**. |
+| `BonusCategories` | De categorieën voor extra punten, met `Key`, `Name` en optioneel `ShortName`. Ontbreekt de lijst, dan gelden Avonturiers (`avonturiers`) en Reisbureau (`reisbureau`). Ook in de app aan te passen. Zie **Extra punten en puntencategorieën**. |
 | `ReviewReminder` | `ChannelId`: het jurykanaal. `AfterMinutes`: na hoeveel minuten wachten de jury een herinnering krijgt (`null` = geen). De tijd is ook in de app aan te passen. Zie **Herinnering voor de jury**. |
 | `GameStartAnnouncement` | Het startbericht dat de bot bij de start van het spel in elk groepskanaal plaatst. `Message` is de tekst (Slack-opmaak; leeg = geen bericht). Plaatshouders: `{group}` (naam van de groep), `{retryRule}` (of opnieuw insturen na een goedkeuring mag, volgens `BlockAttemptsAfterApproval`), `{approved}`, `{awesome}`, `{rejected}` (de emoji uit `ReviewStatusReactions`) en `{missingNumber}`, `{unknownNumber}`, `{unsupportedFile}`, `{downloadFailed}`, `{alreadyCompleted}` (de emoji uit `SlackFeedback`). Met `AutoPost` (standaard `true`) plaatst de app het bericht zelf op `EventStart`. Zie **Startbericht**. |
 | `GameEndAnnouncement` | Het eindbericht dat de bot bij het einde van het spel in elk groepskanaal plaatst. `Message` is de tekst (leeg = geen bericht). Plaatshouders: `{group}` (naam van de groep) en `{end}` (de eindtijd). Met `AutoPost` (standaard `true`) plaatst de app het bericht zelf op `EventEnd`. Zie **Eindtijd en eindbericht**. |
 | `SupportedExtensions`, `SupportedMimeTypePrefixes` | Welke bestanden worden geaccepteerd. |
-| `AssignmentPointsFile` | Het CSV-bestand met de punten. |
+| `AssignmentPointsFile` | Het CSV-bestand met de opdrachten, hun punten en optioneel titel en beschrijving. Zie **Punten**. |
 | `StorageRoot` | De map waarin de bestanden worden opgeslagen. |
 | `TimeZone` | De tijdzone van het spel voor bestandsnamen en tijden op de pagina's (standaard `Europe/Amsterdam`). |
 | `EventStart` | De starttijd van het spel in de tijdzone van `TimeZone`, bijvoorbeeld `"2026-10-03T09:00"`. Slack-berichten van daarvoor worden stil genegeerd: geen inzending en geen feedback, ook niet bij inhalen of opnieuw opbouwen. Leeg (`null`) telt elk bericht mee. Ook in de app aan te passen. |
 | `EventEnd` | De eindtijd van het spel in de tijdzone van `TimeZone`, bijvoorbeeld `"2026-10-03T17:00"`. Inzendingen vanaf dat moment tellen niet. Leeg (`null`) betekent geen eindtijd. Ook in de app aan te passen. Zie **Eindtijd en eindbericht**. |
 | `Slack` | Simulatiemodus, verbindingsmethode (`SocketMode`) en de Slack-geheimen: bot-token, App-Level Token of Signing Secret. `SimulationMode` staat standaard uit; in simulatiemodus controleert de app de handtekening van Slack niet, dus zet hem nooit aan op een server die van buiten bereikbaar is. |
 
-Lijsten in `appsettings.json` hebben geen standaardwaarden in de code. Wat in het bestand staat, is dus precies wat de app gebruikt.
+Lijsten in `appsettings.json` hebben geen standaardwaarden in de code, behalve `BonusCategories` als die helemaal ontbreekt. Wat in het bestand staat, is dus precies wat de app gebruikt.
 
 ## Startbericht
 

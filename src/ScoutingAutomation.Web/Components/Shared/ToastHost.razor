@@ -28,7 +28,7 @@
                     }
                 </span>
                 <span class="toast-detail">
-                    Opdracht @n.AssignmentNumber · @(n.SubmissionIds.Count == 1 ? "1 bestand" : $"{n.SubmissionIds.Count} bestanden") · door @n.SubmitterName
+                    Opdracht @n.AssignmentCode · @(n.SubmissionIds.Count == 1 ? "1 bestand" : $"{n.SubmissionIds.Count} bestanden") · door @n.SubmitterName
                 </span>
             </a>
             <button type="button" class="toast-close" aria-label="Melding sluiten" @onclick="() => Close(toast)">
@@ -54,6 +54,8 @@
     {
         // Only once interactive: a prerendered copy would subscribe and never be disposed by a circuit
         if (!firstRender) return;
+        // A group must not learn what the other groups send in; the layout only shows this to the jury as well
+        if (!await IsStaffAsync()) return;
 
         Notifier.Created += OnCreated;
         await Preferences.EnsureLoadedAsync();
@@ -76,9 +78,14 @@
         ? $"submissions/{n.SubmissionIds[0]}"
         : $"submissions?group={n.GroupId}";
 
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private Task<bool> IsStaffAsync() => StaffActions.IsStaffAsync(AuthState);
+
     private void OnCreated(SubmissionCreatedNotification notification) => _ = InvokeAsync(async () =>
     {
-        if (disposed || OnSlideshow) return;
+        // Checked again for every toast: a tab that lost its login stops getting them
+        if (disposed || OnSlideshow || !await IsStaffAsync()) return;
 
         try
         {

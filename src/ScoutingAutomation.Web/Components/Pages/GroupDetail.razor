@@ -1,6 +1,7 @@
 @page "/groups/{Id:guid}"
 @rendermode InteractiveServer
 @inherits LiveComponentBase
+@inject RuntimeSettingsService Runtime
 
 <PageTitle>@(group?.Name ?? "Groep") - DU Review</PageTitle>
 
@@ -51,12 +52,14 @@ else
                 <div class="stat-label">Score</div>
                 <div class="stat-value text-white">@(groupStats?.Score ?? 0)</div>
                 <div class="stat-caption">Plaats @(groupStats?.Rank ?? 0) van @groupCount</div>
-                @if (groupStats is { } bonus && (bonus.AdventurersPoints > 0 || bonus.TravelAgencyPoints > 0))
+                @if (groupStats is { BonusTotal: > 0 } bonus)
                 {
                     <div class="stat-caption score-breakdown">
-                        @(bonus.Score - bonus.AdventurersPoints - bonus.TravelAgencyPoints) opdrachten
-                        · @bonus.AdventurersPoints @BonusCategory.Adventurers.ShortLabel()
-                        · @bonus.TravelAgencyPoints @BonusCategory.TravelAgency.ShortLabel()
+                        @(bonus.Score - bonus.BonusTotal) opdrachten
+                        @foreach (var category in Runtime.BonusCategories.Where(c => bonus.BonusPoints.GetValueOrDefault(c.Key) > 0))
+                        {
+                            <text> · @bonus.BonusPoints[category.Key] @category.Name</text>
+                        }
                     </div>
                 }
             </div>
@@ -152,7 +155,11 @@ else
                         {
                             <tr>
                                 <td>
-                                    <a href="assignments/@result.Number" class="fw-bold text-white text-decoration-none hover-underline">#@result.Number</a>
+                                    <a href="assignments/@result.Code" class="fw-bold text-white text-decoration-none hover-underline">#@result.Code</a>
+                                    @if (result.Title != null)
+                                    {
+                                        <span class="assignment-title text-white-50 small ms-1">@result.Title</span>
+                                    }
                                 </td>
                                 <td><StatusBadge Status="@result.BestStatus" /></td>
                                 <td class="text-center fw-bold @(result.Points > 0 ? "text-white" : "text-muted")">
@@ -211,7 +218,7 @@ else
         groupStats = stats.GroupStatistics.FirstOrDefault(g => g.GroupId == Id);
         groupCount = stats.GroupStatistics.Count;
 
-        var assignments = (await services.GetRequiredService<IAssignmentRepository>().GetAllAsync()).ToDictionary(a => a.Number);
+        var assignments = (await services.GetRequiredService<IAssignmentRepository>().GetAllAsync()).ToDictionary(a => a.Code);
         assignmentCount = assignments.Count;
 
         var submissions = await submissionRepository.SearchSubmissionsAsync(new SubmissionFilter { GroupId = Id });
@@ -219,7 +226,7 @@ else
         results = AssignmentResult.For(submissions, assignments);
 
         unresolved = submissions
-            .Where(s => !s.AssignmentNumber.HasValue)
+            .Where(s => s.AssignmentCode == null)
             .OrderByDescending(s => s.CreatedAt)
             .ToList();
 

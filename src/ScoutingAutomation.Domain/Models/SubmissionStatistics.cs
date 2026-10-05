@@ -35,7 +35,8 @@ public class SubmissionStatistics
 }
 
 /// <param name="Label">The bonus category for points entered by hand; null for an assignment.</param>
-public sealed record ScoreEvent(Guid GroupId, int AssignmentNumber, DateTimeOffset At, int Points, string? Label = null);
+/// <param name="AssignmentCode">The assignment; empty for points entered by hand.</param>
+public sealed record ScoreEvent(Guid GroupId, string AssignmentCode, DateTimeOffset At, int Points, string? Label = null);
 
 public class GroupStatistic
 {
@@ -43,8 +44,12 @@ public class GroupStatistic
     public string GroupName { get; set; } = string.Empty;
     /// <summary>Assignment points plus the points entered by hand.</summary>
     public int Score { get; set; }
-    public int AdventurersPoints { get; set; }
-    public int TravelAgencyPoints { get; set; }
+
+    /// <summary>Points entered by hand, per category key; only categories that are in use.</summary>
+    public Dictionary<string, int> BonusPoints { get; set; } = new();
+
+    /// <summary>The points entered by hand, all categories in use together.</summary>
+    public int BonusTotal => BonusPoints.Values.Sum();
 
     /// <summary>Leaderboard position by score; equal scores share a rank (1, 1, 3).</summary>
     public int Rank { get; set; }
@@ -64,7 +69,7 @@ public class GroupStatistic
 
 public class AssignmentStatistic
 {
-    public int AssignmentNumber { get; set; }
+    public string AssignmentCode { get; set; } = string.Empty;
     public int TotalSubmissions { get; set; }
     public int ApprovedCount { get; set; }
     public int PendingCount { get; set; }

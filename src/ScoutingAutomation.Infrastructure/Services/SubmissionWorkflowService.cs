@@ -143,7 +143,7 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         // FR-002: Parse assignment number
         // Without a clear assignment number nothing is stored: the scout is asked to post again
         var parseResult = _assignmentParser.Parse(messageEvent.Text);
-        if (!parseResult.Success || !parseResult.AssignmentNumber.HasValue)
+        if (!parseResult.Success || parseResult.AssignmentCode == null)
         {
             _logger.LogWarning("Skipped message '{Text}' in channel {Channel}: {Reason}",
                 messageEvent.Text, channelId, parseResult.ErrorMessage);
@@ -151,21 +151,24 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
             return ProcessSlackMessageResult.Ignored(parseResult.ErrorMessage ?? "Geen opdrachtnummer gevonden");
         }
 
-        var assignmentNumber = parseResult.AssignmentNumber.Value;
-        if (await _assignmentRepository.GetByNumberAsync(assignmentNumber, ct) == null)
+        var assignmentCode = parseResult.AssignmentCode;
+        if (await _assignmentRepository.GetByCodeAsync(assignmentCode, ct) == null)
         {
-            _logger.LogWarning("Skipped message in {Channel}: unknown assignment {Number}", channelId, assignmentNumber);
-            await SendFeedbackAsync(silent, feedback.UnknownAssignmentNumber, channelId, messageEvent.Ts, "{number}", assignmentNumber.ToString(), ct);
-            return ProcessSlackMessageResult.Ignored($"Opdracht {assignmentNumber} bestaat niet");
+            _logger.LogWarning("Skipped message in {Channel}: unknown assignment {Code}", channelId, assignmentCode);
+
+            // Letters that are no special assignment are most likely just a word ("opdracht is klaar"): ask for the number
+            var reply = AssignmentCode.IsLetter(assignmentCode) ? feedback.MissingAssignmentNumber : feedback.UnknownAssignmentNumber;
+            await SendFeedbackAsync(silent, reply, channelId, messageEvent.Ts, "{number}", assignmentCode, ct);
+            return ProcessSlackMessageResult.Ignored($"Opdracht {assignmentCode} bestaat niet");
         }
 
         // A group that already has this assignment approved or awesome may not try again for more points
-        if (!manual && await IsCompletedElsewhereAsync(group.Id, assignmentNumber, channelId, messageEvent.Ts, ct))
+        if (!manual && await IsNewAttemptAfterApprovalAsync(group.Id, assignmentCode, channelId, messageEvent.Ts, ct))
         {
             _logger.LogInformation("Skipped message {Ts} in {Channel}: group {Group} already completed assignment {Number}",
-                messageEvent.Ts, channelId, group.Name, assignmentNumber);
-            await SendFeedbackAsync(silent, feedback.AlreadyCompleted, channelId, messageEvent.Ts, "{number}", assignmentNumber.ToString(), ct);
-            return ProcessSlackMessageResult.Ignored($"Opdracht {assignmentNumber} is al goedgekeurd voor deze groep");
+                messageEvent.Ts, channelId, group.Name, assignmentCode);
+            await SendFeedbackAsync(silent, feedback.AlreadyCompleted, channelId, messageEvent.Ts, "{number}", assignmentCode, ct);
+            return ProcessSlackMessageResult.Ignored($"Opdracht {assignmentCode} is al goedgekeurd voor deze groep");
         }
 
         var createdIds = new List<Guid>();
@@ -216,7 +219,7 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
             // Connected to Slack, a file without an address (hidden by a plan limit, or still being processed)
             // cannot be fetched: storing a stand-in would hide a lost submission
             var downloadUrl = file.UrlPrivateDownload ?? file.UrlPrivate ?? (_slackClient.IsConnected ? null : $"sim://{file.Name}");
-            var storedFileName = SubmissionFileName.Build(group, assignmentNumber, file.Name, postedAt.ToGameTime(), FileIndex(supportedFiles, file));
+            var storedFileName = SubmissionFileName.Build(group, assignmentCode, file.Name, postedAt.ToGameTime(), FileIndex(supportedFiles, file));
             string storagePath;
             try
             {
@@ -277,7 +280,7 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
                 CreatedAt = postedAt
             };
 
-            submission.MarkPending(storagePath, assignmentNumber);
+            submission.MarkPending(storagePath, assignmentCode);
 
             try
             {
@@ -301,7 +304,7 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
             createdIds.Add(submission.Id);
 
             _logger.LogInformation("Registered submission {Id} for group {Group}, assignment #{Assignment}, file {File}",
-                submission.Id, group.Name, assignmentNumber, file.Name);
+                submission.Id, group.Name, assignmentCode, file.Name);
         }
 
         if (createdIds.Count > 0)
@@ -315,7 +318,7 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
                     group.Id,
                     group.Name,
                     group.Abbreviation,
-                    assignmentNumber,
+                    assignmentCode,
                     string.IsNullOrWhiteSpace(submitterName) ? messageEvent.User ?? "Onbekend" : submitterName,
                     createdIds,
                     postedAt));
@@ -430,26 +433,26 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
     private async Task<ProcessSlackMessageResult> ReassignAsync(IReadOnlyList<Submission> submissions, SlackEventItemDto message, CancellationToken ct)
     {
         var parsed = _assignmentParser.Parse(message.Text);
-        if (!parsed.Success || !parsed.AssignmentNumber.HasValue
-            || await _assignmentRepository.GetByNumberAsync(parsed.AssignmentNumber.Value, ct) == null)
+        if (!parsed.Success || parsed.AssignmentCode == null
+            || await _assignmentRepository.GetByCodeAsync(parsed.AssignmentCode, ct) == null)
         {
             // Keep the number that was valid; a typo in an edit must not lose a registered submission
             _logger.LogInformation("Edit of message {Ts} has no valid assignment number; submissions keep #{Number}",
-                message.Ts, submissions[0].AssignmentNumber);
+                message.Ts, submissions[0].AssignmentCode);
             return ProcessSlackMessageResult.Ignored("Bewerkte tekst heeft geen geldig opdrachtnummer; er is niets veranderd");
         }
 
-        var number = parsed.AssignmentNumber.Value;
-        if (submissions.All(s => s.AssignmentNumber == number))
+        var number = parsed.AssignmentCode;
+        if (submissions.All(s => s.AssignmentCode == number))
         {
             return ProcessSlackMessageResult.Ignored($"Opdracht {number} is niet veranderd");
         }
 
         // Moving to an assignment the group already completed would be a new attempt after approval
-        if (await IsCompletedElsewhereAsync(submissions[0].GroupId, number, submissions[0].SlackChannelId, message.Ts, ct))
+        if (await IsNewAttemptAfterApprovalAsync(submissions[0].GroupId, number, submissions[0].SlackChannelId, message.Ts, ct, isRegistered: true))
         {
             _logger.LogInformation("Edit of message {Ts} not applied: the group already completed assignment {Number}", message.Ts, number);
-            await SendFeedbackAsync(silent: false, _runtime.Feedback.AlreadyCompleted, submissions[0].SlackChannelId, message.Ts, "{number}", number.ToString(), ct);
+            await SendFeedbackAsync(silent: false, _runtime.Feedback.AlreadyCompleted, submissions[0].SlackChannelId, message.Ts, "{number}", number, ct);
             return ProcessSlackMessageResult.Ignored($"Opdracht {number} is al goedgekeurd voor deze groep; er is niets veranderd");
         }
 
@@ -467,7 +470,7 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
                 storagePath = await _fileStorageService.RenameFileAsync(submission.StoragePath, newName, ct);
             }
 
-            var previousNumber = submission.AssignmentNumber;
+            var previousNumber = submission.AssignmentCode;
             submission.Reassign(number, storagePath);
             try
             {
@@ -487,16 +490,29 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
     }
 
     /// <summary>
-    /// Whether blocking is on and the group has the assignment approved or awesome in another message.
-    /// Submissions of the message itself do not count, so an event delivered twice is not blocked by itself.
+    /// Whether this message is a new attempt at an assignment the group already completed: blocking is on, the message
+    /// is not registered yet, and another message of the group posted <em>earlier</em> has it approved or awesome.
+    /// A message that is already registered (the catch-up reads it again) or that was posted before the approval
+    /// (an earlier attempt the app missed) is never blocked: it is not an attempt after the approval.
     /// </summary>
-    private async Task<bool> IsCompletedElsewhereAsync(Guid groupId, int assignmentNumber, string channelId, string? messageTs, CancellationToken ct)
+    /// <param name="isRegistered">True when the caller already knows the message has submissions, e.g. for an edit.</param>
+    private async Task<bool> IsNewAttemptAfterApprovalAsync(Guid groupId, string assignmentCode, string channelId, string? messageTs, CancellationToken ct,
+        bool isRegistered = false)
     {
         if (!_runtime.BlockAttemptsAfterApproval) return false;
 
-        var existing = await _submissionRepository.SearchSubmissionsAsync(new SubmissionFilter { GroupId = groupId, AssignmentNumber = assignmentNumber }, ct);
+        if (!isRegistered && !string.IsNullOrWhiteSpace(messageTs)
+            && (await _submissionRepository.GetBySlackMessageIdAsync(channelId, messageTs, ct)).Count > 0)
+        {
+            return false;
+        }
+
+        // Without a timestamp of its own the message counts as the newest
+        var hasTs = SlackTimestamp.ToDateTimeOffset(messageTs) != null;
+        var existing = await _submissionRepository.SearchSubmissionsAsync(new SubmissionFilter { GroupId = groupId, AssignmentCode = assignmentCode }, ct);
         return existing.Any(s => s.Status is SubmissionStatus.Approved or SubmissionStatus.Awesome
-                                 && !(s.SlackChannelId == channelId && s.SlackMessageId == messageTs));
+                                 && !(s.SlackChannelId == channelId && s.SlackMessageId == messageTs)
+                                 && (!hasTs || SlackTimestamp.IsBefore(s.SlackMessageId, messageTs)));
     }
 
     /// <summary>The scout fixed the number: the bot's question mark no longer applies.</summary>
@@ -550,7 +566,7 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
             {
                 var movedTo = await _fileStorageService.MoveToDeletedAsync(groupNames[submission.Id], submission.StoragePath, CancellationToken.None);
                 _logger.LogInformation("Removed submission {Id} (assignment #{Number}) deleted in Slack; file kept at {Path}",
-                    submission.Id, submission.AssignmentNumber, movedTo ?? "(no file)");
+                    submission.Id, submission.AssignmentCode, movedTo ?? "(no file)");
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
@@ -600,10 +616,12 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
 
         // A message can carry several files: the reaction reviews all of them
         var submissions = await _submissionRepository.GetBySlackMessageIdAsync(targetChannel, targetTs, ct);
+        // A message without a stored file (no photo, deleted, or skipped for its number) has nothing to review.
+        // Not a failure: should it get a submission later, the catch-up reads its reactions then.
         if (submissions.Count == 0)
         {
-            _logger.LogWarning("No submission found matching Slack channel {Channel} and message ts {Ts}", targetChannel, targetTs);
-            return ProcessSlackReactionResult.Failed($"Geen inzending voor kanaal {targetChannel}, ts {targetTs}");
+            _logger.LogInformation("Reaction '{Reaction}' on message {Ts} in {Channel} ignored: no submission belongs to it", reaction, targetTs, targetChannel);
+            return ProcessSlackReactionResult.Ignored($"Geen inzending bij dit bericht (kanaal {targetChannel}, ts {targetTs})");
         }
 
         // Same rule as removing an emoji and rebuilding: when reviewers disagree, the best review counts,
@@ -877,10 +895,17 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         reason = reason.Trim();
         if (reason.Length > MaxOverrideReasonLength) reason = reason[..MaxOverrideReasonLength];
 
-        await ApplyStatusAsync(new[] { submission }, newStatus, DashboardOverrideReviewer, emoji: null, ct, notes: reason);
+        // Like an emoji in Slack, the override reviews every file of the message. Changing one photo of two would
+        // leave the other at its old status, and since the best status counts, the points would not change.
+        var siblings = await _submissionRepository.GetBySlackMessageIdAsync(submission.SlackChannelId, submission.SlackMessageId, ct);
+        var targets = siblings.Any(s => s.Id == submission.Id)
+            ? siblings.Select(s => s.Id == submission.Id ? submission : s).ToList()
+            : new List<Submission> { submission };
 
-        _logger.LogWarning("Submission {Id} status overridden from the dashboard to {Status}. Reason: {Reason}",
-            submissionId, newStatus, reason.ReplaceLineEndings(" "));
+        await ApplyStatusAsync(targets, newStatus, DashboardOverrideReviewer, emoji: null, ct, notes: reason);
+
+        _logger.LogWarning("Submission {Id} status overridden from the dashboard to {Status} ({Count} file(s) of message {Ts}). Reason: {Reason}",
+            submissionId, newStatus, targets.Count, submission.SlackMessageId, reason.ReplaceLineEndings(" "));
         return submission;
     }
 

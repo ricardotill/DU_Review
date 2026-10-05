@@ -11,6 +11,9 @@ public interface IGroupRepository
     Task<IReadOnlyList<Group>> GetAllAsync(CancellationToken ct = default);
     Task UpsertAsync(Group group, CancellationToken ct = default);
 
+    /// <summary>The points entered by hand, every group and category, also of categories no longer in use.</summary>
+    Task<IReadOnlyList<GroupBonusPoints>> GetBonusPointsAsync(CancellationToken ct = default);
+
     /// <summary>
     /// Sets the points entered by hand, all or nothing; the time of change is kept only for a category that changed.
     /// Throws <see cref="Exceptions.BonusPointsConflictException"/> when a group no longer has its previous values.

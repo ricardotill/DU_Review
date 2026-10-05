@@ -128,7 +128,7 @@ public class SlackSocketModeEventsIntegrationTests : IClassFixture<WebApplicatio
         await Eventually(() => Task.FromResult(_acks.Count == Events.Length), "every envelope is acknowledged");
         _acks.Should().Equal(Enumerable.Range(0, Events.Length).Select(i => $"env-{i}"));
 
-        await Eventually(async () => (await Submissions(Channel, _edited)).SingleOrDefault()?.AssignmentNumber == 2
+        await Eventually(async () => (await Submissions(Channel, _edited)).SingleOrDefault()?.AssignmentCode == "2"
                                      && (await Submissions(Channel, _deleted)).Count == 0,
             "the edit and the deletion are applied");
         var edited = (await Submissions(Channel, _edited)).Single();

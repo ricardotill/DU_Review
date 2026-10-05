@@ -40,7 +40,7 @@ public class InProgressStateTests : PageTestBase
         new object[] { typeof(Home), null! },
         new object[] { typeof(Groups), null! },
         new object[] { typeof(Assignments), null! },
-        new object[] { typeof(AssignmentDetail), 1 },
+        new object[] { typeof(AssignmentDetail), "code:1" },
         new object[] { typeof(GroupDetail), "wolves" },
         new object[] { typeof(SubmissionDetail), "submission" }
     };
@@ -54,13 +54,14 @@ public class InProgressStateTests : PageTestBase
         {
             "wolves" => Wolves.Id,
             "submission" => seeded.Approved.Id,
+            string s when s.StartsWith("code:") => s,
             _ => parameter
         };
 
         var cut = Render(builder =>
         {
             builder.OpenComponent(0, page);
-            if (value is int number) builder.AddAttribute(1, "Number", number);
+            if (value is string code) builder.AddAttribute(1, "Code", code["code:".Length..]);
             if (value is Guid id) builder.AddAttribute(1, "Id", id);
             builder.CloseComponent();
         });

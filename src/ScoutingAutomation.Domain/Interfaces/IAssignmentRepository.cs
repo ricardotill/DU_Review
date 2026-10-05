@@ -4,7 +4,9 @@ namespace ScoutingAutomation.Domain.Interfaces;
 
 public interface IAssignmentRepository
 {
-    Task<Assignment?> GetByNumberAsync(int number, CancellationToken ct = default);
+    /// <param name="code">A normalised code, see <see cref="Models.AssignmentCode"/>.</param>
+    Task<Assignment?> GetByCodeAsync(string code, CancellationToken ct = default);
+    /// <summary>All assignments, numbers first, then letter codes.</summary>
     Task<IReadOnlyList<Assignment>> GetAllAsync(CancellationToken ct = default);
     Task UpsertAsync(Assignment assignment, CancellationToken ct = default);
 }

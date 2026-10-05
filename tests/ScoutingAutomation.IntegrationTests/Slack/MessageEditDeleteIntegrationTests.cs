@@ -51,7 +51,7 @@ public class MessageEditDeleteIntegrationTests : IClassFixture<WebApplicationFac
 
         result.GetProperty("createdSubmissionIds").GetArrayLength().Should().Be(1);
         var submission = (await Submissions(ts)).Single();
-        submission.AssignmentNumber.Should().Be(21);
+        submission.AssignmentCode.Should().Be("21");
         Path.GetFileName(submission.StoragePath).Should().Be(StoredName(21, ts));
         _slack.Calls("reactions.remove").Should().ContainSingle(c => c["timestamp"] == ts && c["name"] == "question",
             "the missing and unknown number share one emoji, removed once");
@@ -70,7 +70,7 @@ public class MessageEditDeleteIntegrationTests : IClassFixture<WebApplicationFac
         result.GetProperty("success").GetBoolean().Should().BeTrue(result.ToString());
         var after = (await Submissions(ts)).Single();
         after.Id.Should().Be(before.Id);
-        after.AssignmentNumber.Should().Be(23);
+        after.AssignmentCode.Should().Be("23");
         Path.GetFileName(after.StoragePath).Should().Be(StoredName(23, ts));
         File.Exists(after.StoragePath).Should().BeTrue();
         File.Exists(before.StoragePath).Should().BeFalse();
@@ -89,7 +89,7 @@ public class MessageEditDeleteIntegrationTests : IClassFixture<WebApplicationFac
         unknown.GetProperty("success").GetBoolean().Should().BeFalse();
         none.GetProperty("success").GetBoolean().Should().BeFalse();
         var submission = (await Submissions(ts)).Single();
-        submission.AssignmentNumber.Should().Be(24);
+        submission.AssignmentCode.Should().Be("24");
         File.Exists(submission.StoragePath).Should().BeTrue();
         _slack.Writes.Should().NotContain(c => c["timestamp"] == ts || c["thread_ts"] == ts, "a typo in an edit is not worth a message");
     }
@@ -130,7 +130,7 @@ public class MessageEditDeleteIntegrationTests : IClassFixture<WebApplicationFac
         File.Exists(Path.Combine(DeletedFolder, stored)).Should().BeTrue();
         (await browser.GetStringAsync("/assignments/26")).Should().NotContain(stored);
         var stats = await _app.GetAsync(sp => sp.GetRequiredService<ISubmissionRepository>().GetStatisticsAsync());
-        stats.AssignmentStatistics.Where(a => a.AssignmentNumber == 26).Sum(a => a.ApprovedCount).Should().Be(0);
+        stats.AssignmentStatistics.Where(a => a.AssignmentCode == "26").Sum(a => a.ApprovedCount).Should().Be(0);
     }
 
     [Fact]
@@ -153,7 +153,7 @@ public class MessageEditDeleteIntegrationTests : IClassFixture<WebApplicationFac
 
         bot.GetProperty("message").GetString().Should().Contain("bot");
         sameText.GetProperty("message").GetString().Should().Contain("niet veranderd");
-        (await Submissions(ts)).Single().AssignmentNumber.Should().Be(27);
+        (await Submissions(ts)).Single().AssignmentCode.Should().Be("27");
     }
 
     public async Task DisposeAsync()

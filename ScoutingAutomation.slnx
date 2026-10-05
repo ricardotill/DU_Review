@@ -1,6 +1,8 @@
 <Solution>
   <Folder Name="/Documentation/">
+    <File Path="docs\handleiding.md" />
     <File Path="docs\slack-koppelen.md" />
+    <File Path="docs\slack-sync.md" />
   </Folder>
   <Folder Name="/SolutionFolder/">
     <File Path="README.md" />

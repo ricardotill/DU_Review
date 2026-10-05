@@ -111,7 +111,7 @@ else
                     @foreach (var s in pendingSubmissions)
                     {
                         <option value="@s.Id">
-                            @(s.Group?.Name ?? "Groep"): #@(s.AssignmentNumber?.ToString() ?? "?") - @s.FileName (@s.Status.StatusLabel())
+                            @(s.Group?.Name ?? "Groep"): #@(s.AssignmentCode ?? "?") - @s.FileName (@s.Status.StatusLabel())
                         </option>
                     }
                 </select>

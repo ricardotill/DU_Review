@@ -72,8 +72,8 @@ public class WorkflowEdgeCaseTests
     public async Task Message_AlreadyRegisteredOrNamelessFile_ShouldBeSkipped()
     {
         _groups.Setup(g => g.GetBySlackChannelIdAsync("C1", It.IsAny<CancellationToken>())).ReturnsAsync(_group);
-        _parser.Setup(p => p.Parse(It.IsAny<string>())).Returns(AssignmentParseResult.Succeeded(1));
-        _assignments.Setup(a => a.GetByNumberAsync(1, It.IsAny<CancellationToken>())).ReturnsAsync(new Assignment { Number = 1 });
+        _parser.Setup(p => p.Parse(It.IsAny<string>())).Returns(AssignmentParseResult.Succeeded("1"));
+        _assignments.Setup(a => a.GetByCodeAsync("1", It.IsAny<CancellationToken>())).ReturnsAsync(new Assignment { Code = "1" });
         _submissions.Setup(s => s.ExistsAsync("C1", "1.0", It.IsAny<string?>(), "foto.jpg", It.IsAny<CancellationToken>())).ReturnsAsync(true);
 
         var result = await Create().ProcessSlackMessageAsync(new SlackEventItemDto
@@ -91,8 +91,8 @@ public class WorkflowEdgeCaseTests
     public async Task Message_WithoutTimestampOrMetadata_ShouldUseFallbacks()
     {
         _groups.Setup(g => g.GetBySlackChannelIdAsync("C1", It.IsAny<CancellationToken>())).ReturnsAsync(_group);
-        _parser.Setup(p => p.Parse(It.IsAny<string>())).Returns(AssignmentParseResult.Succeeded(1));
-        _assignments.Setup(a => a.GetByNumberAsync(1, It.IsAny<CancellationToken>())).ReturnsAsync(new Assignment { Number = 1 });
+        _parser.Setup(p => p.Parse(It.IsAny<string>())).Returns(AssignmentParseResult.Succeeded("1"));
+        _assignments.Setup(a => a.GetByCodeAsync("1", It.IsAny<CancellationToken>())).ReturnsAsync(new Assignment { Code = "1" });
         _slack.Setup(s => s.DownloadFileAsync("sim://foto.jpg", "foto.jpg", It.IsAny<CancellationToken>())).ReturnsAsync(new MemoryStream(new byte[] { 1 }));
         using var temp = new TempDirectory();
         var saved = Path.Combine(temp.Path, "DWO 1.jpg");
@@ -121,8 +121,8 @@ public class WorkflowEdgeCaseTests
     public async Task Message_ShouldStoreTheSubmitterNameFetchedOncePerMessage(string? slackName, string? expected)
     {
         _groups.Setup(g => g.GetBySlackChannelIdAsync("C1", It.IsAny<CancellationToken>())).ReturnsAsync(_group);
-        _parser.Setup(p => p.Parse(It.IsAny<string>())).Returns(AssignmentParseResult.Succeeded(1));
-        _assignments.Setup(a => a.GetByNumberAsync(1, It.IsAny<CancellationToken>())).ReturnsAsync(new Assignment { Number = 1 });
+        _parser.Setup(p => p.Parse(It.IsAny<string>())).Returns(AssignmentParseResult.Succeeded("1"));
+        _assignments.Setup(a => a.GetByCodeAsync("1", It.IsAny<CancellationToken>())).ReturnsAsync(new Assignment { Code = "1" });
         _slack.Setup(s => s.IsConnected).Returns(true);
         _slack.Setup(s => s.GetUserNameAsync("U_SCOUT", It.IsAny<CancellationToken>()))
             .ReturnsAsync(slackName == null ? SlackUserLookup.Failed("user_not_found") : SlackUserLookup.Found(slackName));
@@ -157,8 +157,8 @@ public class WorkflowEdgeCaseTests
     public async Task Message_WithEmptySettingsLists_ShouldTreatEveryFileAsUnsupported()
     {
         _groups.Setup(g => g.GetBySlackChannelIdAsync("C1", It.IsAny<CancellationToken>())).ReturnsAsync(_group);
-        _parser.Setup(p => p.Parse(It.IsAny<string>())).Returns(AssignmentParseResult.Succeeded(1));
-        _assignments.Setup(a => a.GetByNumberAsync(1, It.IsAny<CancellationToken>())).ReturnsAsync(new Assignment { Number = 1 });
+        _parser.Setup(p => p.Parse(It.IsAny<string>())).Returns(AssignmentParseResult.Succeeded("1"));
+        _assignments.Setup(a => a.GetByCodeAsync("1", It.IsAny<CancellationToken>())).ReturnsAsync(new Assignment { Code = "1" });
         var settings = new ScoutingSettings { SupportedExtensions = null!, SupportedMimeTypePrefixes = null!, Reviewers = null!, SlackFeedback = null! };
 
         var result = await Create(settings).ProcessSlackMessageAsync(new SlackEventItemDto

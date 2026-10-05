@@ -151,7 +151,13 @@ else
                         @foreach (var result in results)
                         {
                             <tr>
-                                <td class="fw-bold text-white">#@result.Number</td>
+                                <td>
+                                    <span class="fw-bold text-white">#@result.Code</span>
+                                    @if (result.Title != null)
+                                    {
+                                        <span class="assignment-title text-white-50 small ms-1">@result.Title</span>
+                                    }
+                                </td>
                                 <td><StatusBadge Status="@result.BestStatus" /></td>
                                 <td class="text-center fw-bold points @(result.Points > 0 ? "text-white" : "text-muted")">
                                     @(result.Points > 0 ? $"+{result.Points}" : "0")
@@ -206,12 +212,12 @@ else
         stats = await submissionRepository.GetStatisticsAsync();
         groupStats = stats.GroupStatistics.FirstOrDefault(g => g.GroupId == GroupId);
 
-        var assignments = (await services.GetRequiredService<IAssignmentRepository>().GetAllAsync()).ToDictionary(a => a.Number);
+        var assignments = (await services.GetRequiredService<IAssignmentRepository>().GetAllAsync()).ToDictionary(a => a.Code);
         assignmentCount = assignments.Count;
 
         var submissions = await submissionRepository.SearchSubmissionsAsync(new SubmissionFilter { GroupId = GroupId });
         results = AssignmentResult.For(submissions, assignments);
-        unresolved = submissions.Where(s => !s.AssignmentNumber.HasValue).OrderByDescending(s => s.CreatedAt).ToList();
+        unresolved = submissions.Where(s => s.AssignmentCode == null).OrderByDescending(s => s.CreatedAt).ToList();
         loaded = true;
     }
 

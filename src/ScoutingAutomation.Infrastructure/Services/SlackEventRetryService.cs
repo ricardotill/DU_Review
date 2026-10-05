@@ -137,9 +137,48 @@ public class SlackEventRetryService
         }
 
         var after = await _failures.GetByIdAsync(id, ct);
-        return after?.Status == FailedSlackEventStatus.Pending
-            ? new SlackEventRetryResult(false, after.Error)
-            : new SlackEventRetryResult(true, "Opnieuw verwerkt");
+        if (after?.Status == FailedSlackEventStatus.Pending)
+        {
+            return new SlackEventRetryResult(false, after.Error);
+        }
+
+        if (!reaction)
+        {
+            await ApplyCurrentReviewAsync(failure, ct);
+        }
+
+        return new SlackEventRetryResult(true, "Opnieuw verwerkt");
+    }
+
+    /// <summary>
+    /// A review emoji placed while the message could not be stored is not kept as a failure of its own: there was
+    /// nothing to review yet. Now that the message is stored, its reactions are read from Slack as they are now.
+    /// </summary>
+    private async Task ApplyCurrentReviewAsync(FailedSlackEvent failure, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(failure.ChannelId) || string.IsNullOrWhiteSpace(failure.MessageTs) || !_slackClient.IsConnected) return;
+
+        try
+        {
+            using var _ = await _gate.EnterAsync(ct);
+            using var __ = await _channels.EnterAsync(failure.ChannelId, ct);
+
+            if ((await _submissions.GetBySlackMessageIdAsync(failure.ChannelId, failure.MessageTs, ct)).Count == 0) return;
+
+            var reactions = await _slackClient.GetReactionsAsync(failure.ChannelId, failure.MessageTs, ct);
+            if (reactions == null) return;
+
+            if (await _workflow.SyncReviewAsync(failure.ChannelId, failure.MessageTs, reactions, ct))
+            {
+                _eventLog.AddNotice(SlackEventKind.System, SlackEventOutcome.Processed,
+                    $"Beoordeling van bericht {failure.MessageTs} uit Slack overgenomen na opnieuw verwerken", channel: failure.ChannelId);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            // The message is stored; the catch-up picks up the review on its next run
+            _logger.LogWarning(ex, "Could not read the review of message {Ts} in {Channel} after running it again", failure.MessageTs, failure.ChannelId);
+        }
     }
 
     /// <returns>How many of the open failures went through.</returns>

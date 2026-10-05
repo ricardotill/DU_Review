@@ -47,7 +47,7 @@ public class ExportIntegrationTests : IClassFixture<WebApplicationFactory<Progra
         var bytes = await response.Content.ReadAsByteArrayAsync();
         bytes.Take(3).Should().Equal(Encoding.UTF8.GetPreamble(), "Excel needs the BOM to read UTF-8");
         var lines = Encoding.UTF8.GetString(bytes[3..]).Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
-        lines[0].Should().StartWith("Plaats;Groep;Afkorting;Punten;Avonturiers;Reisbureau;");
+        lines[0].Should().StartWith("Plaats;Groep;Afkorting;Punten;Avonturiers;Reisbureau (pubquiz);Opdrachten;");
         lines.Should().HaveCount(stats.GroupStatistics.Count + 1);
         var leader = stats.GroupStatistics.OrderBy(g => g.Rank).ThenBy(g => g.GroupName).First();
         lines[1].Should().StartWith($"1;{leader.GroupName};").And.Contain($";{leader.Score};");

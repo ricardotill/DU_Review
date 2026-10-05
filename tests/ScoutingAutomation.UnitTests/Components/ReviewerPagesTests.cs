@@ -73,7 +73,7 @@ public class ReviewerPagesTests : PageTestBase
         Seed();
         Services.GetRequiredService<NavigationManager>().NavigateTo("assignments/1?open=true");
 
-        var cut = Render<AssignmentDetail>(p => p.Add(a => a.Number, 1));
+        var cut = Render<AssignmentDetail>(p => p.Add(a => a.Code, "1"));
 
         cut.WaitForAssertion(() => cut.FindAll(".submission-row").Should().ContainSingle()
             .Which.TextContent.Should().Contain("DBU 1"));
@@ -89,7 +89,7 @@ public class ReviewerPagesTests : PageTestBase
         var openThree = NewSubmission(Owls, 3, SubmissionStatus.Pending, "drie.jpg", DateTimeOffset.UtcNow, "image/jpeg", 10);
         WithDb(db => { db.Submissions.Add(openThree); db.SaveChanges(); });
 
-        var cut = Render<AssignmentDetail>(p => p.Add(a => a.Number, 1));
+        var cut = Render<AssignmentDetail>(p => p.Add(a => a.Code, "1"));
 
         cut.WaitForAssertion(() => cut.Find("a[data-hotkey=n]").GetAttribute("href").Should().Be("assignments/3"));
         cut.FindAll(".submission-row").Should().HaveCount(3);

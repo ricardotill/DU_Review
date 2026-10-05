@@ -1,0 +1,176 @@
+@implements IDisposable
+@inject RuntimeSettingsService Runtime
+@inject ISubmissionChangeNotifier ChangeNotifier
+@inject IOptions<ScoutingSettings> ScoutingOptions
+
+@* The point categories entered by hand, managed while the game runs. Removing one hides its points but keeps them. *@
+<AuthorizeView Roles="@KeyAuth.AdminRole">
+    <div class="glass-panel p-4 bonus-categories">
+        <h2 class="panel-title"><i class="bi bi-tags text-warning"></i> Puntencategorieën</h2>
+        <p class="text-secondary small">
+            Categorieën voor extra punten buiten Slack. Een categorie weghalen haalt de punten uit de score en de stand, maar ze blijven bewaard:
+            voeg je dezelfde sleutel later weer toe, dan zijn ze terug.
+        </p>
+
+        @if (Runtime.BonusCategories.Count == 0)
+        {
+            <div class="text-secondary small mb-3">Er zijn geen categorieën.</div>
+        }
+        else
+        {
+            <div class="table-responsive mb-3">
+                <table class="custom-table">
+                    <thead>
+                        <tr>
+                            <th>Naam</th>
+                            <th style="width: 8rem;">Korte naam</th>
+                            <th style="width: 10rem;">Sleutel</th>
+                            <th style="width: 12rem;"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var category in Runtime.BonusCategories)
+                        {
+                            var key = category.Key;
+                            <tr @key="key" class="bonus-category">
+                                @if (editing == key)
+                                {
+                                    <td><input class="form-control form-control-dark form-control-sm edit-name" maxlength="@RuntimeSettingsService.MaxBonusCategoryNameLength"
+                                               aria-label="Naam" @bind="editName" /></td>
+                                    <td><input class="form-control form-control-dark form-control-sm edit-short-name" maxlength="@RuntimeSettingsService.MaxBonusCategoryShortNameLength"
+                                               aria-label="Korte naam" @bind="editShortName" /></td>
+                                    <td class="font-monospace text-white-50 small">@key</td>
+                                    <td class="text-end text-nowrap">
+                                        <button class="btn btn-sm btn-scout-primary save-category" @onclick="SaveEditAsync"><i class="bi bi-check2"></i> Opslaan</button>
+                                        <button class="btn btn-sm btn-scout-secondary" @onclick="() => editing = null">Annuleren</button>
+                                    </td>
+                                }
+                                else if (removing == key)
+                                {
+                                    <td colspan="3" class="text-warning small">
+                                        @category.Name weghalen? De punten tellen dan niet meer mee, maar blijven bewaard.
+                                    </td>
+                                    <td class="text-end text-nowrap">
+                                        <button class="btn btn-sm btn-outline-danger confirm-remove" @onclick="() => RemoveAsync(key)"><i class="bi bi-trash"></i> Weghalen</button>
+                                        <button class="btn btn-sm btn-scout-secondary" @onclick="() => removing = null">Annuleren</button>
+                                    </td>
+                                }
+                                else
+                                {
+                                    <td class="text-white">@category.Name</td>
+                                    <td class="text-white-50">@category.DisplayShortName</td>
+                                    <td class="font-monospace text-white-50 small">@key</td>
+                                    <td class="text-end text-nowrap">
+                                        <button class="btn btn-sm btn-scout-secondary edit-category" title="Naam wijzigen" aria-label="@($"{category.Name} wijzigen")"
+                                                @onclick="() => StartEdit(category)"><i class="bi bi-pencil"></i></button>
+                                        <button class="btn btn-sm btn-outline-danger remove-category" title="Weghalen" aria-label="@($"{category.Name} weghalen")"
+                                                @onclick="() => { removing = key; editing = null; }"><i class="bi bi-trash"></i></button>
+                                    </td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        <form class="row g-2 align-items-end add-category" @onsubmit="AddAsync">
+            <div class="col-md-5">
+                <label class="form-label text-secondary small fw-semibold mb-1" for="newCategoryName">Nieuwe categorie</label>
+                <input id="newCategoryName" class="form-control form-control-dark form-control-sm new-name" placeholder="Bijv. Fotowedstrijd"
+                       maxlength="@RuntimeSettingsService.MaxBonusCategoryNameLength" @bind="newName" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label text-secondary small fw-semibold mb-1" for="newCategoryShort">Korte naam</label>
+                <input id="newCategoryShort" class="form-control form-control-dark form-control-sm new-short-name" placeholder="Bijv. Fw"
+                       maxlength="@RuntimeSettingsService.MaxBonusCategoryShortNameLength" @bind="newShortName" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label text-secondary small fw-semibold mb-1" for="newCategoryKey">Sleutel</label>
+                <input id="newCategoryKey" class="form-control form-control-dark form-control-sm new-key font-monospace" placeholder="@SuggestedKey"
+                       maxlength="@BonusCategoryConfig.MaxKeyLength" @bind="newKey" />
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-sm btn-scout-primary w-100 add-category-button"><i class="bi bi-plus-lg me-1"></i> Toevoegen</button>
+            </div>
+        </form>
+        <div class="stat-caption mt-1">De sleutel blijft altijd hetzelfde: de punten worden eronder bewaard. Leeg laten neemt de naam over.</div>
+
+        @if (error != null)
+        {
+            <div class="text-danger small mt-2 category-error" role="alert">@error</div>
+        }
+
+        <Origin Changed="Runtime.IsBonusCategoriesChanged" Reset="ResetAsync"
+                Configured="@string.Join(", ", (ScoutingOptions.Value.BonusCategories ?? BonusCategoryConfig.Defaults.ToList()).Select(c => c.Name))" />
+    </div>
+</AuthorizeView>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private string? newName;
+    private string? newShortName;
+    private string? newKey;
+    private string? editing;
+    private string? editName;
+    private string? editShortName;
+    private string? removing;
+    private string? error;
+
+    // "Foto wedstrijd!" gives "foto-wedstrijd": letters, digits and dashes only
+    private string SuggestedKey => string.IsNullOrWhiteSpace(newName)
+        ? "fotowedstrijd"
+        : KeyFrom(newName);
+
+    private static string KeyFrom(string name)
+    {
+        var key = new string(RuntimeSettingsService.NormalizeBonusKey(name).Where(c => c is >= 'a' and <= 'z' or >= '0' and <= '9' or '-').ToArray()).Trim('-');
+        return key.Length > BonusCategoryConfig.MaxKeyLength ? key[..BonusCategoryConfig.MaxKeyLength].TrimEnd('-') : key;
+    }
+
+    protected override void OnInitialized() => Runtime.Changed += OnRuntimeChanged;
+
+    private async Task AddAsync()
+    {
+        var key = string.IsNullOrWhiteSpace(newKey) ? KeyFrom(newName ?? "") : newKey;
+        error = await AdminActions.RunAsync(AuthState, () => Runtime.AddBonusCategory(key, newName, newShortName));
+        if (error == null)
+        {
+            (newName, newShortName, newKey) = (null, null, null);
+            ChangeNotifier.NotifyChanged();
+        }
+    }
+
+    private void StartEdit(BonusCategoryConfig category)
+    {
+        (editing, editName, editShortName, removing, error) = (category.Key, category.Name, category.ShortName, null, null);
+    }
+
+    private async Task SaveEditAsync()
+    {
+        error = await AdminActions.RunAsync(AuthState, () => Runtime.RenameBonusCategory(editing!, editName, editShortName));
+        if (error == null)
+        {
+            editing = null;
+            ChangeNotifier.NotifyChanged();
+        }
+    }
+
+    private async Task RemoveAsync(string key)
+    {
+        error = await AdminActions.RunAsync(AuthState, () => Runtime.RemoveBonusCategory(key) ? null : $"Categorie '{key}' bestaat niet meer.");
+        removing = null;
+        if (error == null) ChangeNotifier.NotifyChanged();
+    }
+
+    private async Task ResetAsync()
+    {
+        error = await AdminActions.RunAsync(AuthState, Runtime.ResetBonusCategories);
+        if (error == null) ChangeNotifier.NotifyChanged();
+    }
+
+    private void OnRuntimeChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Runtime.Changed -= OnRuntimeChanged;
+}

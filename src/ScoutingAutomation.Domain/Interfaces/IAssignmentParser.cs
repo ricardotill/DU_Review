@@ -1,8 +1,9 @@
 namespace ScoutingAutomation.Domain.Interfaces;
 
-public record AssignmentParseResult(bool Success, int? AssignmentNumber, string? ErrorMessage = null)
+/// <param name="AssignmentCode">Normalised, see <see cref="Models.AssignmentCode"/>.</param>
+public record AssignmentParseResult(bool Success, string? AssignmentCode, string? ErrorMessage = null)
 {
-    public static AssignmentParseResult Succeeded(int number) => new(true, number);
+    public static AssignmentParseResult Succeeded(string code) => new(true, code);
     public static AssignmentParseResult Failed(string reason) => new(false, null, reason);
 }
 

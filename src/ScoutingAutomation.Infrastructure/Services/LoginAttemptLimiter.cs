@@ -7,7 +7,9 @@ namespace ScoutingAutomation.Infrastructure.Services;
 /// </summary>
 public class LoginAttemptLimiter
 {
-    public const int MaxFailures = 5;
+    // Generous: at the venue all groups and the jury share one address, and one group's typos must not lock out
+    // everyone. Generated keys have 80 bits, so this still makes guessing hopeless.
+    public const int MaxFailures = 30;
     public static readonly TimeSpan Window = TimeSpan.FromMinutes(1);
 
     /// <summary>Above this many addresses, addresses without recent failures are forgotten, so the list cannot grow forever.</summary>
@@ -35,7 +37,7 @@ public class LoginAttemptLimiter
 
     /// <summary>
     /// Checks and counts an attempt in one step, so many attempts sent at the same moment cannot all slip through
-    /// before the first is counted. The attempt counts as a failure until <see cref="Reset"/> is called after a right key.
+    /// before the first is counted. The attempt counts as a failure until <see cref="Succeeded"/> is called after a right key.
     /// </summary>
     /// <returns>False when the address has to wait.</returns>
     public bool TryAttempt(string client)
@@ -54,7 +56,20 @@ public class LoginAttemptLimiter
         return allowed;
     }
 
-    public void Reset(string client) => _failures.TryRemove(client, out _);
+    /// <summary>
+    /// Takes back the attempt just counted by <see cref="TryAttempt"/>, because its key was right. Earlier failures
+    /// stay until they expire: otherwise anyone with a key of their own (a group) could clear the count after every
+    /// few guesses and keep guessing the jury and admin keys without limit.
+    /// </summary>
+    public void Succeeded(string client)
+    {
+        if (!_failures.TryGetValue(client, out var failures)) return;
+
+        lock (failures)
+        {
+            if (failures.Count > 0) failures.RemoveAt(failures.Count - 1);
+        }
+    }
 
     private int RecentFailures(string client)
     {

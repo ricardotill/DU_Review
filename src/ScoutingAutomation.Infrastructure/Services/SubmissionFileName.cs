@@ -5,20 +5,18 @@ namespace ScoutingAutomation.Infrastructure.Services;
 public static class SubmissionFileName
 {
     /// <summary>
-    /// Builds the stored file name "{abbreviation} {assignment number} {time}{extension}", e.g. "CDW 16 14-32-05.jpg".
+    /// Builds the stored file name "{abbreviation} {assignment code} {time}{extension}", e.g. "CDW 16 14-32-05.jpg" or "CDW A 14-32-05.jpg".
     /// The time tells several attempts at one assignment apart; the game takes one day, so no date is needed.
     /// <paramref name="postedAt"/> is written as given, so pass it in the time zone the files are read in.
-    /// Without an assignment number the original name is kept after the abbreviation.
+    /// Without an assignment code the original name is kept after the abbreviation.
     /// Falls back to the group name when no abbreviation is configured.
     /// <paramref name="index"/> numbers the files of a message with several files: "CDW 16 14-32-05 (2).jpg".
     /// </summary>
-    public static string Build(Group group, int? assignmentNumber, string originalFileName, DateTimeOffset postedAt, int? index = null)
+    public static string Build(Group group, string? assignmentCode, string originalFileName, DateTimeOffset postedAt, int? index = null)
     {
         var prefix = string.IsNullOrWhiteSpace(group.Abbreviation) ? group.Name : group.Abbreviation;
         var extension = SafeExtension(originalFileName);
-        var suffix = assignmentNumber.HasValue
-            ? assignmentNumber.Value.ToString()
-            : Path.GetFileNameWithoutExtension(originalFileName);
+        var suffix = assignmentCode ?? Path.GetFileNameWithoutExtension(originalFileName);
         if (suffix.Length > MaxNamePartLength) suffix = suffix[..MaxNamePartLength];
         if (prefix.Length > MaxNamePartLength) prefix = prefix[..MaxNamePartLength];
 

@@ -45,11 +45,11 @@ else
 
         <div class="col-lg-2 col-md-3 col-6">
             <label class="form-label text-secondary small fw-semibold mb-1">Opdracht</label>
-            <select class="form-select form-select-dark" @bind="selectedAssignmentNumber" @bind:after="SearchAsync">
+            <select class="form-select form-select-dark" @bind="selectedAssignmentCode" @bind:after="SearchAsync">
                 <option value="">Alle opdrachten</option>
                 @foreach (var a in assignments)
                 {
-                    <option value="@a.Number">#@a.Number</option>
+                    <option value="@a.Code">#@a.Code@(a.Title != null ? $" · {a.Title}" : "")</option>
                 }
             </select>
         </div>
@@ -176,13 +176,13 @@ else
                                 </td>
                             }
                             <td>
-                                @if (sub.AssignmentNumber.HasValue && IsGroup)
+                                @if (sub.AssignmentCode != null && IsGroup)
                                 {
-                                    <span class="badge assignment-badge">#@sub.AssignmentNumber</span>
+                                    <span class="badge assignment-badge">#@sub.AssignmentCode</span>
                                 }
-                                else if (sub.AssignmentNumber.HasValue)
+                                else if (sub.AssignmentCode != null)
                                 {
-                                    <a href="assignments/@sub.AssignmentNumber" class="badge assignment-badge text-decoration-none" title="Opdracht openen">#@sub.AssignmentNumber</a>
+                                    <a href="assignments/@sub.AssignmentCode" class="badge assignment-badge text-decoration-none" title="Opdracht openen">#@sub.AssignmentCode</a>
                                 }
                                 else
                                 {
@@ -222,7 +222,7 @@ else
     private IReadOnlyList<Assignment> assignments = new List<Assignment>();
 
     private string? selectedGroupId;
-    private string? selectedAssignmentNumber;
+    private string? selectedAssignmentCode;
     private string? selectedStatus;
 
     [SupplyParameterFromQuery(Name = "group")]
@@ -278,14 +278,7 @@ else
             filter.GroupId = null;
         }
 
-        if (int.TryParse(selectedAssignmentNumber, out var aNum))
-        {
-            filter.AssignmentNumber = aNum;
-        }
-        else
-        {
-            filter.AssignmentNumber = null;
-        }
+        filter.AssignmentCode = AssignmentCode.Normalize(selectedAssignmentCode);
 
         if (Enum.TryParse<SubmissionStatus>(selectedStatus, out var status))
         {
@@ -311,7 +304,7 @@ else
         filter = new SubmissionFilter();
         favoritesOnly = false;
         selectedGroupId = null;
-        selectedAssignmentNumber = null;
+        selectedAssignmentCode = null;
         selectedStatus = null;
         await SearchAsync();
     }
@@ -332,7 +325,7 @@ else
         {
             var query = new List<string>();
             if (Guid.TryParse(selectedGroupId, out var groupId)) query.Add($"group={groupId}");
-            if (int.TryParse(selectedAssignmentNumber, out var number)) query.Add($"assignment={number}");
+            if (AssignmentCode.Normalize(selectedAssignmentCode) is { } code) query.Add($"assignment={code}");
             if (Enum.TryParse<SubmissionStatus>(selectedStatus, out var status)) query.Add($"status={status}");
             if (favoritesOnly) query.Add("favorites=true");
             return query.Count == 0 ? "slideshow" : $"slideshow?{string.Join('&', query)}";
@@ -368,7 +361,7 @@ else
         || !string.IsNullOrWhiteSpace(filter.SearchTerm)
         || !string.IsNullOrWhiteSpace(filter.Reviewer)
         || !string.IsNullOrEmpty(selectedGroupId)
-        || !string.IsNullOrEmpty(selectedAssignmentNumber)
+        || !string.IsNullOrEmpty(selectedAssignmentCode)
         || !string.IsNullOrEmpty(selectedStatus);
 
     private static string GetStoredFileName(Submission sub) =>

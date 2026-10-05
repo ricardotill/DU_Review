@@ -75,14 +75,14 @@ public class WebhookIntegrationTests : IClassFixture<WebApplicationFactory<Progr
 
         var submission = (await _app.GetAsync(sp => sp.GetRequiredService<ISubmissionRepository>().GetBySlackMessageIdAsync("C04POOLVOSSEN", ts))).Single();
         submission.Status.Should().Be(SubmissionStatus.Awesome);
-        submission.AssignmentNumber.Should().Be(12);
+        submission.AssignmentCode.Should().Be("12");
         var storedName = $"DPV 12 {SlackTimestamp.ToDateTimeOffset(ts)!.Value.ToLocalTime():HH-mm-ss}.jpg";
         Path.GetFileName(submission.StoragePath).Should().Be(storedName);
         File.Exists(submission.StoragePath).Should().BeTrue();
         submission.StoragePath.Should().Contain(Path.Combine("de-poolvossen", "awesome"));
 
         var stats = await _app.GetAsync(sp => sp.GetRequiredService<ISubmissionRepository>().GetStatisticsAsync());
-        stats.AssignmentStatistics.Single(a => a.AssignmentNumber == 12).AwesomeCount.Should().Be(1);
+        stats.AssignmentStatistics.Single(a => a.AssignmentCode == "12").AwesomeCount.Should().Be(1);
 
         using var browser = await _app.CreateLoggedInClientAsync();
         var page = await browser.GetStringAsync("/assignments/12");

@@ -15,7 +15,7 @@ public sealed record ReviewQueueItem(
     string ChannelId,
     string MessageTs,
     Group? Group,
-    int? AssignmentNumber,
+    string? AssignmentCode,
     IReadOnlyList<Submission> Submissions,
     DateTimeOffset PostedAt,
     bool AlreadyCompleted)
@@ -36,8 +36,8 @@ public static class ReviewQueue
     {
         var all = submissions.ToList();
         var completed = all
-            .Where(s => s.AssignmentNumber.HasValue && s.Status is SubmissionStatus.Approved or SubmissionStatus.Awesome)
-            .Select(s => (s.GroupId, Number: s.AssignmentNumber!.Value))
+            .Where(s => s.AssignmentCode != null && s.Status is SubmissionStatus.Approved or SubmissionStatus.Awesome)
+            .Select(s => (s.GroupId, Code: s.AssignmentCode!))
             .ToHashSet();
 
         return all
@@ -51,10 +51,10 @@ public static class ReviewQueue
                     message.Key.SlackChannelId,
                     message.Key.SlackMessageId,
                     first.Group,
-                    first.AssignmentNumber,
+                    first.AssignmentCode,
                     files,
                     files.Min(s => s.CreatedAt),
-                    first.AssignmentNumber is { } number && completed.Contains((first.GroupId, number)));
+                    first.AssignmentCode is { } code && completed.Contains((first.GroupId, code)));
             })
             .OrderBy(i => i.PostedAt)
             .ToList();

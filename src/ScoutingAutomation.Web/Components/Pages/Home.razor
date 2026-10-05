@@ -116,11 +116,17 @@ else if (isStaff)
                                     </td>
                                     <td class="text-center">
                                         <div class="score-value fw-bold text-white fs-5">@g.Score</div>
-                                        <div class="score-bonus">
-                                            <span title="@BonusCategory.Adventurers.Label()">Av <span class="bonus-adventurers">@g.AdventurersPoints</span></span>
-                                            ·
-                                            <span title="@BonusCategory.TravelAgency.Label()">Rb <span class="bonus-travel">@g.TravelAgencyPoints</span></span>
-                                        </div>
+                                        @if (Runtime.BonusCategories is { Count: > 0 } categories)
+                                        {
+                                            <div class="score-bonus">
+                                                @for (var i = 0; i < categories.Count; i++)
+                                                {
+                                                    var category = categories[i];
+                                                    @if (i > 0) { <text> · </text> }
+                                                    <span title="@category.Name">@category.DisplayShortName <span class="bonus-points bonus-@category.Key">@g.BonusPoints.GetValueOrDefault(category.Key)</span></span>
+                                                }
+                                            </div>
+                                        }
                                     </td>
                                     <td class="submission-count text-center text-white">@g.TotalSubmissions</td>
                                     <td class="review-cell">
@@ -171,9 +177,9 @@ else if (isStaff)
                     @foreach (var assign in ActiveAssignments)
                     {
                         <div class="col-xl-3 col-md-4 col-sm-6">
-                            <a href="assignments/@assign.AssignmentNumber" class="inset-panel d-block h-100 text-decoration-none assignment-card">
+                            <a href="assignments/@assign.AssignmentCode" class="inset-panel d-block h-100 text-decoration-none assignment-card">
                                 <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <span class="fw-bold text-white">#@assign.AssignmentNumber</span>
+                                    <span class="fw-bold text-white">#@assign.AssignmentCode</span>
                                     <span class="text-secondary small">@assign.TotalSubmissions / @stats.GroupStatistics.Count groepen</span>
                                 </div>
                                 <div class="d-flex gap-3 mb-2 small">

@@ -77,7 +77,7 @@ else
                             <tr>
                                 <td>@row.p.At.ToGameTime().ToString("HH:mm")</td>
                                 <td>@row.Name</td>
-                                <td>@(row.p.Label ?? $"#{row.p.AssignmentNumber}")</td>
+                                <td>@(row.p.Label ?? $"#{row.p.AssignmentCode}")</td>
                                 <td class="text-end">@Signed(row.p.Points)</td>
                                 <td class="text-end">@row.p.Total</td>
                             </tr>
@@ -110,9 +110,9 @@ else
 
     private static string F(double value) => value.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
 
-    private sealed record ChartPoint(DateTimeOffset At, int AssignmentNumber, int Points, int Total, string? Label = null);
+    private sealed record ChartPoint(DateTimeOffset At, string AssignmentCode, int Points, int Total, string? Label = null);
 
-    private static string What(ChartPoint point) => point.Label ?? $"opdracht {point.AssignmentNumber}";
+    private static string What(ChartPoint point) => point.Label ?? $"opdracht {point.AssignmentCode}";
 
     // Hand-entered points can be taken away again; a real minus sign reads better than a hyphen
     private static string Signed(int points) => points < 0 ? $"\u2212{-points}" : $"+{points}";
@@ -161,7 +161,7 @@ else
         {
             var total = 0;
             var points = events.Where(e => e.GroupId == group.GroupId)
-                .Select(e => new ChartPoint(e.At, e.AssignmentNumber, e.Points, total += e.Points, e.Label))
+                .Select(e => new ChartPoint(e.At, e.AssignmentCode, e.Points, total += e.Points, e.Label))
                 .ToList();
 
             var path = new System.Text.StringBuilder($"M{F(X(from))},{F(Y(0))}");

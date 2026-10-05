@@ -16,7 +16,7 @@ public class SubmissionFileNameTests
     [InlineData(null, "foto.png", "CDW foto 14-32-05.png")]
     public void Build_ShouldUseAbbreviationAndAssignmentNumber(int? number, string original, string expected)
     {
-        SubmissionFileName.Build(_group, number, original, PostedAt).Should().Be(expected);
+        SubmissionFileName.Build(_group, number?.ToString(), original, PostedAt).Should().Be(expected);
     }
 
     [Fact]
@@ -24,7 +24,7 @@ public class SubmissionFileNameTests
     {
         var group = new Group { Name = "De Wolven" };
 
-        SubmissionFileName.Build(group, 16, "foto.jpg", PostedAt).Should().Be("De Wolven 16 14-32-05.jpg");
+        SubmissionFileName.Build(group, "16", "foto.jpg", PostedAt).Should().Be("De Wolven 16 14-32-05.jpg");
     }
 
     [Fact]
@@ -32,7 +32,7 @@ public class SubmissionFileNameTests
     {
         var group = new Group { Name = "X", Abbreviation = "C/D\\W" };
 
-        SubmissionFileName.Build(group, 1, "foto.jpg", PostedAt).Should().Be("CDW 1 14-32-05.jpg");
+        SubmissionFileName.Build(group, "1", "foto.jpg", PostedAt).Should().Be("CDW 1 14-32-05.jpg");
     }
 
     [Fact]
@@ -40,8 +40,8 @@ public class SubmissionFileNameTests
     {
         var utc = new DateTimeOffset(2026, 10, 1, 12, 32, 5, TimeSpan.Zero);
 
-        SubmissionFileName.Build(_group, 16, "foto.jpg", utc).Should().Be("CDW 16 12-32-05.jpg");
-        SubmissionFileName.Build(_group, 16, "foto.jpg", utc.ToOffset(TimeSpan.FromHours(2))).Should().Be("CDW 16 14-32-05.jpg");
+        SubmissionFileName.Build(_group, "16", "foto.jpg", utc).Should().Be("CDW 16 12-32-05.jpg");
+        SubmissionFileName.Build(_group, "16", "foto.jpg", utc.ToOffset(TimeSpan.FromHours(2))).Should().Be("CDW 16 14-32-05.jpg");
     }
 
     [Theory]
@@ -50,6 +50,6 @@ public class SubmissionFileNameTests
     [InlineData(null, "CDW 16 14-32-05.jpg")]
     public void Build_WithIndex_ShouldNumberBeforeTheExtension(int? index, string expected)
     {
-        SubmissionFileName.Build(_group, 16, "IMG.JPG", PostedAt, index).Should().Be(expected);
+        SubmissionFileName.Build(_group, "16", "IMG.JPG", PostedAt, index).Should().Be(expected);
     }
 }

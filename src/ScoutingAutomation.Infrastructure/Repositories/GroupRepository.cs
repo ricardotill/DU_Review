@@ -1,6 +1,5 @@
 using Microsoft.EntityFrameworkCore;
 using ScoutingAutomation.Domain.Entities;
-using ScoutingAutomation.Domain.Enums;
 using ScoutingAutomation.Domain.Exceptions;
 using ScoutingAutomation.Domain.Models;
 using ScoutingAutomation.Domain.Interfaces;
@@ -48,14 +47,24 @@ public class GroupRepository : IGroupRepository
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<GroupBonusPoints>> GetBonusPointsAsync(CancellationToken ct = default)
+    {
+        return await _context.GroupBonusPoints.AsNoTracking().ToListAsync(ct);
+    }
+
     // One save at a time: the check for someone else's change and the save must not interleave
     private static readonly SemaphoreSlim BonusSaves = new(1, 1);
 
     public async Task SetBonusPointsAsync(IReadOnlyCollection<BonusPointsChange> changes, CancellationToken ct = default)
     {
-        if (changes.Any(c => !IsValidPoints(c.Adventurers) || !IsValidPoints(c.TravelAgency)))
+        if (changes.Any(c => !IsValidPoints(c.Points)))
         {
             throw new ArgumentOutOfRangeException(nameof(changes), $"Punten moeten tussen 0 en {BonusPointsChange.MaxPoints} liggen");
+        }
+
+        if (changes.Any(c => string.IsNullOrWhiteSpace(c.CategoryKey)))
+        {
+            throw new ArgumentException("Elke wijziging hoort bij een categorie", nameof(changes));
         }
 
         if (changes.Count == 0) return;
@@ -63,8 +72,11 @@ public class GroupRepository : IGroupRepository
         await BonusSaves.WaitAsync(ct);
         try
         {
-            var ids = changes.Select(c => c.GroupId).ToList();
+            var ids = changes.Select(c => c.GroupId).Distinct().ToList();
             var groups = await _context.Groups.Where(g => ids.Contains(g.Id)).ToDictionaryAsync(g => g.Id, ct);
+            var current = await _context.GroupBonusPoints
+                .Where(p => ids.Contains(p.GroupId))
+                .ToDictionaryAsync(p => (p.GroupId, p.CategoryKey), ct);
 
             // Everything is checked before anything changes: a save is all or nothing
             foreach (var change in changes)
@@ -74,7 +86,7 @@ public class GroupRepository : IGroupRepository
                     throw new InvalidOperationException("Groep niet gevonden");
                 }
 
-                if (group.AdventurersPoints != change.PreviousAdventurers || group.TravelAgencyPoints != change.PreviousTravelAgency)
+                if ((current.GetValueOrDefault((change.GroupId, change.CategoryKey))?.Points ?? 0) != change.Previous)
                 {
                     throw new BonusPointsConflictException(group.Name);
                 }
@@ -83,28 +95,28 @@ public class GroupRepository : IGroupRepository
             var now = _time.GetUtcNow();
             var withHistory = (await _context.BonusPointsEntries
                     .Where(e => ids.Contains(e.GroupId))
-                    .Select(e => new { e.GroupId, e.Category })
+                    .Select(e => new { e.GroupId, e.CategoryKey })
                     .Distinct()
                     .ToListAsync(ct))
-                .Select(e => (e.GroupId, e.Category))
+                .Select(e => (e.GroupId, e.CategoryKey))
                 .ToHashSet();
 
             foreach (var change in changes)
             {
-                var group = groups[change.GroupId];
-                if (group.AdventurersPoints != change.Adventurers)
+                var row = current.GetValueOrDefault((change.GroupId, change.CategoryKey));
+                var previous = row?.Points ?? 0;
+                if (previous == change.Points) continue;
+
+                AddHistory(groups[change.GroupId], change.CategoryKey, previous, row?.UpdatedAt, change.Points, now, withHistory);
+                if (row == null)
                 {
-                    AddHistory(group, BonusCategory.Adventurers, group.AdventurersPoints, group.AdventurersPointsUpdatedAt, change.Adventurers, now, withHistory);
-                    group.AdventurersPoints = change.Adventurers;
-                    group.AdventurersPointsUpdatedAt = now;
+                    row = new GroupBonusPoints { GroupId = change.GroupId, CategoryKey = change.CategoryKey };
+                    _context.GroupBonusPoints.Add(row);
+                    current[(change.GroupId, change.CategoryKey)] = row;
                 }
 
-                if (group.TravelAgencyPoints != change.TravelAgency)
-                {
-                    AddHistory(group, BonusCategory.TravelAgency, group.TravelAgencyPoints, group.TravelAgencyPointsUpdatedAt, change.TravelAgency, now, withHistory);
-                    group.TravelAgencyPoints = change.TravelAgency;
-                    group.TravelAgencyPointsUpdatedAt = now;
-                }
+                row.Points = change.Points;
+                row.UpdatedAt = now;
             }
 
             await _context.SaveChangesAsync(ct);
@@ -116,22 +128,22 @@ public class GroupRepository : IGroupRepository
     }
 
     // Saved together with the new value, so the history and the score can't drift apart
-    private void AddHistory(Group group, BonusCategory category, int previous, DateTimeOffset? previousAt, int points,
-        DateTimeOffset at, HashSet<(Guid, BonusCategory)> withHistory)
+    private void AddHistory(Group group, string category, int previous, DateTimeOffset? previousAt, int points,
+        DateTimeOffset at, HashSet<(Guid, string)> withHistory)
     {
         // A value entered before changes were kept: record it at its own time first, before this change overwrites that time
         if (withHistory.Add((group.Id, category)) && previous != 0)
         {
             _context.BonusPointsEntries.Add(new BonusPointsEntry
             {
-                GroupId = group.Id, Category = category, Delta = previous, Total = previous, ChangedAt = previousAt ?? group.CreatedAt
+                GroupId = group.Id, CategoryKey = category, Delta = previous, Total = previous, ChangedAt = previousAt ?? group.CreatedAt
             });
         }
 
         _context.BonusPointsEntries.Add(new BonusPointsEntry
         {
             GroupId = group.Id,
-            Category = category,
+            CategoryKey = category,
             Delta = points - previous,
             Total = points,
             ChangedAt = at

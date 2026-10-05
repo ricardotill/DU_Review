@@ -107,7 +107,7 @@ public class ReviewReminderService : BackgroundService
         foreach (var item in due.Take(MaxLines))
         {
             var group = item.Group?.Abbreviation is { Length: > 0 } abbreviation ? abbreviation : item.Group?.Name ?? "Onbekende groep";
-            var label = $"{group} – opdracht {item.AssignmentNumber?.ToString() ?? "?"}";
+            var label = $"{group} – opdracht {item.AssignmentCode ?? "?"}";
             var link = _links.WebLink(item.ChannelId, item.MessageTs);
             text.Append($"\n• {(link == null ? label : $"<{link}|{label}>")} ({ReviewQueue.FormatWait(item.WaitingFor(now))})");
         }

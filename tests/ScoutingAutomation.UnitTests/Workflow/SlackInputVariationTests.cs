@@ -34,8 +34,8 @@ public class SlackInputVariationTests
     private void GroupAndAssignmentExist()
     {
         _groups.Setup(g => g.GetBySlackChannelIdAsync("C1", It.IsAny<CancellationToken>())).ReturnsAsync(_group);
-        _parser.Setup(p => p.Parse(It.IsAny<string>())).Returns(AssignmentParseResult.Succeeded(1));
-        _assignments.Setup(a => a.GetByNumberAsync(1, It.IsAny<CancellationToken>())).ReturnsAsync(new Assignment { Number = 1 });
+        _parser.Setup(p => p.Parse(It.IsAny<string>())).Returns(AssignmentParseResult.Succeeded("1"));
+        _assignments.Setup(a => a.GetByCodeAsync("1", It.IsAny<CancellationToken>())).ReturnsAsync(new Assignment { Code = "1" });
     }
 
     [Fact]

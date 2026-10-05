@@ -35,17 +35,17 @@ public class AssignmentsPageTests : PageTestBase
     }
 
     [Fact]
-    public void NumberSearch_ShouldFilterByPrefix()
+    public void CodeSearch_ShouldFilterByPrefix()
     {
         Seed();
         var cut = Render<Assignments>();
         cut.WaitForAssertion(() => cut.FindAll("tbody tr").Should().HaveCount(2));
 
-        cut.Find("input[type=number]").Input("2");
+        cut.Find("input[type=search]").Input("2");
 
         cut.FindAll("tbody tr").Should().ContainSingle().Which.TextContent.Should().Contain("#2");
 
-        cut.Find("input[type=number]").Input("9");
+        cut.Find("input[type=search]").Input("9");
         cut.Markup.Should().Contain("Geen opdrachten gevonden.");
     }
 
@@ -82,7 +82,7 @@ public class AssignmentDetailPageTests : PageTestBase
 {
     private IRenderedComponent<AssignmentDetail> RenderAssignment(int number)
     {
-        var cut = Render<AssignmentDetail>(p => p.Add(c => c.Number, number));
+        var cut = Render<AssignmentDetail>(p => p.Add(c => c.Code, number.ToString()));
         cut.WaitForAssertion(() => cut.FindAll(".spinner-border").Should().BeEmpty());
         return cut;
     }
@@ -137,7 +137,7 @@ public class AssignmentDetailPageTests : PageTestBase
         Seed();
         var cut = RenderAssignment(1);
 
-        cut.Render(p => p.Add(c => c.Number, 2));
+        cut.Render(p => p.Add(c => c.Code, "2"));
 
         cut.WaitForAssertion(() => cut.Find("h1").TextContent.Should().Be("Opdracht 2"));
         cut.FindAll(".col-xl-6").Should().ContainSingle();

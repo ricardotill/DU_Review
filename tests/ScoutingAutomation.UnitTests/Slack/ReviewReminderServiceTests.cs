@@ -60,7 +60,7 @@ public class ReviewReminderServiceTests : IDisposable
     {
         var submission = new Submission
         {
-            GroupId = _wolves.Id, Group = _wolves, AssignmentNumber = number, Status = status,
+            GroupId = _wolves.Id, Group = _wolves, AssignmentCode = number.ToString(), Status = status,
             SlackChannelId = "C1", SlackMessageId = ts, CreatedAt = Now - waiting, StoragePath = $"/s/{ts}.jpg"
         };
         _all.Add(submission);

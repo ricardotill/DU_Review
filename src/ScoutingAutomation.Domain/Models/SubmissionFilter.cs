@@ -5,7 +5,7 @@ namespace ScoutingAutomation.Domain.Models;
 public class SubmissionFilter
 {
     public Guid? GroupId { get; set; }
-    public int? AssignmentNumber { get; set; }
+    public string? AssignmentCode { get; set; }
     public SubmissionStatus? Status { get; set; }
     public string? Reviewer { get; set; }
 

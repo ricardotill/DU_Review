@@ -94,7 +94,7 @@ public class SlackCatchUpIntegrationTests : IClassFixture<WebApplicationFactory<
 
         await RunAgainAsync();
 
-        (await Submissions(_noNumber)).Single().AssignmentNumber.Should().Be(64);
+        (await Submissions(_noNumber)).Single().AssignmentCode.Should().Be("64");
         _slack.Calls("reactions.remove").Should().Contain(c => c["timestamp"] == _noNumber && c["name"] == "question");
     }
 

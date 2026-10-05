@@ -61,7 +61,28 @@ public class SlackEventRetryIntegrationTests : IClassFixture<WebApplicationFacto
         var result = await Get<SlackEventRetryService>().RetryAsync(failure.Id);
 
         result.Resolved.Should().BeTrue(result.Message);
-        (await SubmissionsAsync(ts)).Should().ContainSingle().Which.AssignmentNumber.Should().Be(3);
+        (await SubmissionsAsync(ts)).Should().ContainSingle().Which.AssignmentCode.Should().Be("3");
+        (await PendingAsync()).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ReviewEmoji_OnAMessageWithoutPhoto_ShouldNotBeKeptAsFailed()
+    {
+        var ts = SlackEvents.Ts();
+        await _app.SendEventAsync(_client, SlackEvents.Message(Channel, ts, "Zijn we al klaar?", SlackEvents.Scout, null));
+        await _app.SendEventAsync(_client, SlackEvents.Reaction(Channel, ts, "thumbsup"));
+
+        (await PendingAsync()).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ReviewEmoji_OnADeletedMessage_ShouldNotBeKeptAsFailed()
+    {
+        var ts = SlackEvents.Ts();
+        await _app.SendEventAsync(_client, SlackEvents.Message(Channel, ts, "Opdracht 5", SlackEvents.File("weg.jpg")));
+        await _app.SendEventAsync(_client, SlackEvents.Deleted(Channel, ts, "Opdracht 5"));
+        await _app.SendEventAsync(_client, SlackEvents.Reaction(Channel, ts, "thumbsup"));
+
         (await PendingAsync()).Should().BeEmpty();
     }
 
@@ -84,24 +105,19 @@ public class SlackEventRetryIntegrationTests : IClassFixture<WebApplicationFacto
     }
 
     [Fact]
-    public async Task RetryAll_ShouldStoreTheMessageFirst_ThenApplyTheReviewSlackShowsNow()
+    public async Task RetryingAMessage_ShouldApplyTheReviewSlackShowsNow()
     {
         var ts = SlackEvents.Ts();
         await _app.SendEventAsync(_client, SlackEvents.Message(Channel, ts, "Opdracht 5", SlackEvents.File("kapot.jpg")));
-        // The review arrives for a message the app could not store
+        // The review arrives for a message the app could not store: nothing to review yet, so not a failure of its own
         await _app.SendEventAsync(_client, SlackEvents.Reaction(Channel, ts, "thumbsup"));
-        (await PendingAsync()).Should().HaveCount(2);
-
-        // Running the review alone first cannot work: there is nothing to review yet
-        var retry = Get<SlackEventRetryService>();
-        var reaction = (await PendingAsync()).Single(f => f.Kind == nameof(SlackEventKind.ReactionAdded));
-        (await retry.RetryAsync(reaction.Id)).Resolved.Should().BeFalse();
+        (await PendingAsync()).Should().ContainSingle().Which.Kind.Should().Be(nameof(SlackEventKind.Message));
 
         // Meanwhile the reviewer changed their mind in Slack
         _slack.Reactions[FakeSlackApi.Key(Channel, ts)] = new object[] { SlackEvents.Reacted("heart", TestApp.Reviewer) };
         _slack.MissingFiles.TryRemove("kapot.jpg", out _);
 
-        (await Get<SlackEventRetryService>().RetryAllPendingAsync()).Should().Be(2);
+        (await Get<SlackEventRetryService>().RetryAllPendingAsync()).Should().Be(1);
 
         (await SubmissionsAsync(ts)).Should().ContainSingle().Which.Status.Should().Be(SubmissionStatus.Awesome);
         (await PendingAsync()).Should().BeEmpty();

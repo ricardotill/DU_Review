@@ -7,7 +7,8 @@ public class Submission
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid GroupId { get; set; }
     public Group? Group { get; set; }
-    public int? AssignmentNumber { get; set; }
+    /// <summary>The assignment's code ("12" or "A"); null when the message gave no valid one.</summary>
+    public string? AssignmentCode { get; set; }
     public string SlackChannelId { get; set; } = string.Empty;
     public string SlackMessageId { get; set; } = string.Empty;
 
@@ -32,19 +33,19 @@ public class Submission
 
     public ICollection<Review> Reviews { get; set; } = new List<Review>();
 
-    public void MarkPending(string storagePath, int? assignmentNumber, string? unresolvedReason = null)
+    public void MarkPending(string storagePath, string? assignmentCode, string? unresolvedReason = null)
     {
         Status = SubmissionStatus.Pending;
         StoragePath = storagePath;
-        AssignmentNumber = assignmentNumber;
+        AssignmentCode = assignmentCode;
         UnresolvedReason = unresolvedReason;
         UpdatedAt = DateTimeOffset.UtcNow;
     }
 
     /// <summary>Moves the submission to another assignment, e.g. after the scout corrected the number in Slack.</summary>
-    public void Reassign(int assignmentNumber, string storagePath)
+    public void Reassign(string assignmentCode, string storagePath)
     {
-        AssignmentNumber = assignmentNumber;
+        AssignmentCode = assignmentCode;
         StoragePath = storagePath;
         UnresolvedReason = null;
         UpdatedAt = DateTimeOffset.UtcNow;

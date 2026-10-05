@@ -7,7 +7,7 @@ public sealed record SubmissionCreatedNotification(
     Guid GroupId,
     string GroupName,
     string? GroupAbbreviation,
-    int AssignmentNumber,
+    string AssignmentCode,
     string SubmitterName,
     IReadOnlyList<Guid> SubmissionIds,
     DateTimeOffset PostedAt);

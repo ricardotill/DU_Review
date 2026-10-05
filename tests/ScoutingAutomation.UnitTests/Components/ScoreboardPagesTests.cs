@@ -36,8 +36,8 @@ public class ScoreboardPagesTests : PageTestBase
 
         // #2 awesome (4) first, then #1 approved (1) at the time of the approved resubmission, not the rejected first try
         stats.ScoreEvents.Should().Equal(
-            new Domain.Models.ScoreEvent(Wolves.Id, 2, seeded.Awesome.CreatedAt, 4),
-            new Domain.Models.ScoreEvent(Wolves.Id, 1, seeded.Approved.CreatedAt, 1));
+            new Domain.Models.ScoreEvent(Wolves.Id, "2", seeded.Awesome.CreatedAt, 4),
+            new Domain.Models.ScoreEvent(Wolves.Id, "1", seeded.Approved.CreatedAt, 1));
     }
 
     [Fact]
@@ -96,8 +96,8 @@ public class ScoreboardPagesTests : PageTestBase
             GroupStatistics = { new Domain.Models.GroupStatistic { GroupId = group, GroupName = "De Wolven", Score = 6 } },
             ScoreEvents =
             {
-                new Domain.Models.ScoreEvent(group, 0, start, 10, "Avonturiers"),
-                new Domain.Models.ScoreEvent(group, 0, start.AddHours(1), -4, "Avonturiers")
+                new Domain.Models.ScoreEvent(group, "", start, 10, "Avonturiers"),
+                new Domain.Models.ScoreEvent(group, "", start.AddHours(1), -4, "Avonturiers")
             }
         };
 

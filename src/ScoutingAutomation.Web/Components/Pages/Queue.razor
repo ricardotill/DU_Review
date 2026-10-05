@@ -23,11 +23,11 @@
         </div>
         <div class="col-md-4 col-6">
             <label class="form-label text-secondary small fw-semibold mb-1" for="queueAssignment">Opdracht</label>
-            <select class="form-select form-select-dark" id="queueAssignment" @bind="selectedAssignmentNumber" @bind:after="FirstPage">
+            <select class="form-select form-select-dark" id="queueAssignment" @bind="selectedAssignmentCode" @bind:after="FirstPage">
                 <option value="">Alle opdrachten</option>
-                @foreach (var number in queue.Select(i => i.AssignmentNumber).OfType<int>().Distinct().Order())
+                @foreach (var assignmentCode in queue.Select(i => i.AssignmentCode).OfType<string>().Distinct().Order(AssignmentCode.Comparer))
                 {
-                    <option value="@number">#@number</option>
+                    <option value="@assignmentCode">#@assignmentCode</option>
                 }
             </select>
         </div>
@@ -97,7 +97,7 @@
     private IReadOnlyList<Group> groups = new List<Group>();
     private bool loaded;
     private string? selectedGroupId;
-    private string? selectedAssignmentNumber;
+    private string? selectedAssignmentCode;
     private Timer? refresh;
     private int page = 1;
 
@@ -105,7 +105,7 @@
 
     private IEnumerable<ReviewQueueItem> Filtered => queue
         .Where(i => !Guid.TryParse(selectedGroupId, out var groupId) || i.Group?.Id == groupId)
-        .Where(i => !int.TryParse(selectedAssignmentNumber, out var number) || i.AssignmentNumber == number);
+        .Where(i => string.IsNullOrEmpty(selectedAssignmentCode) || i.AssignmentCode == selectedAssignmentCode);
 
     private List<ReviewQueueItem> ToReview => Filtered.Where(i => !i.AlreadyCompleted).ToList();
 
@@ -136,7 +136,7 @@
                 <div class="flex-grow-1 min-w-0">
                     <div class="fw-semibold text-white text-truncate">
                         @(item.Group?.Name ?? "Onbekende groep")
-                        <span class="badge assignment-badge ms-1">#@(item.AssignmentNumber?.ToString() ?? "?")</span>
+                        <span class="badge assignment-badge ms-1">#@(item.AssignmentCode ?? "?")</span>
                     </div>
                     <div class="text-muted small text-truncate">
                         @item.First.SubmitterDisplayName · @item.PostedAt.ToGameTime().ToString("HH:mm")

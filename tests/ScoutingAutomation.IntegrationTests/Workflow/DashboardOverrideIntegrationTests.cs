@@ -71,6 +71,35 @@ public class DashboardOverrideIntegrationTests : IClassFixture<WebApplicationFac
     }
 
     [Fact]
+    public async Task Override_OfOnePhotoInAMessageWithTwo_ShouldChangeBothAndTheScore()
+    {
+        var ts = SlackEvents.Ts();
+        await _app.SendEventAsync(_client, SlackEvents.Message(Channel, ts, "Opdracht 85", SlackEvents.File("voor.jpg"), SlackEvents.File("achter.jpg")));
+        var photos = await _app.GetAsync(sp => sp.GetRequiredService<ISubmissionRepository>().GetBySlackMessageIdAsync(Channel, ts));
+        photos.Should().HaveCount(2);
+        var scoreBefore = await WolvenScoreAsync();
+
+        await OverrideAsync(photos[0].Id, SubmissionStatus.Approved, "goedgekeurd op papier");
+
+        (await WolvenScoreAsync()).Should().Be(scoreBefore + 2, "assignment 85 counts once, however many photos the message has");
+        foreach (var photo in photos)
+        {
+            (await ReloadAsync(photo.Id))!.Status.Should().Be(SubmissionStatus.Approved);
+        }
+
+        // Rejecting one photo used to leave the other approved, so the points stayed
+        await OverrideAsync(photos[1].Id, SubmissionStatus.Rejected, "toch niet goed");
+
+        (await WolvenScoreAsync()).Should().Be(scoreBefore);
+        foreach (var photo in photos)
+        {
+            var reloaded = (await ReloadAsync(photo.Id))!;
+            reloaded.Status.Should().Be(SubmissionStatus.Rejected);
+            File.Exists(reloaded.StoragePath).Should().BeTrue();
+        }
+    }
+
+    [Fact]
     public async Task OverrideBackToPending_ShouldTakeAwayThePoints()
     {
         var submission = await UploadAsync(80);

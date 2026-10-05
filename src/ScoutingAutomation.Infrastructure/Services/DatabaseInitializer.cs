@@ -5,6 +5,7 @@ using ScoutingAutomation.Contracts.Configuration;
 using ScoutingAutomation.Domain.Entities;
 using ScoutingAutomation.Domain.Enums;
 using ScoutingAutomation.Domain.Interfaces;
+using ScoutingAutomation.Domain.Models;
 using ScoutingAutomation.Infrastructure.Data;
 
 namespace ScoutingAutomation.Infrastructure.Services;
@@ -39,10 +40,6 @@ public class DatabaseInitializer
         {
             await AddSqliteColumnAsync("Submissions", "SubmitterName", "TEXT NULL", ct);
             await AddSqliteColumnAsync("Submissions", "SlackFileId", "TEXT NULL", ct);
-            await AddSqliteColumnAsync("Groups", "AdventurersPoints", "INTEGER NOT NULL DEFAULT 0", ct);
-            await AddSqliteColumnAsync("Groups", "AdventurersPointsUpdatedAt", "TEXT NULL", ct);
-            await AddSqliteColumnAsync("Groups", "TravelAgencyPoints", "INTEGER NOT NULL DEFAULT 0", ct);
-            await AddSqliteColumnAsync("Groups", "TravelAgencyPointsUpdatedAt", "TEXT NULL", ct);
         }
         else if (_context.Database.IsNpgsql())
         {
@@ -50,14 +47,6 @@ public class DatabaseInitializer
                 "ALTER TABLE \"Submissions\" ADD COLUMN IF NOT EXISTS \"SubmitterName\" character varying(100) NULL", ct);
             await _context.Database.ExecuteSqlRawAsync(
                 "ALTER TABLE \"Submissions\" ADD COLUMN IF NOT EXISTS \"SlackFileId\" character varying(50) NULL", ct);
-            await _context.Database.ExecuteSqlRawAsync(
-                "ALTER TABLE \"Groups\" ADD COLUMN IF NOT EXISTS \"AdventurersPoints\" integer NOT NULL DEFAULT 0", ct);
-            await _context.Database.ExecuteSqlRawAsync(
-                "ALTER TABLE \"Groups\" ADD COLUMN IF NOT EXISTS \"AdventurersPointsUpdatedAt\" timestamp with time zone NULL", ct);
-            await _context.Database.ExecuteSqlRawAsync(
-                "ALTER TABLE \"Groups\" ADD COLUMN IF NOT EXISTS \"TravelAgencyPoints\" integer NOT NULL DEFAULT 0", ct);
-            await _context.Database.ExecuteSqlRawAsync(
-                "ALTER TABLE \"Groups\" ADD COLUMN IF NOT EXISTS \"TravelAgencyPointsUpdatedAt\" timestamp with time zone NULL", ct);
         }
         else
         {
@@ -71,6 +60,124 @@ public class DatabaseInitializer
 
         await AddFailedSlackEventsTableAsync(ct);
         await AddBonusPointsEntriesTableAsync(ct);
+        await MoveToBonusCategoriesAsync(ct);
+        await MoveToAssignmentCodesAsync(ct);
+    }
+
+    /// <summary>The two fixed categories of the first game, as columns on Groups, and their keys now.</summary>
+    private static readonly (string Column, string OldName, string Key)[] FixedBonusCategories =
+    {
+        ("AdventurersPoints", "Adventurers", "avonturiers"),
+        ("TravelAgencyPoints", "TravelAgency", "reisbureau")
+    };
+
+    /// <summary>
+    /// Bonus points were two fixed columns on Groups; now any number of categories, one row per group and category.
+    /// An older database gets the table, filled from those columns, which are dropped afterwards. The history's
+    /// category names become the keys of the default categories (BonusCategoryConfig.Defaults).
+    /// </summary>
+    private async Task MoveToBonusCategoriesAsync(CancellationToken ct)
+    {
+        var sql = _context.Database.IsSqlite()
+            ? """
+              CREATE TABLE IF NOT EXISTS "GroupBonusPoints" (
+                  "GroupId" TEXT NOT NULL,
+                  "CategoryKey" TEXT NOT NULL,
+                  "Points" INTEGER NOT NULL,
+                  "UpdatedAt" TEXT NULL,
+                  CONSTRAINT "PK_GroupBonusPoints" PRIMARY KEY ("GroupId", "CategoryKey"),
+                  CONSTRAINT "FK_GroupBonusPoints_Groups_GroupId" FOREIGN KEY ("GroupId") REFERENCES "Groups" ("Id") ON DELETE CASCADE)
+              """
+            : $"""
+              CREATE TABLE IF NOT EXISTS "GroupBonusPoints" (
+                  "GroupId" uuid NOT NULL,
+                  "CategoryKey" character varying({BonusCategoryConfig.MaxKeyLength}) NOT NULL,
+                  "Points" integer NOT NULL,
+                  "UpdatedAt" timestamp with time zone NULL,
+                  CONSTRAINT "PK_GroupBonusPoints" PRIMARY KEY ("GroupId", "CategoryKey"),
+                  CONSTRAINT "FK_GroupBonusPoints_Groups_GroupId" FOREIGN KEY ("GroupId") REFERENCES "Groups" ("Id") ON DELETE CASCADE)
+              """;
+        await _context.Database.ExecuteSqlRawAsync(sql, ct);
+
+        // Table, column and key names come from this class, never from input
+#pragma warning disable EF1002
+        foreach (var (column, oldName, key) in FixedBonusCategories)
+        {
+            await _context.Database.ExecuteSqlRawAsync(
+                $"UPDATE \"BonusPointsEntries\" SET \"Category\" = '{key}' WHERE \"Category\" = '{oldName}'", ct);
+
+            if (!await ColumnExistsAsync("Groups", column, ct)) continue;
+
+            var moved = await _context.Database.ExecuteSqlRawAsync(
+                $"INSERT INTO \"GroupBonusPoints\" (\"GroupId\", \"CategoryKey\", \"Points\", \"UpdatedAt\") " +
+                $"SELECT g.\"Id\", '{key}', g.\"{column}\", g.\"{column}UpdatedAt\" FROM \"Groups\" g " +
+                $"WHERE g.\"{column}\" <> 0 AND NOT EXISTS (SELECT 1 FROM \"GroupBonusPoints\" p WHERE p.\"GroupId\" = g.\"Id\" AND p.\"CategoryKey\" = '{key}')", ct);
+            await _context.Database.ExecuteSqlRawAsync($"ALTER TABLE \"Groups\" DROP COLUMN \"{column}\"", ct);
+            await _context.Database.ExecuteSqlRawAsync($"ALTER TABLE \"Groups\" DROP COLUMN \"{column}UpdatedAt\"", ct);
+            _logger.LogInformation("Moved {Count} group value(s) of {Column} to bonus category {Key}", moved, column, key);
+        }
+#pragma warning restore EF1002
+    }
+
+    /// <summary>
+    /// Assignments were numbers ("Number", "AssignmentNumber"); now they are codes, so special assignments can be
+    /// letters. An older database gets the text columns, filled from the numbers, and loses the number columns:
+    /// Assignments.Number is NOT NULL, so new rows could not be stored while it is there.
+    /// </summary>
+    private async Task MoveToAssignmentCodesAsync(CancellationToken ct)
+    {
+        var sqlite = _context.Database.IsSqlite();
+        if (sqlite)
+        {
+            await AddSqliteColumnAsync("Assignments", "Code", "TEXT NULL", ct);
+            await AddSqliteColumnAsync("Assignments", "Title", "TEXT NULL", ct);
+            await AddSqliteColumnAsync("Assignments", "Description", "TEXT NULL", ct);
+            await AddSqliteColumnAsync("Submissions", "AssignmentCode", "TEXT NULL", ct);
+        }
+        else
+        {
+            await _context.Database.ExecuteSqlRawAsync(
+                $"ALTER TABLE \"Assignments\" ADD COLUMN IF NOT EXISTS \"Code\" character varying({AssignmentCode.MaxLength}) NULL", ct);
+            await _context.Database.ExecuteSqlRawAsync(
+                $"ALTER TABLE \"Assignments\" ADD COLUMN IF NOT EXISTS \"Title\" character varying({ScoutingDbContext.MaxAssignmentTitleLength}) NULL", ct);
+            await _context.Database.ExecuteSqlRawAsync(
+                $"ALTER TABLE \"Assignments\" ADD COLUMN IF NOT EXISTS \"Description\" character varying({ScoutingDbContext.MaxAssignmentDescriptionLength}) NULL", ct);
+            await _context.Database.ExecuteSqlRawAsync(
+                $"ALTER TABLE \"Submissions\" ADD COLUMN IF NOT EXISTS \"AssignmentCode\" character varying({AssignmentCode.MaxLength}) NULL", ct);
+        }
+
+        if (await ColumnExistsAsync("Assignments", "Number", ct))
+        {
+            await _context.Database.ExecuteSqlRawAsync(
+                "UPDATE \"Assignments\" SET \"Code\" = CAST(\"Number\" AS TEXT) WHERE \"Code\" IS NULL", ct);
+            // SQLite cannot drop an indexed column; PostgreSQL drops the index with it
+            await _context.Database.ExecuteSqlRawAsync("DROP INDEX IF EXISTS \"IX_Assignments_Number\"", ct);
+            await _context.Database.ExecuteSqlRawAsync("ALTER TABLE \"Assignments\" DROP COLUMN \"Number\"", ct);
+            _logger.LogInformation("Moved assignment numbers to assignment codes");
+        }
+
+        if (await ColumnExistsAsync("Submissions", "AssignmentNumber", ct))
+        {
+            await _context.Database.ExecuteSqlRawAsync(
+                "UPDATE \"Submissions\" SET \"AssignmentCode\" = CAST(\"AssignmentNumber\" AS TEXT) " +
+                "WHERE \"AssignmentCode\" IS NULL AND \"AssignmentNumber\" IS NOT NULL", ct);
+            await _context.Database.ExecuteSqlRawAsync("DROP INDEX IF EXISTS \"IX_Submissions_AssignmentNumber\"", ct);
+            await _context.Database.ExecuteSqlRawAsync("ALTER TABLE \"Submissions\" DROP COLUMN \"AssignmentNumber\"", ct);
+            _logger.LogInformation("Moved the assignment numbers of submissions to assignment codes");
+        }
+
+        await _context.Database.ExecuteSqlRawAsync(
+            $"CREATE UNIQUE INDEX IF NOT EXISTS \"{ScoutingDbContext.AssignmentCodeIndexName}\" ON \"Assignments\" (\"Code\")", ct);
+        await _context.Database.ExecuteSqlRawAsync(
+            $"CREATE INDEX IF NOT EXISTS \"{ScoutingDbContext.SubmissionAssignmentCodeIndexName}\" ON \"Submissions\" (\"AssignmentCode\")", ct);
+    }
+
+    private async Task<bool> ColumnExistsAsync(string table, string column, CancellationToken ct)
+    {
+        var sql = _context.Database.IsSqlite()
+            ? "SELECT COUNT(*) AS \"Value\" FROM pragma_table_info({0}) WHERE name = {1}"
+            : "SELECT COUNT(*) AS \"Value\" FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = {0} AND column_name = {1}";
+        return await _context.Database.SqlQueryRaw<long>(sql, table, column).SingleAsync(ct) > 0;
     }
 
     /// <summary>Added after the first release: a database created before it has no such table.</summary>
@@ -143,10 +250,7 @@ public class DatabaseInitializer
 
     private async Task AddSqliteColumnAsync(string table, string column, string definition, CancellationToken ct)
     {
-        var exists = await _context.Database
-            .SqlQueryRaw<long>("SELECT COUNT(*) AS \"Value\" FROM pragma_table_info({0}) WHERE name = {1}", table, column)
-            .SingleAsync(ct);
-        if (exists == 0)
+        if (!await ColumnExistsAsync(table, column, ct))
         {
             // Table and column names come from this class, never from input
 #pragma warning disable EF1002
@@ -190,6 +294,7 @@ public class DatabaseInitializer
         // FR-003: Synchronize Groups from appsettings.json
         var configuredGroups = _options.Value.Groups;
         EnsureDistinctFolders(configuredGroups);
+        EnsureValidBonusCategories(_options.Value.BonusCategories);
         if (configuredGroups != null && configuredGroups.Count > 0)
         {
             foreach (var cfg in configuredGroups)
@@ -228,13 +333,15 @@ public class DatabaseInitializer
         // Synchronize Assignments and their points from the CSV file
         if (configuredAssignments != null)
         {
-            var existingAssignments = await _context.Assignments.ToDictionaryAsync(a => a.Number, ct);
+            var existingAssignments = await _context.Assignments.ToDictionaryAsync(a => a.Code, ct);
             foreach (var cfg in configuredAssignments)
             {
-                if (existingAssignments.TryGetValue(cfg.Number, out var existing))
+                if (existingAssignments.TryGetValue(cfg.Code, out var existing))
                 {
                     existing.StandardPoints = cfg.StandardPoints;
                     existing.AwesomePoints = cfg.AwesomePoints;
+                    existing.Title = cfg.Title;
+                    existing.Description = cfg.Description;
                 }
                 else
                 {
@@ -245,8 +352,8 @@ public class DatabaseInitializer
             await _context.SaveChangesAsync(ct);
             _logger.LogInformation("Synchronized {Count} assignments from {File}", configuredAssignments.Count, pointsFile);
 
-            var numbers = configuredAssignments.Select(a => a.Number).ToHashSet();
-            var removed = existingAssignments.Keys.Where(n => !numbers.Contains(n)).Order().ToList();
+            var codes = configuredAssignments.Select(a => a.Code).ToHashSet();
+            var removed = existingAssignments.Keys.Where(c => !codes.Contains(c)).Order(AssignmentCode.Comparer).ToList();
             if (removed.Count > 0)
             {
                 // Still valid: submissions may already count for them. Delete them from the database by hand if they must go.
@@ -283,7 +390,7 @@ public class DatabaseInitializer
                     var group = groups[sample.groupIndex % groups.Count];
                     using var ms = SlackClient.CreateSimulatedFileStream(sample.file);
                     var createdAt = DateTimeOffset.UtcNow.AddHours(-1 * (sample.assignNum * 2));
-                    var storedName = SubmissionFileName.Build(group, sample.assignNum, sample.file, createdAt.ToGameTime());
+                    var storedName = SubmissionFileName.Build(group, sample.assignNum.ToString(), sample.file, createdAt.ToGameTime());
                     var path = await _fileStorage.SaveInitialFileAsync(group.Name, storedName, ms, ct);
 
                     if (sample.status != SubmissionStatus.Pending)
@@ -295,7 +402,7 @@ public class DatabaseInitializer
                     {
                         Id = Guid.NewGuid(),
                         GroupId = group.Id,
-                        AssignmentNumber = sample.assignNum,
+                        AssignmentCode = sample.assignNum.ToString(),
                         SlackChannelId = group.SlackChannelId,
                         SlackMessageId = $"172000000{sample.assignNum}.000{sample.groupIndex}",
                         Submitter = sample.user,
@@ -333,6 +440,22 @@ public class DatabaseInitializer
     }
 
     /// <summary>Two groups whose names give the same folder would mix their files: the start is stopped.</summary>
+    private static void EnsureValidBonusCategories(IReadOnlyCollection<BonusCategoryConfig>? categories)
+    {
+        foreach (var category in categories ?? Array.Empty<BonusCategoryConfig>())
+        {
+            if (RuntimeSettingsService.CheckBonusCategory(category) is { } error)
+            {
+                throw new StartupConfigurationException($"BonusCategories in de instellingen klopt niet: {error}");
+            }
+        }
+
+        if (categories?.GroupBy(c => c.Key).FirstOrDefault(g => g.Count() > 1) is { } twice)
+        {
+            throw new StartupConfigurationException($"BonusCategories in de instellingen heeft de sleutel '{twice.Key}' twee keer");
+        }
+    }
+
     private static void EnsureDistinctFolders(IReadOnlyCollection<GroupConfig>? groups)
     {
         var clash = (groups ?? Array.Empty<GroupConfig>())

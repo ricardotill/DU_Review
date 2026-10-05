@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ScoutingAutomation.Domain.Entities;
+using ScoutingAutomation.Contracts.Configuration;
+using ScoutingAutomation.Domain.Models;
 
 namespace ScoutingAutomation.Infrastructure.Data;
 
@@ -13,6 +15,10 @@ public class ScoutingDbContext : DbContext
     public const string FailedEventKeyIndexName = "IX_FailedSlackEvents_EventKey";
     public const string FailedEventStatusIndexName = "IX_FailedSlackEvents_Status";
     public const string BonusEntryGroupIndexName = "IX_BonusPointsEntries_GroupId";
+    public const string AssignmentCodeIndexName = "IX_Assignments_Code";
+    public const string SubmissionAssignmentCodeIndexName = "IX_Submissions_AssignmentCode";
+    public const int MaxAssignmentTitleLength = 200;
+    public const int MaxAssignmentDescriptionLength = 4000;
 
     public DbSet<Group> Groups => Set<Group>();
     public DbSet<Assignment> Assignments => Set<Assignment>();
@@ -20,6 +26,7 @@ public class ScoutingDbContext : DbContext
     public DbSet<Review> Reviews => Set<Review>();
     public DbSet<FailedSlackEvent> FailedSlackEvents => Set<FailedSlackEvent>();
     public DbSet<BonusPointsEntry> BonusPointsEntries => Set<BonusPointsEntry>();
+    public DbSet<GroupBonusPoints> GroupBonusPoints => Set<GroupBonusPoints>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -41,8 +48,10 @@ public class ScoutingDbContext : DbContext
         {
             entity.HasKey(a => a.Id);
             entity.Property(a => a.Id).ValueGeneratedOnAdd();
-            entity.Property(a => a.Number).IsRequired();
-            entity.HasIndex(a => a.Number).IsUnique();
+            entity.Property(a => a.Code).IsRequired().HasMaxLength(AssignmentCode.MaxLength);
+            entity.HasIndex(a => a.Code).IsUnique().HasDatabaseName(AssignmentCodeIndexName);
+            entity.Property(a => a.Title).HasMaxLength(MaxAssignmentTitleLength);
+            entity.Property(a => a.Description).HasMaxLength(MaxAssignmentDescriptionLength);
         });
 
         // Submission
@@ -73,7 +82,8 @@ public class ScoutingDbContext : DbContext
                   .HasDatabaseName(UniqueFileIndexName)
                   .HasFilter("\"SlackFileId\" IS NOT NULL");
             entity.HasIndex(s => s.Status);
-            entity.HasIndex(s => s.AssignmentNumber);
+            entity.Property(s => s.AssignmentCode).HasMaxLength(AssignmentCode.MaxLength);
+            entity.HasIndex(s => s.AssignmentCode).HasDatabaseName(SubmissionAssignmentCodeIndexName);
         });
 
         // Review
@@ -114,7 +124,8 @@ public class ScoutingDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Id).ValueGeneratedOnAdd();
-            entity.Property(e => e.Category).HasConversion<string>().HasMaxLength(20);
+            // The column kept its name from when the categories were fixed
+            entity.Property(e => e.CategoryKey).HasColumnName("Category").IsRequired().HasMaxLength(BonusCategoryConfig.MaxKeyLength);
 
             entity.HasOne(e => e.Group)
                   .WithMany()
@@ -122,6 +133,18 @@ public class ScoutingDbContext : DbContext
                   .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasIndex(e => e.GroupId).HasDatabaseName(BonusEntryGroupIndexName);
+        });
+
+        // GroupBonusPoints
+        modelBuilder.Entity<GroupBonusPoints>(entity =>
+        {
+            entity.HasKey(e => new { e.GroupId, e.CategoryKey });
+            entity.Property(e => e.CategoryKey).HasMaxLength(BonusCategoryConfig.MaxKeyLength);
+
+            entity.HasOne(e => e.Group)
+                  .WithMany()
+                  .HasForeignKey(e => e.GroupId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using ScoutingAutomation.Contracts.Configuration;
+using ScoutingAutomation.Domain.Entities;
 using ScoutingAutomation.Domain.Enums;
 using ScoutingAutomation.Domain.Models;
 using ScoutingAutomation.Infrastructure.Data;
@@ -78,44 +79,144 @@ public class DatabaseInitializerTests : IDisposable
             var wolves = await db.Groups.SingleAsync(g => g.SlackChannelId == "C1");
             wolves.Abbreviation.Should().Be("CDW");
             wolves.Description.Should().Be("Nieuw");
-            (await db.Assignments.SingleAsync(a => a.Number == 1)).StandardPoints.Should().Be(5);
+            (await db.Assignments.SingleAsync(a => a.Code == "1")).StandardPoints.Should().Be(5);
             (await db.Assignments.CountAsync()).Should().Be(7, "assignments removed from the CSV are kept");
             (await db.Submissions.CountAsync()).Should().Be(before);
         }
     }
 
     [Fact]
-    public async Task InitializeAsync_GroupsTableFromBeforeBonusPoints_ShouldAddColumnsAndKeepValuesOnRestart()
+    public async Task InitializeAsync_DatabaseWithFixedBonusColumns_ShouldMoveThemToCategories()
     {
         var path = Path.Combine(_temp.Path, "old.db");
         var options = new DbContextOptionsBuilder<ScoutingDbContext>().UseSqlite($"Data Source={path}").Options;
         var settings = Settings();
+        var entered = new DateTimeOffset(2026, 10, 3, 14, 0, 0, TimeSpan.Zero);
+        Guid wolvesId;
         await using (var db = new ScoutingDbContext(options))
         {
-            // A database from before the bonus columns existed
-            await db.Database.EnsureCreatedAsync();
-            foreach (var column in new[] { "AdventurersPoints", "AdventurersPointsUpdatedAt", "TravelAgencyPoints", "TravelAgencyPointsUpdatedAt" })
-            {
-#pragma warning disable EF1002
-                await db.Database.ExecuteSqlRawAsync($"ALTER TABLE \"Groups\" DROP COLUMN \"{column}\"");
-#pragma warning restore EF1002
-            }
-
             await Create(db, settings).InitializeAsync();
-            var wolves = await db.Groups.SingleAsync(g => g.SlackChannelId == "C1");
-            wolves.AdventurersPoints.Should().Be(0);
-            wolves.AdventurersPoints = 12;
-            wolves.TravelAgencyPoints = 7;
+            wolvesId = (await db.Groups.SingleAsync(g => g.SlackChannelId == "C1")).Id;
+
+            // A database from the first game: two fixed columns on Groups, the history named after an enum
+            await db.Database.ExecuteSqlRawAsync("""
+                DROP TABLE "GroupBonusPoints";
+                ALTER TABLE "Groups" ADD COLUMN "AdventurersPoints" INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE "Groups" ADD COLUMN "AdventurersPointsUpdatedAt" TEXT NULL;
+                ALTER TABLE "Groups" ADD COLUMN "TravelAgencyPoints" INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE "Groups" ADD COLUMN "TravelAgencyPointsUpdatedAt" TEXT NULL;
+                """);
+            await db.Database.ExecuteSqlRawAsync(
+                "UPDATE \"Groups\" SET \"AdventurersPoints\" = 12, \"AdventurersPointsUpdatedAt\" = {0}, \"TravelAgencyPoints\" = 7 WHERE \"SlackChannelId\" = 'C1'",
+                entered.ToString("yyyy-MM-dd HH:mm:ss+00:00"));
+            db.BonusPointsEntries.AddRange(
+                new BonusPointsEntry { GroupId = wolvesId, CategoryKey = "Adventurers", Delta = 12, Total = 12, ChangedAt = entered },
+                new BonusPointsEntry { GroupId = wolvesId, CategoryKey = "TravelAgency", Delta = 7, Total = 7, ChangedAt = entered });
             await db.SaveChangesAsync();
+        }
+
+        for (var start = 0; start < 2; start++)
+        {
+            await using var db = new ScoutingDbContext(options);
+            await Create(db, settings).InitializeAsync();
         }
 
         await using (var db = new ScoutingDbContext(options))
         {
+            var points = await db.GroupBonusPoints.OrderBy(p => p.CategoryKey).ToListAsync();
+            points.Select(p => (p.GroupId, p.CategoryKey, p.Points)).Should().Equal((wolvesId, "avonturiers", 12), (wolvesId, "reisbureau", 7));
+            points[0].UpdatedAt.Should().Be(entered);
+            (await db.BonusPointsEntries.Select(e => e.CategoryKey).OrderBy(k => k).ToListAsync()).Should().Equal("avonturiers", "reisbureau");
+
+            var columns = await db.Database.SqlQueryRaw<string>("SELECT name AS \"Value\" FROM pragma_table_info('Groups')").ToListAsync();
+            columns.Should().NotContain(c => c.Contains("Adventurers") || c.Contains("TravelAgency"));
+
+            var stats = await new SubmissionRepository(db).GetStatisticsAsync();
+            stats.GroupStatistics.Single(g => g.GroupId == wolvesId).BonusTotal.Should().Be(19);
+        }
+
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+    }
+
+    [Theory]
+    [InlineData("Foto Wedstrijd", "Fotowedstrijd")]
+    [InlineData("pubquiz", "")]
+    public async Task InitializeAsync_InvalidBonusCategory_ShouldStopTheStart(string key, string name)
+    {
+        var settings = Settings();
+        settings.BonusCategories = new List<BonusCategoryConfig> { new() { Key = key, Name = name } };
+        await using var db = new ScoutingDbContext(new DbContextOptionsBuilder<ScoutingDbContext>().UseInMemoryDatabase($"Init_{Guid.NewGuid():N}").Options);
+
+        var act = () => Create(db, settings).InitializeAsync();
+
+        await act.Should().ThrowAsync<StartupConfigurationException>().WithMessage("*BonusCategories*");
+    }
+
+    [Fact]
+    public async Task InitializeAsync_BonusCategoryKeyTwice_ShouldStopTheStart()
+    {
+        var settings = Settings();
+        settings.BonusCategories = new List<BonusCategoryConfig> { new() { Key = "quiz", Name = "Quiz" }, new() { Key = "quiz", Name = "Quiz 2" } };
+        await using var db = new ScoutingDbContext(new DbContextOptionsBuilder<ScoutingDbContext>().UseInMemoryDatabase($"Init_{Guid.NewGuid():N}").Options);
+
+        var act = () => Create(db, settings).InitializeAsync();
+
+        await act.Should().ThrowAsync<StartupConfigurationException>().WithMessage("*twee keer*");
+    }
+
+    [Fact]
+    public async Task InitializeAsync_DatabaseWithAssignmentNumbers_ShouldMoveThemToCodes()
+    {
+        var path = Path.Combine(_temp.Path, "old.db");
+        var options = new DbContextOptionsBuilder<ScoutingDbContext>().UseSqlite($"Data Source={path}").Options;
+        var settings = Settings("Opdracht,standaard,awesome,titel,beschrijving\n1,1,2,Kampvuur,\n2,2,4\nA,3,6,Speciaal,\"Bouw, met z'n allen, een toren\"\n");
+        var groupId = Guid.NewGuid();
+        await using (var db = new ScoutingDbContext(options))
+        {
+            // A database from before assignment codes: numbers, with Assignments.Number NOT NULL and no default
+            await db.Database.EnsureCreatedAsync();
+            db.Groups.Add(new Domain.Entities.Group { Id = groupId, Name = "De Wolven", Abbreviation = "DWO", SlackChannelId = "C1" });
+            await db.SaveChangesAsync();
+            await db.Database.ExecuteSqlRawAsync("""
+                DROP TABLE "Assignments";
+                CREATE TABLE "Assignments" (
+                    "Id" TEXT NOT NULL CONSTRAINT "PK_Assignments" PRIMARY KEY,
+                    "Number" INTEGER NOT NULL,
+                    "StandardPoints" INTEGER NOT NULL,
+                    "AwesomePoints" INTEGER NOT NULL,
+                    "CreatedAt" TEXT NOT NULL);
+                CREATE UNIQUE INDEX "IX_Assignments_Number" ON "Assignments" ("Number");
+                INSERT INTO "Assignments" VALUES ('7C9E6679-7425-40DE-944B-E07FC1F90AE7', 2, 1, 1, '2026-10-01 10:00:00+00:00');
+                DROP INDEX "IX_Submissions_AssignmentCode";
+                ALTER TABLE "Submissions" DROP COLUMN "AssignmentCode";
+                ALTER TABLE "Submissions" ADD COLUMN "AssignmentNumber" INTEGER NULL;
+                CREATE INDEX "IX_Submissions_AssignmentNumber" ON "Submissions" ("AssignmentNumber");
+                """);
+            await db.Database.ExecuteSqlRawAsync("""
+                INSERT INTO "Submissions" ("Id", "GroupId", "AssignmentNumber", "SlackChannelId", "SlackMessageId", "Submitter",
+                    "FileName", "StoragePath", "FileSizeBytes", "ContentType", "Status", "CreatedAt")
+                VALUES ('0F8FAD5B-D9CB-469F-A165-70867728950E', {0}, 2, 'C1', '1727700000.000100', 'U1',
+                    'a.jpg', '/s/a.jpg', 1, 'image/jpeg', 'Approved', '2026-10-01 10:00:00+00:00')
+                """, groupId.ToString().ToUpperInvariant());
+
+            await Create(db, settings).InitializeAsync();
+        }
+
+        await using (var db = new ScoutingDbContext(options))
+        {
+            // A second start finds nothing left to move
             await Create(db, settings).InitializeAsync();
 
-            var wolves = await db.Groups.SingleAsync(g => g.SlackChannelId == "C1");
-            wolves.AdventurersPoints.Should().Be(12, "the group sync only changes the names from the settings");
-            wolves.TravelAgencyPoints.Should().Be(7);
+            var assignments = await new AssignmentRepository(db).GetAllAsync();
+            assignments.Select(a => a.Code).Should().Equal("1", "2", "A");
+            assignments[0].Title.Should().Be("Kampvuur");
+            assignments[1].StandardPoints.Should().Be(2, "the points file wins over the old row");
+            assignments[2].Description.Should().Be("Bouw, met z'n allen, een toren");
+            (await db.Submissions.SingleAsync()).AssignmentCode.Should().Be("2");
+
+            var columns = await db.Database.SqlQueryRaw<string>(
+                "SELECT name AS \"Value\" FROM pragma_table_info('Assignments') UNION ALL SELECT name FROM pragma_table_info('Submissions')").ToListAsync();
+            columns.Should().NotContain(new[] { "Number", "AssignmentNumber" });
         }
 
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
@@ -136,13 +237,13 @@ public class DatabaseInitializerTests : IDisposable
             await Create(db, settings).InitializeAsync();
 
             var wolves = await db.Groups.SingleAsync(g => g.SlackChannelId == "C1");
-            await new GroupRepository(db).SetBonusPointsAsync(new[] { new BonusPointsChange(wolves.Id, 0, 0, 5, 0) });
+            await new GroupRepository(db).SetBonusPointsAsync(new[] { new BonusPointsChange(wolves.Id, "avonturiers", 0, 5) });
         }
 
         await using (var db = new ScoutingDbContext(options))
         {
             var entry = await db.BonusPointsEntries.SingleAsync();
-            entry.Category.Should().Be(BonusCategory.Adventurers);
+            entry.CategoryKey.Should().Be("avonturiers");
             entry.Delta.Should().Be(5);
         }
 

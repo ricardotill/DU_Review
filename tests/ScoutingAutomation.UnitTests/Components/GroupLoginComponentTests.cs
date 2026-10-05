@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using ScoutingAutomation.Infrastructure.Services;
 using ScoutingAutomation.Web.Components.Layout;
 using ScoutingAutomation.Web.Components.Pages;
+using ScoutingAutomation.Web.Components.Shared;
 using Xunit;
 
 namespace ScoutingAutomation.UnitTests.Components;
@@ -191,6 +192,38 @@ public class GroupLoginComponentTests : PageTestBase
         var cut = RenderLayout("body");
 
         cut.Markup.Should().NotContain("Simulatiemodus").And.NotContain("Handmatige modus").And.NotContain("Verbonden met Slack");
+    }
+
+    private void AnnounceOwlsUpload() =>
+        Services.GetRequiredService<ISubmissionChangeNotifier>().NotifyCreated(
+            new SubmissionCreatedNotification(Owls.Id, Owls.Name, Owls.Abbreviation, "7", "Scout Uil", [Guid.NewGuid()], DateTimeOffset.UtcNow));
+
+    [Fact]
+    public void Layout_ShouldNotShowAGroupTheToastsOfOtherGroups()
+    {
+        LogInAsGroup(Wolves);
+
+        var cut = RenderLayout("body");
+        AnnounceOwlsUpload();
+
+        cut.FindAll(".toast-stack").Should().BeEmpty();
+        cut.Markup.Should().NotContain("De Bosuilen");
+    }
+
+    [Theory]
+    [InlineData(false, 0)]
+    [InlineData(true, 1)]
+    public void ToastHost_ShouldOnlyAnnounceUploadsToTheJury(bool jury, int expectedToasts)
+    {
+        // Checked by the toasts themselves too, not only by the layout around them
+        if (jury) LogInAsJury();
+        else LogInAsGroup(Wolves);
+
+        var cut = Render<ToastHost>();
+        AnnounceOwlsUpload();
+
+        cut.WaitForAssertion(() => cut.FindAll(".submission-toast").Should().HaveCount(expectedToasts));
+        if (!jury) cut.Markup.Should().NotContain("De Bosuilen");
     }
 
     [Fact]

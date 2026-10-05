@@ -72,7 +72,7 @@ public class AttemptAfterApprovalIntegrationTests : IClassFixture<WebApplication
 
         await _app.SendEventAsync(_client, SlackEvents.Edited(Channel, other, "Opdracht 45", "Opdracht 44", files));
 
-        (await Submissions(other)).Single().AssignmentNumber.Should().Be(45);
+        (await Submissions(other)).Single().AssignmentCode.Should().Be("45");
         _slack.Calls("reactions.add").Should().ContainSingle(c => c["timestamp"] == other).Which["name"].Should().Be("lock");
     }
 

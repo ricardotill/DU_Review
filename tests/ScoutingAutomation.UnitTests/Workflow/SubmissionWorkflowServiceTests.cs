@@ -44,8 +44,8 @@ public class SubmissionWorkflowServiceTests
             }
         });
 
-        _assignmentRepoMock.Setup(r => r.GetByNumberAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((int number, CancellationToken _) => new Assignment { Number = number, StandardPoints = 1, AwesomePoints = 2 });
+        _assignmentRepoMock.Setup(r => r.GetByCodeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string code, CancellationToken _) => new Assignment { Code = code, StandardPoints = 1, AwesomePoints = 2 });
         _slackClientMock.Setup(c => c.AddReactionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
     }
@@ -86,7 +86,7 @@ public class SubmissionWorkflowServiceTests
             .ReturnsAsync(group);
 
         _parserMock.Setup(p => p.Parse(It.IsAny<string>()))
-            .Returns(AssignmentParseResult.Succeeded(4));
+            .Returns(AssignmentParseResult.Succeeded("4"));
 
         _slackClientMock.Setup(c => c.DownloadFileAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MemoryStream(new byte[] { 1, 2, 3 }));
@@ -117,7 +117,7 @@ public class SubmissionWorkflowServiceTests
         result.CreatedSubmissionIds.Should().HaveCount(1);
         _subRepoMock.Verify(r => r.AddAsync(It.Is<Submission>(s =>
             s.GroupId == group.Id &&
-            s.AssignmentNumber == 4 &&
+            s.AssignmentCode == "4" &&
             s.Status == SubmissionStatus.Pending &&
             s.FileName == "foto.jpg" &&
             s.StoragePath == "/storage/de-zeearenden/DZA 4.jpg"
@@ -284,8 +284,8 @@ public class SubmissionWorkflowServiceTests
         // Arrange
         var group = SetupGroupAndStorage();
         _parserMock.Setup(p => p.Parse(It.IsAny<string>()))
-            .Returns(AssignmentParseResult.Succeeded(999));
-        _assignmentRepoMock.Setup(r => r.GetByNumberAsync(999, It.IsAny<CancellationToken>()))
+            .Returns(AssignmentParseResult.Succeeded("999"));
+        _assignmentRepoMock.Setup(r => r.GetByCodeAsync("999", It.IsAny<CancellationToken>()))
             .ReturnsAsync((Assignment?)null);
         var service = CreateService();
 
@@ -308,7 +308,7 @@ public class SubmissionWorkflowServiceTests
         _groupRepoMock.Setup(r => r.GetBySlackChannelIdAsync(group.SlackChannelId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(group);
         _parserMock.Setup(p => p.Parse(It.IsAny<string>()))
-            .Returns(AssignmentParseResult.Succeeded(4));
+            .Returns(AssignmentParseResult.Succeeded("4"));
         _slackClientMock.Setup(c => c.DownloadFileAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MemoryStream(new byte[] { 1, 2, 3 }));
         _storageMock.Setup(s => s.SaveInitialFileAsync(group.Name, It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
@@ -363,8 +363,9 @@ public class SubmissionWorkflowServiceTests
     {
         // Arrange
         var group = new Group { Id = Guid.NewGuid(), Name = "De Wolven" };
-        var submission = new Submission { GroupId = group.Id, Group = group, StoragePath = "/storage/de-wolven/CDW 3.jpg" };
+        var submission = new Submission { GroupId = group.Id, Group = group, StoragePath = "/storage/de-wolven/CDW 3.jpg", SlackChannelId = "C1", SlackMessageId = "1.1" };
         _subRepoMock.Setup(r => r.GetByIdAsync(submission.Id, It.IsAny<CancellationToken>())).ReturnsAsync(submission);
+        _subRepoMock.Setup(r => r.GetBySlackMessageIdAsync("C1", "1.1", It.IsAny<CancellationToken>())).ReturnsAsync(new[] { submission });
         _storageMock.Setup(s => s.MoveFileToStatusAsync(group.Name, submission.StoragePath, SubmissionStatus.Approved, It.IsAny<CancellationToken>()))
             .ReturnsAsync("/storage/de-wolven/approved/CDW 3.jpg");
         var service = CreateService();

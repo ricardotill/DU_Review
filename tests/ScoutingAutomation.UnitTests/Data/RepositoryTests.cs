@@ -49,16 +49,16 @@ public class AssignmentRepositoryTests
         await using var db = TestDb.Create();
         var repo = new AssignmentRepository(db);
 
-        await repo.UpsertAsync(new Assignment { Number = 2, StandardPoints = 1, AwesomePoints = 2 });
-        await repo.UpsertAsync(new Assignment { Number = 1, StandardPoints = 1, AwesomePoints = 2 });
-        await repo.UpsertAsync(new Assignment { Number = 2, StandardPoints = 3, AwesomePoints = 6 });
+        await repo.UpsertAsync(new Assignment { Code = "2", StandardPoints = 1, AwesomePoints = 2 });
+        await repo.UpsertAsync(new Assignment { Code = "1", StandardPoints = 1, AwesomePoints = 2 });
+        await repo.UpsertAsync(new Assignment { Code = "2", StandardPoints = 3, AwesomePoints = 6 });
 
         var all = await repo.GetAllAsync();
-        all.Select(a => a.Number).Should().Equal(1, 2);
-        var updated = await repo.GetByNumberAsync(2);
+        all.Select(a => a.Code).Should().Equal("1", "2");
+        var updated = await repo.GetByCodeAsync("2");
         updated!.StandardPoints.Should().Be(3);
         updated.AwesomePoints.Should().Be(6);
-        (await repo.GetByNumberAsync(99)).Should().BeNull();
+        (await repo.GetByCodeAsync("99")).Should().BeNull();
     }
 }
 
@@ -74,7 +74,7 @@ public class SubmissionRepositoryTests
 
         var approved = new Submission
         {
-            GroupId = wolves.Id, AssignmentNumber = 1, Status = SubmissionStatus.Approved, SlackChannelId = "CW",
+            GroupId = wolves.Id, AssignmentCode = "1", Status = SubmissionStatus.Approved, SlackChannelId = "CW",
             SlackMessageId = "1.0", FileName = "kampvuur.jpg", Submitter = "Tim", MessageText = "Opdracht 1 vuur", CreatedAt = BaseTime
         };
         approved.Reviews.Add(new Review { Reviewer = "Sara_Jury", Status = SubmissionStatus.Approved, CreatedAt = BaseTime.AddMinutes(1) });
@@ -82,12 +82,12 @@ public class SubmissionRepositoryTests
 
         var pending = new Submission
         {
-            GroupId = owls.Id, AssignmentNumber = 2, Status = SubmissionStatus.Pending, SlackChannelId = "CB",
+            GroupId = owls.Id, AssignmentCode = "2", Status = SubmissionStatus.Pending, SlackChannelId = "CB",
             SlackMessageId = "2.0", FileName = "toren.png", Submitter = "Emma", CreatedAt = BaseTime.AddHours(1)
         };
         var older = new Submission
         {
-            GroupId = owls.Id, AssignmentNumber = 1, Status = SubmissionStatus.Rejected, SlackChannelId = "CB",
+            GroupId = owls.Id, AssignmentCode = "1", Status = SubmissionStatus.Rejected, SlackChannelId = "CB",
             SlackMessageId = "3.0", FileName = "knopen.mp4", Submitter = "Daan", CreatedAt = BaseTime.AddDays(-1)
         };
         db.Submissions.AddRange(approved, pending, older);
@@ -138,7 +138,7 @@ public class SubmissionRepositoryTests
     public static IEnumerable<object[]> Filters()
     {
         yield return new object[] { "group", new Func<Group, Group, SubmissionFilter>((w, _) => new SubmissionFilter { GroupId = w.Id }), new[] { "kampvuur.jpg" } };
-        yield return new object[] { "assignment", new Func<Group, Group, SubmissionFilter>((_, _) => new SubmissionFilter { AssignmentNumber = 1 }), new[] { "kampvuur.jpg", "knopen.mp4" } };
+        yield return new object[] { "assignment", new Func<Group, Group, SubmissionFilter>((_, _) => new SubmissionFilter { AssignmentCode = "1" }), new[] { "kampvuur.jpg", "knopen.mp4" } };
         yield return new object[] { "status", new Func<Group, Group, SubmissionFilter>((_, _) => new SubmissionFilter { Status = SubmissionStatus.Pending }), new[] { "toren.png" } };
         yield return new object[] { "reviewer", new Func<Group, Group, SubmissionFilter>((_, _) => new SubmissionFilter { Reviewer = " sara " }), new[] { "kampvuur.jpg" } };
         yield return new object[] { "from", new Func<Group, Group, SubmissionFilter>((_, _) => new SubmissionFilter { FromDate = BaseTime }), new[] { "toren.png", "kampvuur.jpg" } };
@@ -168,7 +168,7 @@ public class SubmissionRepositoryTests
         var (repo, _, _, subs) = await SeedAsync(db);
         var detached = new Submission
         {
-            Id = subs[1].Id, GroupId = subs[1].GroupId, AssignmentNumber = 2, Status = SubmissionStatus.Awesome,
+            Id = subs[1].Id, GroupId = subs[1].GroupId, AssignmentCode = "2", Status = SubmissionStatus.Awesome,
             SlackChannelId = "CB", SlackMessageId = "2.0", FileName = "toren.png", Submitter = "Emma", CreatedAt = subs[1].CreatedAt
         };
 

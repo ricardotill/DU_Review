@@ -51,6 +51,25 @@ public class GroupKeyIntegrationTests : IClassFixture<WebApplicationFactory<Prog
     }
 
     [Fact]
+    public async Task GroupLogin_ShouldNotClearEarlierWrongKeys()
+    {
+        // Otherwise a group could guess, log in with its own key to clear the count, and guess on without limit
+        using var guesser = _app.CreateClient();
+        for (var i = 0; i < LoginAttemptLimiter.MaxFailures - 1; i++)
+        {
+            var wrong = await TestApp.PostFormAsync(guesser, "/login", "login", new() { ["Input.Key"] = "WRONG" });
+            (await wrong.Content.ReadAsStringAsync()).Should().Contain("Deze sleutel klopt niet.");
+        }
+
+        using var group = await CreateGroupClientAsync();
+
+        var last = await TestApp.PostFormAsync(guesser, "/login", "login", new() { ["Input.Key"] = "WRONG" });
+        (await last.Content.ReadAsStringAsync()).Should().Contain("Deze sleutel klopt niet.");
+        var blocked = await TestApp.PostFormAsync(guesser, "/login", "login", new() { ["Input.Key"] = TestApp.AccessKey });
+        (await blocked.Content.ReadAsStringAsync()).Should().Contain("Te veel verkeerde sleutels");
+    }
+
+    [Fact]
     public async Task Group_ShouldOpenItsOwnPages()
     {
         using var client = await CreateGroupClientAsync();

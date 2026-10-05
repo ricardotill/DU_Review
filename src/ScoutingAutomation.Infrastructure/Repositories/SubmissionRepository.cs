@@ -4,17 +4,22 @@ using ScoutingAutomation.Domain.Enums;
 using ScoutingAutomation.Domain.Exceptions;
 using ScoutingAutomation.Domain.Interfaces;
 using ScoutingAutomation.Domain.Models;
+using ScoutingAutomation.Contracts.Configuration;
 using ScoutingAutomation.Infrastructure.Data;
+using ScoutingAutomation.Infrastructure.Services;
 
 namespace ScoutingAutomation.Infrastructure.Repositories;
 
 public class SubmissionRepository : ISubmissionRepository
 {
     private readonly ScoutingDbContext _context;
+    private readonly RuntimeSettingsService? _runtime;
 
-    public SubmissionRepository(ScoutingDbContext context)
+    /// <param name="runtime">Gives the bonus categories in use; without it the default categories count.</param>
+    public SubmissionRepository(ScoutingDbContext context, RuntimeSettingsService? runtime = null)
     {
         _context = context;
+        _runtime = runtime;
     }
 
     public async Task<Submission?> GetByIdAsync(Guid id, CancellationToken ct = default)
@@ -61,9 +66,9 @@ public class SubmissionRepository : ISubmissionRepository
             query = query.Where(s => s.GroupId == filter.GroupId.Value);
         }
 
-        if (filter.AssignmentNumber.HasValue)
+        if (filter.AssignmentCode != null)
         {
-            query = query.Where(s => s.AssignmentNumber == filter.AssignmentNumber.Value);
+            query = query.Where(s => s.AssignmentCode == filter.AssignmentCode);
         }
 
         if (filter.Status.HasValue)
@@ -104,7 +109,7 @@ public class SubmissionRepository : ISubmissionRepository
     }
 
     /// <param name="AchievedAt">Post time of the first submission with the best status.</param>
-    private sealed record AssignmentOutcome(Guid GroupId, int AssignmentNumber, SubmissionStatus Status, DateTimeOffset AchievedAt);
+    private sealed record AssignmentOutcome(Guid GroupId, string AssignmentCode, SubmissionStatus Status, DateTimeOffset AchievedAt);
 
     /// <summary>
     /// One outcome per group and assignment, using the best status of all its submissions.
@@ -112,14 +117,14 @@ public class SubmissionRepository : ISubmissionRepository
     private static List<AssignmentOutcome> GetAssignmentOutcomes(IEnumerable<Submission> submissions)
     {
         return submissions
-            .Where(s => s.AssignmentNumber.HasValue)
-            .GroupBy(s => (s.GroupId, Number: s.AssignmentNumber!.Value))
+            .Where(s => s.AssignmentCode != null)
+            .GroupBy(s => (s.GroupId, Code: s.AssignmentCode!))
             .Select(g =>
             {
                 var best = g.Select(s => s.Status).Best();
                 return new AssignmentOutcome(
                     g.Key.GroupId,
-                    g.Key.Number,
+                    g.Key.Code,
                     best,
                     g.Where(s => s.Status.Rank() == best.Rank()).Min(s => s.CreatedAt));
             })
@@ -129,27 +134,25 @@ public class SubmissionRepository : ISubmissionRepository
     private static int CountStatus(IEnumerable<AssignmentOutcome> outcomes, SubmissionStatus status) =>
         outcomes.Count(o => o.Status.Rank() == status.Rank());
 
-    private static int CalculateScore(IEnumerable<AssignmentOutcome> groupOutcomes, IReadOnlyDictionary<int, Assignment> assignmentsByNumber)
+    private static int CalculateScore(IEnumerable<AssignmentOutcome> groupOutcomes, IReadOnlyDictionary<string, Assignment> assignmentsByCode)
     {
         return groupOutcomes.Sum(o =>
-            assignmentsByNumber.TryGetValue(o.AssignmentNumber, out var assignment) ? assignment.PointsFor(o.Status) : 0);
+            assignmentsByCode.TryGetValue(o.AssignmentCode, out var assignment) ? assignment.PointsFor(o.Status) : 0);
     }
 
-    /// <summary>Points entered by hand, on the chart at each change.</summary>
-    private static IEnumerable<ScoreEvent> BonusEvents(IEnumerable<Group> groups, IReadOnlyCollection<BonusPointsEntry> history)
+    /// <summary>Points entered by hand, on the chart at each change; only categories in use.</summary>
+    private static IEnumerable<ScoreEvent> BonusEvents(IEnumerable<Group> groups, IReadOnlyList<BonusCategoryConfig> categories,
+        IReadOnlyDictionary<(Guid, string), GroupBonusPoints> current, IReadOnlyCollection<BonusPointsEntry> history)
     {
         foreach (var group in groups)
         {
-            foreach (var e in CategoryEvents(group, BonusCategory.Adventurers, group.AdventurersPoints,
-                         group.AdventurersPointsUpdatedAt, history))
+            foreach (var category in categories)
             {
-                yield return e;
-            }
-
-            foreach (var e in CategoryEvents(group, BonusCategory.TravelAgency, group.TravelAgencyPoints,
-                         group.TravelAgencyPointsUpdatedAt, history))
-            {
-                yield return e;
+                var row = current.GetValueOrDefault((group.Id, category.Key));
+                foreach (var e in CategoryEvents(group, category, row?.Points ?? 0, row?.UpdatedAt, history))
+                {
+                    yield return e;
+                }
             }
         }
     }
@@ -161,10 +164,10 @@ public class SubmissionRepository : ISubmissionRepository
     public static readonly TimeSpan BonusMergeWindow = TimeSpan.FromMinutes(5);
 
     private static IEnumerable<ScoreEvent> CategoryEvents(
-        Group group, BonusCategory category, int current, DateTimeOffset? updatedAt, IReadOnlyCollection<BonusPointsEntry> history)
+        Group group, BonusCategoryConfig category, int current, DateTimeOffset? updatedAt, IReadOnlyCollection<BonusPointsEntry> history)
     {
         var steps = history
-            .Where(h => h.GroupId == group.Id && h.Category == category)
+            .Where(h => h.GroupId == group.Id && h.CategoryKey == category.Key)
             .OrderBy(h => h.ChangedAt)
             .Select(h => (At: h.ChangedAt, Points: h.Delta))
             .ToList();
@@ -182,14 +185,14 @@ public class SubmissionRepository : ISubmissionRepository
             steps.Add((steps[^1].At, missing));
         }
 
-        var label = category.Label();
+        var label = category.Name;
         DateTimeOffset? bucketAt = null;
         var bucketPoints = 0;
         foreach (var step in steps)
         {
             if (bucketAt != null && step.At - bucketAt.Value >= BonusMergeWindow)
             {
-                if (bucketPoints != 0) yield return new ScoreEvent(group.Id, 0, bucketAt.Value, bucketPoints, label);
+                if (bucketPoints != 0) yield return new ScoreEvent(group.Id, string.Empty, bucketAt.Value, bucketPoints, label);
                 bucketAt = null;
                 bucketPoints = 0;
             }
@@ -200,7 +203,7 @@ public class SubmissionRepository : ISubmissionRepository
 
         if (bucketAt != null && bucketPoints != 0)
         {
-            yield return new ScoreEvent(group.Id, 0, bucketAt.Value, bucketPoints, label);
+            yield return new ScoreEvent(group.Id, string.Empty, bucketAt.Value, bucketPoints, label);
         }
     }
 
@@ -225,23 +228,28 @@ public class SubmissionRepository : ISubmissionRepository
             ApprovedCount = CountStatus(outcomes, SubmissionStatus.Approved),
             RejectedCount = CountStatus(outcomes, SubmissionStatus.Rejected),
             AwesomeCount = CountStatus(outcomes, SubmissionStatus.Awesome),
-            UnresolvedCount = submissions.Count(s => !s.AssignmentNumber.HasValue)
+            UnresolvedCount = submissions.Count(s => s.AssignmentCode == null)
         };
 
         // Group Stats
-        var assignmentsByNumber = assignments.ToDictionary(a => a.Number);
+        var assignmentsByCode = assignments.ToDictionary(a => a.Code);
         var groups = await _context.Groups.AsNoTracking().ToListAsync(ct);
         var bonusHistory = await _context.BonusPointsEntries.AsNoTracking().ToListAsync(ct);
+
+        // Points of a category that is no longer in use are kept, but count nowhere
+        var categories = _runtime?.BonusCategories ?? BonusCategoryConfig.Defaults;
+        var bonusPoints = (await _context.GroupBonusPoints.AsNoTracking().ToListAsync(ct))
+            .ToDictionary(p => (p.GroupId, p.CategoryKey));
         foreach (var group in groups)
         {
             var groupOutcomes = outcomes.Where(o => o.GroupId == group.Id).ToList();
+            var groupBonus = categories.ToDictionary(c => c.Key, c => bonusPoints.GetValueOrDefault((group.Id, c.Key))?.Points ?? 0);
             stats.GroupStatistics.Add(new GroupStatistic
             {
                 GroupId = group.Id,
                 GroupName = group.Name,
-                Score = CalculateScore(groupOutcomes, assignmentsByNumber) + group.AdventurersPoints + group.TravelAgencyPoints,
-                AdventurersPoints = group.AdventurersPoints,
-                TravelAgencyPoints = group.TravelAgencyPoints,
+                Score = CalculateScore(groupOutcomes, assignmentsByCode) + groupBonus.Values.Sum(),
+                BonusPoints = groupBonus,
                 TotalSubmissions = groupOutcomes.Count,
                 PendingCount = CountStatus(groupOutcomes, SubmissionStatus.Pending),
                 ApprovedCount = CountStatus(groupOutcomes, SubmissionStatus.Approved),
@@ -254,11 +262,11 @@ public class SubmissionRepository : ISubmissionRepository
         stats.ScoreEvents = outcomes
             .Select(o => new ScoreEvent(
                 o.GroupId,
-                o.AssignmentNumber,
+                o.AssignmentCode,
                 o.AchievedAt,
-                assignmentsByNumber.TryGetValue(o.AssignmentNumber, out var assignment) ? assignment.PointsFor(o.Status) : 0))
+                assignmentsByCode.TryGetValue(o.AssignmentCode, out var assignment) ? assignment.PointsFor(o.Status) : 0))
             .Where(e => e.Points > 0)
-            .Concat(BonusEvents(groups, bonusHistory))
+            .Concat(BonusEvents(groups, categories, bonusPoints, bonusHistory))
             .OrderBy(e => e.At)
             .ToList();
 
@@ -268,18 +276,18 @@ public class SubmissionRepository : ISubmissionRepository
         }
 
         // Assignment Stats
-        var assignmentNumbers = assignments.Select(a => a.Number)
-            .Union(outcomes.Select(o => o.AssignmentNumber))
+        var assignmentCodes = assignments.Select(a => a.Code)
+            .Union(outcomes.Select(o => o.AssignmentCode))
             .Distinct()
-            .OrderBy(n => n);
+            .OrderBy(c => c, AssignmentCode.Comparer);
 
-        foreach (var num in assignmentNumbers)
+        foreach (var code in assignmentCodes)
         {
-            var assignOutcomes = outcomes.Where(o => o.AssignmentNumber == num).ToList();
+            var assignOutcomes = outcomes.Where(o => o.AssignmentCode == code).ToList();
 
             stats.AssignmentStatistics.Add(new AssignmentStatistic
             {
-                AssignmentNumber = num,
+                AssignmentCode = code,
                 TotalSubmissions = assignOutcomes.Count,
                 ApprovedCount = CountStatus(assignOutcomes, SubmissionStatus.Approved),
                 PendingCount = CountStatus(assignOutcomes, SubmissionStatus.Pending),
