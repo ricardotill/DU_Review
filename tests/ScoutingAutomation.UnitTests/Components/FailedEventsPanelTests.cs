@@ -7,7 +7,7 @@ using ScoutingAutomation.Domain.Entities;
 using ScoutingAutomation.Domain.Interfaces;
 using ScoutingAutomation.Infrastructure.Slack.Events;
 using ScoutingAutomation.Infrastructure.Slack.Sync;
-using ScoutingAutomation.Web.Components.Shared;
+using ScoutingAutomation.Web.Components.Panels;
 using Xunit;
 
 namespace ScoutingAutomation.UnitTests.Components;

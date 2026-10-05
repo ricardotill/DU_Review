@@ -6,6 +6,7 @@ using ScoutingAutomation.Domain.Enums;
 using ScoutingAutomation.Domain.Interfaces;
 using ScoutingAutomation.Infrastructure.Settings;
 using ScoutingAutomation.Web.Components.Pages;
+using ScoutingAutomation.Web.Components.Scores;
 using ScoutingAutomation.Web.Components.Shared;
 using Xunit;
 

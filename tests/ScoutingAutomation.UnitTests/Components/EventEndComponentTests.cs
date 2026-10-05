@@ -3,7 +3,8 @@ using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using ScoutingAutomation.Infrastructure.Settings;
 using ScoutingAutomation.Web.Components.Pages;
-using ScoutingAutomation.Web.Components.Shared;
+using ScoutingAutomation.Web.Components.Panels;
+using ScoutingAutomation.Web.Components.Scores;
 using Xunit;
 
 namespace ScoutingAutomation.UnitTests.Components;

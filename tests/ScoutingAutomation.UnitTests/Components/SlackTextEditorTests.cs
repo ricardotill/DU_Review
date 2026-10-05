@@ -2,7 +2,7 @@ using Bunit;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using ScoutingAutomation.Infrastructure.Settings;
-using ScoutingAutomation.Web.Components.Shared;
+using ScoutingAutomation.Web.Components.Messaging;
 using Xunit;
 
 namespace ScoutingAutomation.UnitTests.Components;

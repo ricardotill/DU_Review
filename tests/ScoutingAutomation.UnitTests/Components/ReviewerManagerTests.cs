@@ -5,7 +5,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using NSubstitute;
 using ScoutingAutomation.Infrastructure.Settings;
 using ScoutingAutomation.Infrastructure.Slack;
-using ScoutingAutomation.Web.Components.Shared;
+using ScoutingAutomation.Web.Components.Panels;
 using Xunit;
 
 namespace ScoutingAutomation.UnitTests.Components;

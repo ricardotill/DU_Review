@@ -12,7 +12,7 @@ using ScoutingAutomation.Domain.Interfaces;
 using ScoutingAutomation.Domain.Models;
 using ScoutingAutomation.Infrastructure.Settings;
 using ScoutingAutomation.Infrastructure.Workflow;
-using ScoutingAutomation.Web.Components.Shared;
+using ScoutingAutomation.Web.Components.Panels;
 using Xunit;
 
 namespace ScoutingAutomation.UnitTests.Components;

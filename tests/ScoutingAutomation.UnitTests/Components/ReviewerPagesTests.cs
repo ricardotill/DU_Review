@@ -5,7 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using ScoutingAutomation.Domain.Enums;
 using ScoutingAutomation.Infrastructure.Settings;
 using ScoutingAutomation.Web.Components.Pages;
-using ScoutingAutomation.Web.Components.Shared;
+using ScoutingAutomation.Web.Components.Panels;
 using Xunit;
 
 namespace ScoutingAutomation.UnitTests.Components;

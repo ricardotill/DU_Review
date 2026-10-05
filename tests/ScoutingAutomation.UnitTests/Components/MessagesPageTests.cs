@@ -40,7 +40,7 @@ public class MessagesPageTests : PageTestBase
     }
 
     private static void Type(IRenderedComponent<Messages> cut) =>
-        cut.InvokeAsync(() => cut.FindComponent<ScoutingAutomation.Web.Components.Shared.SlackComposer>().Instance.OnContentChanged("*Lunch* om 12:00 🍕"));
+        cut.InvokeAsync(() => cut.FindComponent<ScoutingAutomation.Web.Components.Messaging.SlackComposer>().Instance.OnContentChanged("*Lunch* om 12:00 🍕"));
 
     [Fact]
     public void AllGroups_ShouldBeSelectedAtFirst()
