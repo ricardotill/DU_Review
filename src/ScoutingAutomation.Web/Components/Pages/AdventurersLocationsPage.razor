@@ -1,0 +1,255 @@
+@page "/avonturiers/locaties"
+@rendermode InteractiveServer
+@inherits LiveComponentBase
+@inject RuntimeSettingsService Runtime
+
+<PageTitle>Locaties Avonturiers - DU Review</PageTitle>
+
+<PageHeader Title="Locaties" Subtitle="De plekken waar de Avonturiers inchecken. Het nummer is wat de groepen typen: &quot;Locatie 7&quot;." />
+<AdventurersTabs />
+
+@if (!Runtime.AdventurersEnabled)
+{
+    <AdventurersOff />
+}
+else
+{
+    <div class="row g-4">
+        <div class="col-xl-7">
+            <MapView @ref="map" Markers="markers" Pickable="isAdmin" OnPicked="OnPicked" Height="60vh" />
+            @if (isAdmin)
+            {
+                <div class="stat-caption mt-1">Klik op de kaart om de pin van de locatie in het formulier te zetten.</div>
+            }
+        </div>
+        <div class="col-xl-5 d-flex flex-column gap-4">
+            <AuthorizeView Roles="@KeyAuth.AdminRole">
+                <div class="glass-panel p-4">
+                    <h2 class="panel-title"><i class="bi bi-geo-alt-fill text-danger"></i> @(editing ? $"Locatie {form.Number} aanpassen" : "Locatie toevoegen")</h2>
+                    <form @onsubmit="Save">
+                        <div class="row g-2">
+                            <div class="col-3">
+                                <label class="form-label text-secondary small fw-semibold mb-1">Nummer</label>
+                                <input type="number" min="1" max="@LocationImport.MaxNumber" class="form-control form-control-dark form-control-sm location-number" @bind="form.Number" disabled="@editing" />
+                            </div>
+                            <div class="col-9">
+                                <label class="form-label text-secondary small fw-semibold mb-1">Naam</label>
+                                <input type="text" class="form-control form-control-dark form-control-sm location-name" maxlength="150" @bind="form.Name" />
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label text-secondary small fw-semibold mb-1">Breedtegraad</label>
+                                <input type="number" step="any" class="form-control form-control-dark form-control-sm location-lat" @bind="form.Latitude" />
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label text-secondary small fw-semibold mb-1">Lengtegraad</label>
+                                <input type="number" step="any" class="form-control form-control-dark form-control-sm location-lng" @bind="form.Longitude" />
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label text-secondary small fw-semibold mb-1">Hint (optioneel, staat op de kaart)</label>
+                                <textarea class="form-control form-control-dark form-control-sm location-hint" rows="2" maxlength="1000" @bind="form.Hint"></textarea>
+                            </div>
+                        </div>
+                        <div class="d-flex gap-2 mt-3">
+                            <button type="submit" class="btn btn-sm btn-scout-primary save-location"><i class="bi bi-check-lg me-1"></i> Opslaan</button>
+                            @if (editing)
+                            {
+                                <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="New">Nieuwe locatie</button>
+                            }
+                        </div>
+                        @if (formError != null)
+                        {
+                            <div class="text-danger small mt-2 location-error" role="alert">@formError</div>
+                        }
+                    </form>
+                </div>
+
+                <div class="glass-panel p-4">
+                    <h2 class="panel-title"><i class="bi bi-upload text-info"></i> Importeren</h2>
+                    <p class="text-secondary small mb-2">
+                        Een GeoJSON-, GPX- of CSV-bestand, bijvoorbeeld uit Google My Maps of uMap. Het nummer komt uit een kolom
+                        <code>nummer</code> of vooraan de naam (<code>7 Molen</code>, <code>Locatie 7 - Molen</code>). Een CSV heeft kolommen
+                        <code>nummer;naam;lat;lon;hint</code>. Bestaande locaties met hetzelfde nummer worden vervangen.
+                    </p>
+                    <label class="btn btn-sm btn-scout-secondary @(importing ? "disabled" : "")">
+                        <i class="bi bi-file-earmark-arrow-up me-1"></i> Bestand kiezen
+                        <InputFile class="d-none" accept=".geojson,.json,.gpx,.csv,.txt" OnChange="Import" disabled="@importing" />
+                    </label>
+                    @if (importResult != null)
+                    {
+                        <div class="small mt-2 text-success">@importResult.Locations.Count locatie(s) ingelezen.</div>
+                        @foreach (var problem in importResult.Problems.Take(20))
+                        {
+                            <div class="small text-warning">@problem</div>
+                        }
+                        @if (importResult.Problems.Count > 20)
+                        {
+                            <div class="small text-warning">…en nog @(importResult.Problems.Count - 20) meldingen.</div>
+                        }
+                    }
+                </div>
+            </AuthorizeView>
+
+            <div class="glass-panel p-4">
+                <h2 class="panel-title"><i class="bi bi-list-ol text-success"></i> @locations.Count @(locations.Count == 1 ? "locatie" : "locaties")</h2>
+                @if (locations.Count == 0)
+                {
+                    <p class="text-muted small mb-0">
+                        Nog geen locaties. Zolang er geen zijn, telt elk locatienummer in een check-in mee.
+                    </p>
+                }
+                else
+                {
+                    <ul class="list-unstyled d-flex flex-column gap-2 mb-0 small location-list">
+                        @foreach (var location in locations)
+                        {
+                            <li class="d-flex justify-content-between gap-2 align-items-start">
+                                <span class="min-w-0">
+                                    <span class="badge bg-secondary font-monospace me-1">L@(location.Number)</span>
+                                    <span class="text-white">@location.Name</span>
+                                    @if (!string.IsNullOrWhiteSpace(location.Hint))
+                                    {
+                                        <div class="text-secondary">@location.Hint</div>
+                                    }
+                                </span>
+                                <AuthorizeView Roles="@KeyAuth.AdminRole">
+                                    <span class="d-flex gap-1 flex-shrink-0">
+                                        <button type="button" class="btn btn-sm btn-link p-0" title="Aanpassen" @onclick="() => Edit(location)"><i class="bi bi-pencil"></i></button>
+                                        @if (deleting == location.Number)
+                                        {
+                                            <button type="button" class="btn btn-sm btn-outline-danger py-0" @onclick="() => Delete(location.Number)">Verwijderen?</button>
+                                        }
+                                        else
+                                        {
+                                            <button type="button" class="btn btn-sm btn-link text-danger p-0" title="Verwijderen" @onclick="() => deleting = location.Number"><i class="bi bi-trash"></i></button>
+                                        }
+                                    </span>
+                                </AuthorizeView>
+                            </li>
+                        }
+                    </ul>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private IReadOnlyList<Location> locations = Array.Empty<Location>();
+    private IReadOnlyList<MapMarker> markers = Array.Empty<MapMarker>();
+    private MapView? map;
+    private Location form = new();
+    private bool editing;
+    private bool isAdmin;
+    private string? formError;
+    private bool importing;
+    private LocationImportResult? importResult;
+    private int? deleting;
+
+    protected override async Task OnInitializedAsync()
+    {
+        isAdmin = await AdminActions.IsAdminAsync(AuthState);
+        await ReloadAsync();
+        New();
+    }
+
+    protected override async Task LoadAsync(IServiceProvider services)
+    {
+        if (!Runtime.AdventurersEnabled) return;
+        locations = await services.GetRequiredService<LocationService>().GetAllAsync();
+        markers = locations.Select(l => MapMarker.For(l, LocationStatus.Open.Color(), Array.Empty<string>())).ToList();
+    }
+
+    private void New()
+    {
+        var center = locations.Count > 0
+            ? (locations.Average(l => l.Latitude), locations.Average(l => l.Longitude))
+            : (52.1, 5.3);
+        form = new Location { Number = locations.Count == 0 ? 1 : locations.Max(l => l.Number) + 1, Latitude = center.Item1, Longitude = center.Item2 };
+        editing = false;
+        formError = null;
+    }
+
+    private void Edit(Location location)
+    {
+        form = new Location { Number = location.Number, Name = location.Name, Latitude = location.Latitude, Longitude = location.Longitude, Hint = location.Hint };
+        editing = true;
+        formError = null;
+        _ = map?.ShowPickedAsync(form.Latitude, form.Longitude);
+    }
+
+    private async Task OnPicked((double Lat, double Lng) spot)
+    {
+        form.Latitude = Math.Round(spot.Lat, 6);
+        form.Longitude = Math.Round(spot.Lng, 6);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task Save()
+    {
+        if (!editing && locations.Any(l => l.Number == form.Number))
+        {
+            formError = $"Locatie {form.Number} bestaat al: pas die aan of kies een ander nummer.";
+            return;
+        }
+
+        string? problem = null;
+        formError = await AdminActions.RunTaskAsync(AuthState, async () =>
+        {
+            await RunInNewScopeAsync(async services => problem = await services.GetRequiredService<LocationService>().SaveAsync(form));
+            return problem;
+        });
+        if (formError == null)
+        {
+            await ReloadAsync();
+            await (map?.ShowPickedAsync(null, null) ?? Task.CompletedTask);
+            New();
+        }
+    }
+
+    private async Task Delete(int number)
+    {
+        deleting = null;
+        formError = await AdminActions.RunTaskAsync(AuthState, async () =>
+        {
+            await RunInNewScopeAsync(services => services.GetRequiredService<LocationService>().DeleteAsync(number));
+            return null;
+        });
+        await ReloadAsync();
+    }
+
+    private async Task Import(InputFileChangeEventArgs e)
+    {
+        importing = true;
+        importResult = null;
+        try
+        {
+            var error = await AdminActions.RunTaskAsync(AuthState, async () =>
+            {
+                if (e.File.Size > LocationImport.MaxFileBytes)
+                {
+                    return $"Het bestand is te groot: maximaal {LocationImport.MaxFileBytes / 1024 / 1024} MB.";
+                }
+
+                await using var stream = e.File.OpenReadStream(LocationImport.MaxFileBytes);
+                using var content = new MemoryStream();
+                await stream.CopyToAsync(content);
+                content.Position = 0;
+                await RunInNewScopeAsync(async services =>
+                    importResult = await services.GetRequiredService<LocationService>().ImportAsync(e.File.Name, content));
+                return null;
+            });
+            if (error != null) importResult = new LocationImportResult(Array.Empty<Location>(), new[] { error });
+            await ReloadAsync();
+        }
+        catch (Exception ex) when (ex is IOException or JSException or JSDisconnectedException or TaskCanceledException or InvalidOperationException)
+        {
+            importResult = new LocationImportResult(Array.Empty<Location>(), new[] { $"Het bestand kon niet gelezen worden: {ex.Message}" });
+        }
+        finally
+        {
+            importing = false;
+        }
+    }
+}

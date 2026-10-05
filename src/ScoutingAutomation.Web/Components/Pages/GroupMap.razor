@@ -1,0 +1,58 @@
+@page "/kaart/{Token}"
+@layout MapLayout
+@attribute [AllowAnonymous]
+@attribute [ExcludeFromInteractiveRouting]
+@inject IServiceScopeFactory ScopeFactory
+
+@* Opened by the Avonturiers through the link in Slack: no login, the token in the link is the key. Not interactive:
+   the live connection needs a login, so map.js reads /api/kaart/{token} again every half minute. *@
+
+@if (data == null)
+{
+    <PageTitle>Kaart niet gevonden - DU Review</PageTitle>
+    <div class="glass-panel empty-state m-4">
+        <i class="bi bi-map"></i>
+        Deze kaart bestaat niet (meer). Vraag de organisatie om de juiste link.
+    </div>
+}
+else
+{
+    <PageTitle>Kaart @data.Group - DU Review</PageTitle>
+    <div class="container-fluid py-3">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+            <h1 class="h4 fw-bold text-white mb-0"><i class="bi bi-map me-2 text-success"></i>@data.Group</h1>
+            <span class="small text-secondary" id="locations-updated">@data.Updated</span>
+        </div>
+        <div class="row g-3">
+            <div class="col-lg-8">
+                <div id="group-map" class="du-map" style="height: 70vh"></div>
+            </div>
+            <div class="col-lg-4">
+                <ul class="list-group list-group-dark" id="locations"></ul>
+                <div class="d-flex flex-wrap gap-3 small text-secondary mt-3">
+                    @foreach (var status in Enum.GetValues<LocationStatus>())
+                    {
+                        <span><span class="du-map-dot me-1" style="background: @status.Color()"></span>@status.Label()</span>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => duMap.publicMap('group-map', '@DataUrl', 'locations'));
+    </script>
+}
+
+@code {
+    [Parameter] public string Token { get; set; } = "";
+
+    private PublicMapData? data;
+
+    private string DataUrl => "/api" + AdventurersLinks.MapPath(Token);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var scope = ScopeFactory.CreateAsyncScope();
+        data = await PublicMap.BuildAsync(scope.ServiceProvider, Token);
+    }
+}

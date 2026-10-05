@@ -1,4 +1,5 @@
 @inject IOptions<ScoutingSettings> ScoutingOptions
+@inject RuntimeSettingsService Runtime
 
 <div class="top-row ps-3 navbar navbar-dark" style="background: rgba(12, 17, 23, 0.95); border-bottom: 1px solid var(--border-color);">
     <div class="container-fluid d-flex align-items-center justify-content-between">
@@ -62,6 +63,39 @@
                         <span class="nav-label fw-medium">Bericht sturen</span>
                     </NavLink>
                 </div>
+
+                @if (Runtime.AdventurersEnabled)
+                {
+                    <span class="nav-section">Avonturiers</span>
+
+                    <div class="nav-item">
+                        <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="avonturiers" Match="NavLinkMatch.All">
+                            <i class="bi bi-compass-fill" style="color: #2dd4bf;"></i>
+                            <span class="nav-label fw-medium">Overzicht</span>
+                        </NavLink>
+                    </div>
+
+                    <div class="nav-item">
+                        <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="avonturiers/kaart">
+                            <i class="bi bi-map-fill" style="color: #4ade80;"></i>
+                            <span class="nav-label fw-medium">Kaart</span>
+                        </NavLink>
+                    </div>
+
+                    <div class="nav-item">
+                        <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="avonturiers/rondes">
+                            <i class="bi bi-stopwatch-fill" style="color: #38bdf8;"></i>
+                            <span class="nav-label fw-medium">Rondes</span>
+                        </NavLink>
+                    </div>
+
+                    <div class="nav-item">
+                        <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="avonturiers/locaties">
+                            <i class="bi bi-geo-alt-fill" style="color: #f87171;"></i>
+                            <span class="nav-label fw-medium">Locaties</span>
+                        </NavLink>
+                    </div>
+                }
 
                 <span class="nav-section">Presenteren</span>
 

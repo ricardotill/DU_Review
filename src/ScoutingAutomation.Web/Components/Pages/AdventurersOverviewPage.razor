@@ -1,0 +1,163 @@
+@page "/avonturiers"
+@rendermode InteractiveServer
+@inherits LiveComponentBase
+@inject RuntimeSettingsService Runtime
+
+<PageTitle>Avonturiers - DU Review</PageTitle>
+
+<PageHeader Title="Avonturiers" Subtitle="Check-ins, vrijgespeelde opdrachten en de themarondes per groep." />
+<AdventurersTabs />
+
+@if (!Runtime.AdventurersEnabled)
+{
+    <AdventurersOff />
+}
+else if (overview == null)
+{
+    <div class="empty-state"><div class="spinner-border text-success" role="status"></div></div>
+}
+else
+{
+    var options = Runtime.AdventurersOptions;
+    <div class="row g-4 mb-4">
+        <div class="col-md-6">
+            <div class="glass-panel p-4 h-100">
+                <div class="stat-caption mb-1">Nu</div>
+                @if (overview.RunningRound is { } running)
+                {
+                    <div class="fs-5 fw-bold text-white">Ronde @running.Number: @running.ThemesLabel</div>
+                    <div class="text-secondary small">Tot @running.End.ToGameTime().ToString("HH:mm")</div>
+                }
+                else
+                {
+                    <div class="fs-5 fw-bold text-white">Geen ronde bezig</div>
+                }
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="glass-panel p-4 h-100">
+                <div class="stat-caption mb-1">Volgende ronde</div>
+                @if (overview.NextRound is { } next)
+                {
+                    <div class="fs-5 fw-bold text-white">Ronde @next.Number: @next.ThemesLabel</div>
+                    <div class="text-secondary small">@next.Start.ToGameTime().ToString("HH:mm") – @next.End.ToGameTime().ToString("HH:mm")</div>
+                }
+                else
+                {
+                    <div class="fs-5 fw-bold text-white">Geen</div>
+                    <div class="text-secondary small"><a href="avonturiers/rondes">Rondes instellen</a></div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="glass-panel p-4 mb-4">
+        <h2 class="panel-title"><i class="bi bi-people-fill text-success"></i> Stand per groep</h2>
+        <div class="table-responsive">
+            <table class="custom-table">
+                <thead>
+                    <tr>
+                        <th>Groep</th>
+                        <th title="Goedgekeurde locaties">Locaties</th>
+                        <th title="Toeristen-opdrachten vrijgespeeld">Vrijgespeeld</th>
+                        <th title="Punten van gesloten rondes, maximaal @options.ThemeMaxPoints">Thema (max @options.ThemeMaxPoints)</th>
+                        <th title="Wat de lopende ronde nu zou geven">Lopende ronde</th>
+                        <th title="Met de hand ingevoerd op Beheer, maximaal @options.FinalMaxPoints">Eindspel (max @options.FinalMaxPoints)</th>
+                        <th>Totaal</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var group in overview.Groups.OrderByDescending(g => overview.Standing.For(g.Id)?.Total ?? 0).ThenBy(g => g.Name))
+                    {
+                        var score = overview.Standing.For(group.Id);
+                        <tr>
+                            <td>
+                                <a href="groups/@group.Id" class="text-white">@group.Name</a>
+                                @if (string.IsNullOrWhiteSpace(group.AdventurersSlackChannelId))
+                                {
+                                    <span class="badge bg-secondary ms-1" title="Geen Avonturiers-kanaal ingesteld">geen kanaal</span>
+                                }
+                            </td>
+                            <td>@(score == null || score.ApprovedLocations.Count == 0 ? "–" : string.Join(", ", score.ApprovedLocations))</td>
+                            <td>@(score?.UnlockedAssignments ?? 0)@(overview.UnlockTotal is { } total ? $" van {total}" : "")</td>
+                            <td>@(score?.ThemePoints ?? 0)</td>
+                            <td class="text-secondary">@(score?.RunningRoundPoints is > 0 and var points ? $"+{points}" : "–")</td>
+                            <td>@(score?.FinalPoints ?? 0)</td>
+                            <td class="fw-bold text-white">@(score?.Total ?? 0)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="glass-panel p-4 mb-4">
+        <h2 class="panel-title"><i class="bi bi-stopwatch-fill text-info"></i> Rondes</h2>
+        @if (overview.Standing.Rounds.Count == 0)
+        {
+            <p class="text-secondary mb-0">Nog geen rondes ingesteld. <a href="avonturiers/rondes">Rondes instellen</a></p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="custom-table">
+                    <thead><tr><th>Ronde</th><th>Tijd</th><th>Thema's</th><th>Status</th><th>Uitslag</th></tr></thead>
+                    <tbody>
+                        @foreach (var result in overview.Standing.Rounds)
+                        {
+                            <tr>
+                                <td>@result.Round.Number</td>
+                                <td class="text-nowrap">@result.Round.Start.ToGameTime().ToString("HH:mm") – @result.Round.End.ToGameTime().ToString("HH:mm")</td>
+                                <td>@string.Join(", ", result.Round.Themes)</td>
+                                <td><RoundStatusBadge Result="result" Now="overview.Now" /></td>
+                                <td class="small">@(result.IsClosed || result.IsRunning ? result.Ranking(NameOf) : "")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+
+    <div class="glass-panel p-4">
+        <h2 class="panel-title"><i class="bi bi-images text-warning"></i> Laatste inzendingen</h2>
+        @if (overview.Submissions.Count == 0)
+        {
+            <p class="text-secondary mb-0">Nog geen check-ins of thema-inzendingen.</p>
+        }
+        else
+        {
+            <ul class="list-unstyled d-flex flex-column gap-2 mb-0">
+                @foreach (var submission in overview.Submissions.Take(25))
+                {
+                    <li class="d-flex flex-wrap justify-content-between gap-2">
+                        <a href="submissions/@submission.Id" class="text-white">
+                            <span class="badge bg-secondary font-monospace me-1">@submission.CodeLabel</span>
+                            @NameOf(submission.GroupId) <span class="text-secondary small">@submission.Kind.KindLabel()</span>
+                        </a>
+                        <span class="d-flex gap-2 align-items-center">
+                            <span class="small text-secondary">@submission.CreatedAt.ToGameTime().ToString("HH:mm")</span>
+                            <StatusBadge Status="submission.Kind.Effective(submission.Status)" />
+                        </span>
+                    </li>
+                }
+            </ul>
+        }
+    </div>
+}
+
+@code {
+    private AdventurersOverview? overview;
+    private Dictionary<Guid, string> names = new();
+
+    protected override Task OnInitializedAsync() => ReloadAsync();
+
+    protected override async Task LoadAsync(IServiceProvider services)
+    {
+        if (!Runtime.AdventurersEnabled) return;
+        overview = await services.GetRequiredService<AdventurersScoreService>().GetOverviewAsync();
+        names = overview.Groups.ToDictionary(g => g.Id, g => g.Name);
+    }
+
+    private string NameOf(Guid groupId) => names.GetValueOrDefault(groupId, "?");
+}

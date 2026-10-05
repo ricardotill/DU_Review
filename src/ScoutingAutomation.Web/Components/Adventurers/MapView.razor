@@ -1,0 +1,71 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject RuntimeSettingsService Runtime
+
+@* A Leaflet map with one coloured marker per location; see wwwroot/js/map.js *@
+<div id="@elementId" class="du-map" style="height: @Height"></div>
+
+@code {
+    private readonly string elementId = "map-" + Guid.NewGuid().ToString("N");
+    private DotNetObjectReference<MapView>? self;
+    private bool ready;
+    private IReadOnlyList<MapMarker>? shown;
+    private int shownFitKey;
+
+    [Parameter] public IReadOnlyList<MapMarker> Markers { get; set; } = Array.Empty<MapMarker>();
+
+    /// <summary>A click on the map reports the spot through <see cref="OnPicked"/>, e.g. to place a pin.</summary>
+    [Parameter] public bool Pickable { get; set; }
+
+    [Parameter] public EventCallback<(double Lat, double Lng)> OnPicked { get; set; }
+
+    /// <summary>Change it to fit the map to the markers again, e.g. after choosing another group.</summary>
+    [Parameter] public int FitKey { get; set; }
+
+    [Parameter] public string Height { get; set; } = "70vh";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var options = Runtime.AdventurersOptions;
+            ready = await JS.InvokeAsync<bool>("duMap.create", elementId, new { tileUrl = options.MapTileUrl, attribution = options.MapAttribution });
+            if (ready && Pickable)
+            {
+                self = DotNetObjectReference.Create(this);
+                await JS.InvokeVoidAsync("duMap.enablePick", elementId, self);
+            }
+        }
+
+        if (ready && (!ReferenceEquals(shown, Markers) || shownFitKey != FitKey))
+        {
+            var fit = shownFitKey != FitKey;
+            shown = Markers;
+            shownFitKey = FitKey;
+            await JS.InvokeVoidAsync("duMap.setMarkers", elementId, Markers, fit);
+        }
+    }
+
+    /// <summary>Shows a pin at the spot, or removes it with nulls.</summary>
+    public async Task ShowPickedAsync(double? lat, double? lng)
+    {
+        if (ready) await JS.InvokeVoidAsync("duMap.showPicked", elementId, lat, lng);
+    }
+
+    [JSInvokable]
+    public Task OnMapPicked(double lat, double lng) => OnPicked.InvokeAsync((lat, lng));
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (ready) await JS.InvokeVoidAsync("duMap.dispose", elementId);
+        }
+        catch (JSDisconnectedException)
+        {
+            // The tab is gone, and the map with it
+        }
+
+        self?.Dispose();
+    }
+}

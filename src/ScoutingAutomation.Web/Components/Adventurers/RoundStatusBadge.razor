@@ -1,0 +1,22 @@
+@* Where a theme round stands: coming, running, provisional (open submissions) or final *@
+@if (Result.IsRunning)
+{
+    <span class="badge bg-info text-dark">Loopt</span>
+}
+else if (!Result.IsClosed)
+{
+    <span class="badge bg-secondary">Komt nog</span>
+}
+else if (Result.IsProvisional)
+{
+    <span class="badge bg-warning text-dark" title="Er wachten nog inzendingen op beoordeling">Voorlopig (@Result.OpenSubmissions open)</span>
+}
+else
+{
+    <span class="badge bg-success">Definitief</span>
+}
+
+@code {
+    [Parameter, EditorRequired] public RoundResult Result { get; set; } = default!;
+    [Parameter] public DateTimeOffset Now { get; set; }
+}

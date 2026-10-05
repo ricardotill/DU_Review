@@ -1,0 +1,230 @@
+@implements IDisposable
+@inject RuntimeSettingsService Runtime
+
+@* The theme rounds as a grid: admins edit, add, remove or generate them; the jury only sees them. *@
+<div class="glass-panel p-4">
+    <h2 class="panel-title"><i class="bi bi-stopwatch-fill text-info"></i> Themarondes</h2>
+    <p class="text-secondary small">
+        Een thema-inzending telt voor een ronde als de tijd van het Slack-bericht binnen de ronde valt en het themanummer bij die ronde hoort.
+        Tijden zijn in de tijdzone van het spel. Laat het einde leeg voor @Runtime.RoundMinutes minuten.
+    </p>
+
+    <AuthorizeView Roles="@KeyAuth.AdminRole">
+        <Authorized>
+            <details class="mb-3 generate-rounds" open="@(rows.Count == 0)">
+                <summary class="text-secondary small">Genereer rondes…</summary>
+                <div class="row g-2 align-items-end mt-1">
+                    <div class="col-md-4">
+                        <label class="form-label text-secondary small fw-semibold mb-1">Van</label>
+                        <input type="datetime-local" class="form-control form-control-dark form-control-sm generate-from" step="60" @bind="generateFrom" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label text-secondary small fw-semibold mb-1">Tot</label>
+                        <input type="datetime-local" class="form-control form-control-dark form-control-sm generate-to" step="60" @bind="generateTo" />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label text-secondary small fw-semibold mb-1">Minuten</label>
+                        <input type="number" class="form-control form-control-dark form-control-sm generate-minutes" min="5" max="240" @bind="generateMinutes" />
+                    </div>
+                    <div class="col-md-2">
+                        <button type="button" class="btn btn-sm btn-scout-secondary w-100 generate" @onclick="Generate"><i class="bi bi-magic me-1"></i> Genereer</button>
+                    </div>
+                </div>
+                <div class="stat-caption mt-1">Vervangt de rondes hieronder; pas ze daarna aan en sla op. Thema N hoort dan bij ronde N.</div>
+            </details>
+        </Authorized>
+    </AuthorizeView>
+
+    @if (rows.Count == 0)
+    {
+        <p class="text-muted small no-rounds">Nog geen rondes.</p>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="custom-table rounds-grid">
+                <thead>
+                    <tr><th>Ronde</th><th>Start</th><th>Einde</th><th>Thema's</th><th>Tekst bij de opening</th><th></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in rows)
+                    {
+                        <tr class="round-row">
+                            @if (isAdmin)
+                            {
+                                <td><input type="number" class="form-control form-control-dark form-control-sm round-number" min="1" style="width: 5rem" @bind="row.Number" /></td>
+                                <td><input type="datetime-local" class="form-control form-control-dark form-control-sm round-start" step="60" @bind="row.Start" /></td>
+                                <td><input type="datetime-local" class="form-control form-control-dark form-control-sm round-end" step="60" @bind="row.End" /></td>
+                                <td><input type="text" class="form-control form-control-dark form-control-sm round-themes" placeholder="3, 4" style="width: 7rem" @bind="row.Themes" /></td>
+                                <td><textarea class="form-control form-control-dark form-control-sm round-message" rows="1" @bind="row.Message"></textarea></td>
+                                <td><button type="button" class="btn btn-sm btn-outline-danger remove-round" title="Ronde verwijderen" @onclick="() => rows.Remove(row)"><i class="bi bi-trash"></i></button></td>
+                            }
+                            else
+                            {
+                                <td>@row.Number</td>
+                                <td>@row.Start.ToString("dd-MM HH:mm")</td>
+                                <td>@(row.End?.ToString("dd-MM HH:mm") ?? $"+{Runtime.RoundMinutes} min")</td>
+                                <td>@row.Themes</td>
+                                <td class="small text-secondary">@row.Message</td>
+                                <td></td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    <AuthorizeView Roles="@KeyAuth.AdminRole">
+        <Authorized>
+            <div class="d-flex flex-wrap gap-2 mt-3">
+                <button type="button" class="btn btn-sm btn-outline-info add-round" @onclick="Add"><i class="bi bi-plus-lg me-1"></i> Ronde toevoegen</button>
+                <button type="button" class="btn btn-sm btn-scout-primary save-rounds" @onclick="Save"><i class="bi bi-check-lg me-1"></i> Rondes opslaan</button>
+                @if (dirty)
+                {
+                    <button type="button" class="btn btn-sm btn-outline-secondary undo-rounds" @onclick="Load"><i class="bi bi-arrow-counterclockwise me-1"></i> Wijzigingen weggooien</button>
+                }
+            </div>
+            @if (error != null)
+            {
+                <div class="text-danger small mt-2 rounds-error" role="alert">@error</div>
+            }
+            @if (saved)
+            {
+                <div class="text-success small mt-2 rounds-saved" role="status">Rondes opgeslagen.</div>
+            }
+        </Authorized>
+    </AuthorizeView>
+    <Origin Changed="Runtime.IsRoundsChanged" Reset="Reset" Configured="@($"{Runtime.AdventurersOptions.Rounds?.Count ?? 0} ronde(s)")" />
+</div>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    /// <summary>One editable line of the grid.</summary>
+    public sealed class RoundRow
+    {
+        public int Number { get; set; }
+        public DateTime Start { get; set; }
+        public DateTime? End { get; set; }
+        public string Themes { get; set; } = "";
+        public string? Message { get; set; }
+    }
+
+    private List<RoundRow> rows = new();
+    private bool isAdmin;
+    private string? error;
+    private bool saved;
+    private bool dirty => !rows.Select(Key).SequenceEqual(Runtime.RoundConfigs.Select(ToRow).Select(Key));
+
+    private DateTime? generateFrom;
+    private DateTime? generateTo;
+    private int generateMinutes;
+
+    protected override async Task OnInitializedAsync()
+    {
+        isAdmin = await AdminActions.IsAdminAsync(AuthState);
+        generateMinutes = Runtime.RoundMinutes;
+        var day = (Runtime.EventStartGameTime ?? DateTime.Today.AddHours(12)).Date;
+        generateFrom = Runtime.EventStartGameTime ?? day.AddHours(12);
+        generateTo = Runtime.EventEndGameTime ?? day.AddHours(16).AddMinutes(30);
+        Load();
+        Runtime.Changed += OnRuntimeChanged;
+    }
+
+    private void Load()
+    {
+        rows = Runtime.RoundConfigs.Select(ToRow).ToList();
+        error = null;
+    }
+
+    private static RoundRow ToRow(ThemeRoundConfig round) => new()
+    {
+        Number = round.Number,
+        Start = round.Start,
+        End = round.End,
+        Themes = string.Join(", ", round.Themes),
+        Message = round.Message
+    };
+
+    private static string Key(RoundRow row) => $"{row.Number}|{row.Start:O}|{row.End:O}|{row.Themes}|{row.Message}";
+
+    /// <summary>The theme numbers typed in a cell: separated by commas, spaces or semicolons.</summary>
+    public static List<string> ParseThemes(string? text) =>
+        (text ?? "").Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(t => t.TrimStart('T', 't', '#'))
+            .Where(t => t.Length > 0)
+            .Distinct()
+            .ToList();
+
+    private void Add()
+    {
+        var last = rows.OrderBy(r => r.Start).LastOrDefault();
+        var start = last == null
+            ? generateFrom ?? DateTime.Today.AddHours(12)
+            : last.End ?? last.Start.AddMinutes(Runtime.RoundMinutes);
+        var number = rows.Count == 0 ? 1 : rows.Max(r => r.Number) + 1;
+        rows.Add(new RoundRow { Number = number, Start = start, End = start.AddMinutes(Runtime.RoundMinutes), Themes = number.ToString() });
+        saved = false;
+    }
+
+    private void Generate()
+    {
+        saved = false;
+        if (generateFrom is not { } from || generateTo is not { } to || to <= from)
+        {
+            error = "Kies een begin en een einde na het begin.";
+            return;
+        }
+
+        if (generateMinutes is < 5 or > 240)
+        {
+            error = "Een ronde duurt tussen 5 en 240 minuten.";
+            return;
+        }
+
+        var generated = RuntimeSettingsService.GenerateRounds(from, to, generateMinutes);
+        if (generated.Count == 0)
+        {
+            error = "Tussen deze tijden past geen hele ronde.";
+            return;
+        }
+
+        rows = generated.Select(ToRow).ToList();
+        error = null;
+    }
+
+    private async Task Save()
+    {
+        saved = false;
+        var rounds = rows.Select(r => new ThemeRoundConfig
+        {
+            Number = r.Number,
+            Start = r.Start,
+            End = r.End,
+            Themes = ParseThemes(r.Themes),
+            Message = r.Message
+        }).ToList();
+        error = await AdminActions.RunAsync(AuthState, () => Runtime.SetRounds(rounds));
+        if (error == null)
+        {
+            saved = true;
+            Load();
+        }
+    }
+
+    private async Task Reset()
+    {
+        error = await AdminActions.RunAsync(AuthState, Runtime.ResetRounds);
+        if (error == null) Load();
+    }
+
+    // Another admin saved: show theirs, unless this one is editing
+    private void OnRuntimeChanged() => InvokeAsync(() =>
+    {
+        if (!dirty) Load();
+        StateHasChanged();
+    });
+
+    public void Dispose() => Runtime.Changed -= OnRuntimeChanged;
+}

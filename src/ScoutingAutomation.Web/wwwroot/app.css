@@ -462,3 +462,55 @@ h1:focus {
 .reminder-minutes {
     max-width: 7rem;
 }
+
+/* Avonturiers maps (wwwroot/js/map.js) */
+.du-map {
+    width: 100%;
+    min-height: 320px;
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    background: #0f141c;
+}
+
+.du-map-label {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    color: #0f141c;
+    font-weight: 700;
+    font-size: 0.7rem;
+    padding: 0;
+}
+
+.du-map-label::before {
+    display: none;
+}
+
+.du-map-pick {
+    color: #e01e5a;
+    font-size: 28px;
+    line-height: 1;
+}
+
+.du-map-popup {
+    color: #0f141c;
+    min-width: 160px;
+}
+
+.du-map-dot {
+    display: inline-block;
+    width: 0.8rem;
+    height: 0.8rem;
+    border-radius: 50%;
+    vertical-align: middle;
+}
+
+.public-map-page {
+    min-height: 100vh;
+}
+
+.list-group-dark .list-group-item {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: var(--border-color);
+    color: #e6edf3;
+}
