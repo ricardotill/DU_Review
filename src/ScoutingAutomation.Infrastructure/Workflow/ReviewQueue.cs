@@ -22,6 +22,12 @@ public sealed record ReviewQueueItem(
 {
     public Submission First => Submissions[0];
 
+    /// <summary>Toeristen assignment, check-in or theme: one message has one kind.</summary>
+    public SubmissionKind Kind => First.Kind;
+
+    /// <summary>"12", "L7" or "T3".</summary>
+    public string CodeLabel => First.CodeLabel;
+
     public TimeSpan WaitingFor(DateTimeOffset now) => now > PostedAt ? now - PostedAt : TimeSpan.Zero;
 }
 
@@ -37,7 +43,7 @@ public static class ReviewQueue
         var all = submissions.ToList();
         var completed = all
             .Where(s => s.AssignmentCode != null && s.Status is SubmissionStatus.Approved or SubmissionStatus.Awesome)
-            .Select(s => (s.GroupId, Code: s.AssignmentCode!))
+            .Select(s => (s.GroupId, s.Kind, Code: s.AssignmentCode!))
             .ToHashSet();
 
         return all
@@ -54,7 +60,7 @@ public static class ReviewQueue
                     first.AssignmentCode,
                     files,
                     files.Min(s => s.CreatedAt),
-                    first.AssignmentCode is { } code && completed.Contains((first.GroupId, code)));
+                    first.AssignmentCode is { } code && completed.Contains((first.GroupId, first.Kind, code)));
             })
             .OrderBy(i => i.PostedAt)
             .ToList();

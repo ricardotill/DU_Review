@@ -65,6 +65,78 @@ public class DatabaseInitializer
         await AddBonusPointsEntriesTableAsync(ct);
         await MoveToBonusCategoriesAsync(ct);
         await MoveToAssignmentCodesAsync(ct);
+        await AddAdventurersSchemaAsync(ct);
+    }
+
+    /// <summary>
+    /// The Avonturiers part: a kind per submission (0 = Toeristen assignment, so older rows keep their meaning),
+    /// a second channel and a map link per group, and the locations with their unlocks.
+    /// </summary>
+    private async Task AddAdventurersSchemaAsync(CancellationToken ct)
+    {
+        var sqlite = _context.Database.IsSqlite();
+        if (sqlite)
+        {
+            await AddSqliteColumnAsync("Submissions", "Kind", "INTEGER NOT NULL DEFAULT 0", ct);
+            await AddSqliteColumnAsync("Groups", "AdventurersSlackChannelId", "TEXT NULL", ct);
+            await AddSqliteColumnAsync("Groups", "MapToken", "TEXT NULL", ct);
+        }
+        else
+        {
+            await _context.Database.ExecuteSqlRawAsync(
+                "ALTER TABLE \"Submissions\" ADD COLUMN IF NOT EXISTS \"Kind\" integer NOT NULL DEFAULT 0", ct);
+            await _context.Database.ExecuteSqlRawAsync(
+                "ALTER TABLE \"Groups\" ADD COLUMN IF NOT EXISTS \"AdventurersSlackChannelId\" character varying(50) NULL", ct);
+            await _context.Database.ExecuteSqlRawAsync(
+                "ALTER TABLE \"Groups\" ADD COLUMN IF NOT EXISTS \"MapToken\" character varying(64) NULL", ct);
+        }
+
+        await _context.Database.ExecuteSqlRawAsync(
+            $"CREATE INDEX IF NOT EXISTS \"{ScoutingDbContext.SubmissionKindIndexName}\" ON \"Submissions\" (\"Kind\")", ct);
+        await _context.Database.ExecuteSqlRawAsync(
+            $"CREATE UNIQUE INDEX IF NOT EXISTS \"{ScoutingDbContext.AdventurersChannelIndexName}\" ON \"Groups\" " +
+            "(\"AdventurersSlackChannelId\") WHERE \"AdventurersSlackChannelId\" IS NOT NULL", ct);
+        await _context.Database.ExecuteSqlRawAsync(
+            $"CREATE UNIQUE INDEX IF NOT EXISTS \"{ScoutingDbContext.MapTokenIndexName}\" ON \"Groups\" " +
+            "(\"MapToken\") WHERE \"MapToken\" IS NOT NULL", ct);
+
+        var locations = sqlite
+            ? """
+              CREATE TABLE IF NOT EXISTS "Locations" (
+                  "Number" INTEGER NOT NULL CONSTRAINT "PK_Locations" PRIMARY KEY,
+                  "Name" TEXT NOT NULL,
+                  "Latitude" REAL NOT NULL,
+                  "Longitude" REAL NOT NULL,
+                  "Hint" TEXT NULL)
+              """
+            : $"""
+              CREATE TABLE IF NOT EXISTS "Locations" (
+                  "Number" integer NOT NULL CONSTRAINT "PK_Locations" PRIMARY KEY,
+                  "Name" character varying({ScoutingDbContext.MaxLocationNameLength}) NOT NULL,
+                  "Latitude" double precision NOT NULL,
+                  "Longitude" double precision NOT NULL,
+                  "Hint" character varying({ScoutingDbContext.MaxLocationHintLength}) NULL)
+              """;
+        await _context.Database.ExecuteSqlRawAsync(locations, ct);
+
+        var unlocks = sqlite
+            ? """
+              CREATE TABLE IF NOT EXISTS "LocationUnlocks" (
+                  "GroupId" TEXT NOT NULL,
+                  "LocationNumber" INTEGER NOT NULL,
+                  "UnlockedAt" TEXT NOT NULL,
+                  CONSTRAINT "PK_LocationUnlocks" PRIMARY KEY ("GroupId", "LocationNumber"),
+                  CONSTRAINT "FK_LocationUnlocks_Groups_GroupId" FOREIGN KEY ("GroupId") REFERENCES "Groups" ("Id") ON DELETE CASCADE)
+              """
+            : """
+              CREATE TABLE IF NOT EXISTS "LocationUnlocks" (
+                  "GroupId" uuid NOT NULL,
+                  "LocationNumber" integer NOT NULL,
+                  "UnlockedAt" timestamp with time zone NOT NULL,
+                  CONSTRAINT "PK_LocationUnlocks" PRIMARY KEY ("GroupId", "LocationNumber"),
+                  CONSTRAINT "FK_LocationUnlocks_Groups_GroupId" FOREIGN KEY ("GroupId") REFERENCES "Groups" ("Id") ON DELETE CASCADE)
+              """;
+        await _context.Database.ExecuteSqlRawAsync(unlocks, ct);
     }
 
     /// <summary>The two fixed categories of the first game, as columns on Groups, and their keys now.</summary>
@@ -297,6 +369,7 @@ public class DatabaseInitializer
         // FR-003: Synchronize Groups from appsettings.json
         var configuredGroups = _options.Value.Groups;
         EnsureDistinctFolders(configuredGroups);
+        EnsureDistinctChannels(configuredGroups);
         EnsureValidBonusCategories(_options.Value.BonusCategories);
         if (configuredGroups != null && configuredGroups.Count > 0)
         {
@@ -311,6 +384,8 @@ public class DatabaseInitializer
                         Name = cfg.Name,
                         Abbreviation = cfg.Abbreviation,
                         SlackChannelId = cfg.SlackChannelId,
+                        AdventurersSlackChannelId = Blank(cfg.AdventurersSlackChannelId),
+                        MapToken = NewMapToken(),
                         Description = cfg.Description
                     });
                 }
@@ -318,11 +393,21 @@ public class DatabaseInitializer
                 {
                     existing.Name = cfg.Name;
                     existing.Abbreviation = cfg.Abbreviation;
+                    existing.AdventurersSlackChannelId = Blank(cfg.AdventurersSlackChannelId);
+                    existing.MapToken ??= NewMapToken();
                     existing.Description = cfg.Description;
                 }
 
                 await _fileStorage.EnsureFolderStructureAsync(cfg.Name, ct);
             }
+            // A group that left the settings may still hold an Avonturiers channel a configured group now uses
+            var configuredChannels = configuredGroups.Select(g => g.SlackChannelId).ToHashSet();
+            var adventurerChannels = configuredGroups.Select(g => Blank(g.AdventurersSlackChannelId)).OfType<string>().ToHashSet();
+            foreach (var old in await _context.Groups.Where(g => !configuredChannels.Contains(g.SlackChannelId) && g.AdventurersSlackChannelId != null).ToListAsync(ct))
+            {
+                if (adventurerChannels.Contains(old.AdventurersSlackChannelId!)) old.AdventurersSlackChannelId = null;
+            }
+
             await _context.SaveChangesAsync(ct);
 
             // Kept, as submissions may point to them, but they get no new submissions
@@ -456,6 +541,30 @@ public class DatabaseInitializer
         if (categories?.GroupBy(c => c.Key).FirstOrDefault(g => g.Count() > 1) is { } twice)
         {
             throw new StartupConfigurationException($"BonusCategories in de instellingen heeft de sleutel '{twice.Key}' twee keer");
+        }
+    }
+
+    private static string? Blank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    /// <summary>A random, URL-safe secret for a group's map link.</summary>
+    public static string NewMapToken() =>
+        Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(18)).Replace('+', '-').Replace('/', '_');
+
+    /// <summary>
+    /// A channel used twice (as two groups' channels, or as one group's Toeristen and another's Avonturiers channel)
+    /// would send messages to the wrong group: the start is stopped.
+    /// </summary>
+    private static void EnsureDistinctChannels(IReadOnlyCollection<GroupConfig>? groups)
+    {
+        var twice = (groups ?? Array.Empty<GroupConfig>())
+            .SelectMany(g => new[] { (Channel: Blank(g.SlackChannelId), g.Name), (Channel: Blank(g.AdventurersSlackChannelId), g.Name) })
+            .Where(c => c.Channel != null)
+            .GroupBy(c => c.Channel!, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault(c => c.Count() > 1);
+        if (twice != null)
+        {
+            throw new StartupConfigurationException(
+                $"Slack-kanaal {twice.Key} staat meer dan eens in de groepen ({string.Join(", ", twice.Select(c => c.Name).Distinct())}); elk kanaal hoort bij één groep");
         }
     }
 

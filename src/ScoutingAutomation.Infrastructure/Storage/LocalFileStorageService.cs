@@ -60,6 +60,24 @@ public class LocalFileStorageService : IFileStorageService
         return EnsureInsideRoot(Path.Combine(groupRoot, status.ToString().ToLowerInvariant()));
     }
 
+    /// <summary>The folder inside a group folder for the Avonturiers' files, with its own status folders.</summary>
+    public const string AdventurersFolderName = "avonturiers";
+
+    private string AdventurersDirectoryPath(string groupName, SubmissionStatus status)
+    {
+        var root = Path.Combine(GetStatusDirectoryPath(groupName, SubmissionStatus.Pending), AdventurersFolderName);
+        return EnsureInsideRoot(status is SubmissionStatus.Received or SubmissionStatus.Pending
+            ? root
+            : Path.Combine(root, status.ToString().ToLowerInvariant()));
+    }
+
+    /// <summary>Whether a stored file is in the group's Avonturiers folder (or one of its status folders).</summary>
+    private bool IsAdventurersFile(string groupName, string path)
+    {
+        var root = Path.TrimEndingDirectorySeparator(AdventurersDirectoryPath(groupName, SubmissionStatus.Pending)) + Path.DirectorySeparatorChar;
+        return Path.GetFullPath(path).StartsWith(root, PathComparison);
+    }
+
     public Task EnsureFolderStructureAsync(string groupName, CancellationToken ct = default)
     {
         var safeGroupName = SanitizePath(groupName);
@@ -73,9 +91,14 @@ public class LocalFileStorageService : IFileStorageService
         return Task.CompletedTask;
     }
 
-    public async Task<string> SaveInitialFileAsync(string groupName, string fileName, Stream contentStream, CancellationToken ct = default)
+    public Task<string> SaveInitialFileAsync(string groupName, string fileName, Stream contentStream, CancellationToken ct = default) =>
+        SaveAsync(GetStatusDirectoryPath(groupName, SubmissionStatus.Pending), fileName, contentStream, ct);
+
+    public Task<string> SaveAdventurersFileAsync(string groupName, string fileName, Stream contentStream, CancellationToken ct = default) =>
+        SaveAsync(AdventurersDirectoryPath(groupName, SubmissionStatus.Pending), fileName, contentStream, ct);
+
+    private async Task<string> SaveAsync(string groupDir, string fileName, Stream contentStream, CancellationToken ct)
     {
-        var groupDir = GetStatusDirectoryPath(groupName, SubmissionStatus.Pending);
         Directory.CreateDirectory(groupDir);
 
         var safeFileName = Path.GetFileName(fileName);
@@ -138,14 +161,16 @@ public class LocalFileStorageService : IFileStorageService
     public Task<string> MoveFileToStatusAsync(string groupName, string currentStoragePath, SubmissionStatus targetStatus, CancellationToken ct = default)
     {
         currentStoragePath = EnsureInsideRoot(currentStoragePath);
-        var targetDir = GetStatusDirectoryPath(groupName, targetStatus);
+        var targetDir = IsAdventurersFile(groupName, currentStoragePath)
+            ? AdventurersDirectoryPath(groupName, targetStatus)
+            : GetStatusDirectoryPath(groupName, targetStatus);
         Directory.CreateDirectory(targetDir);
 
         if (!File.Exists(currentStoragePath))
         {
             // Never write a stand-in: it could overwrite a real file, and would hide that the file is gone.
             // A file moved by an earlier step that did not get saved is found again in another status folder.
-            var found = FindInGroupFolders(groupName, Path.GetFileName(currentStoragePath));
+            var found = FindInGroupFolders(groupName, Path.GetFileName(currentStoragePath), IsAdventurersFile(groupName, currentStoragePath));
             if (found == null)
             {
                 _logger.LogError("Submission file {Path} of group {Group} is missing; the status changes, the file cannot follow", currentStoragePath, groupName);
@@ -169,9 +194,9 @@ public class LocalFileStorageService : IFileStorageService
     }
 
     /// <summary>The file with this exact name in one of the group's status folders, or null.</summary>
-    private string? FindInGroupFolders(string groupName, string fileName) =>
+    private string? FindInGroupFolders(string groupName, string fileName, bool adventurers) =>
         Enum.GetValues<SubmissionStatus>()
-            .Select(status => Path.Combine(GetStatusDirectoryPath(groupName, status), fileName))
+            .Select(status => Path.Combine(adventurers ? AdventurersDirectoryPath(groupName, status) : GetStatusDirectoryPath(groupName, status), fileName))
             .FirstOrDefault(File.Exists);
 
     public Task<string> RenameFileAsync(string storagePath, string newFileName, CancellationToken ct = default)

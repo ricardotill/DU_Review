@@ -6,6 +6,7 @@ using ScoutingAutomation.Contracts.Configuration;
 using ScoutingAutomation.Contracts.Slack;
 using ScoutingAutomation.Domain.Entities;
 using ScoutingAutomation.Domain.Enums;
+using ScoutingAutomation.Domain.Models;
 using ScoutingAutomation.Domain.Interfaces;
 using ScoutingAutomation.Domain.Models;
 using ScoutingAutomation.Infrastructure.Settings;
@@ -202,22 +203,25 @@ public class SlackRebuildService : ISlackRebuildService
         var botUserId = links?.BotUserId;
 
         // 1. Read every channel first: if any fails, nothing has been touched yet
-        Update(p => p with { Step = "Slack lezen", ChannelsTotal = groups.Count });
+        // Both channels of a group: its Toeristen and, while that part is on, its Avonturiers
+        var channels = groups.SelectMany(g => GroupChannels.Of(g, _runtime.AdventurersEnabled).Select(c => (Group: g, c.ChannelId, c.Role))).ToList();
+        Update(p => p with { Step = "Slack lezen", ChannelsTotal = channels.Count });
         var messages = new List<(Group Group, SlackEventItemDto Message)>();
         var problems = new List<RebuildChannelProblem>();
-        foreach (var group in groups)
+        foreach (var (group, channelId, role) in channels)
         {
+            var label = role == ChannelRole.Avonturiers ? $"{group.Name} (Avonturiers)" : group.Name;
             try
             {
-                var channelMessages = await history.GetChannelMessagesAsync(group.SlackChannelId, since);
+                var channelMessages = await history.GetChannelMessagesAsync(channelId, since);
                 messages.AddRange(channelMessages.Select(m => (group, m)));
                 Update(p => p with { ChannelsRead = p.ChannelsRead + 1, MessagesFound = messages.Count });
             }
             catch (Exception ex)
             {
                 var error = ex is SlackApiException slack ? slack.Error : ex.Message;
-                _logger.LogError(ex, "Could not read Slack channel {Channel} of group {Group}: {Error}", group.SlackChannelId, group.Name, error);
-                problems.Add(new RebuildChannelProblem(group.Name, group.SlackChannelId, error, AdviceFor(error)));
+                _logger.LogError(ex, "Could not read Slack channel {Channel} of group {Group}: {Error}", channelId, label, error);
+                problems.Add(new RebuildChannelProblem(label, channelId, error, AdviceFor(error)));
             }
         }
 
@@ -344,7 +348,7 @@ public class SlackRebuildService : ISlackRebuildService
         // Plain copies: the entities reference each other, which JSON cannot represent
         var export = submissions.Select(s => new
         {
-            s.Id, Group = s.Group?.Name, s.GroupId, s.AssignmentCode, Status = s.Status.ToString(), s.FileName, s.StoragePath,
+            s.Id, Group = s.Group?.Name, s.GroupId, s.AssignmentCode, Kind = s.Kind.ToString(), Status = s.Status.ToString(), s.FileName, s.StoragePath,
             s.ContentType, s.FileSizeBytes, s.Submitter, s.SubmitterName, s.SlackChannelId, s.SlackMessageId, s.MessageText, s.UnresolvedReason,
             s.CreatedAt, s.UpdatedAt,
             Reviews = s.Reviews.Select(r => new { r.Reviewer, Status = r.Status.ToString(), r.ReactionEmoji, r.Notes, r.CreatedAt })

@@ -48,6 +48,12 @@ public class GroupStatistic
     /// <summary>Points entered by hand, per category key; only categories that are in use.</summary>
     public Dictionary<string, int> BonusPoints { get; set; } = new();
 
+    /// <summary>
+    /// The Avonturiers points (theme rounds plus final game, each capped); null while the Avonturiers part is off.
+    /// Already part of <see cref="Score"/>, and shown in <see cref="BonusPoints"/> under the final game's category.
+    /// </summary>
+    public int? AdventurersPoints { get; set; }
+
     /// <summary>The points entered by hand, all categories in use together.</summary>
     public int BonusTotal => BonusPoints.Values.Sum();
 

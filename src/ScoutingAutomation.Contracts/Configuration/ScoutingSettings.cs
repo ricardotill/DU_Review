@@ -100,6 +100,18 @@ public class ScoutingSettings
     /// Categories added or removed in the app win over these.
     /// </summary>
     public List<BonusCategoryConfig>? BonusCategories { get; set; }
+
+    /// <summary>
+    /// The second game part on Slack: each group's Avonturiers post location check-ins and theme photos in their own channel.
+    /// Off unless <see cref="AdventurersSettings.Enabled"/>: then the app works as before and ignores those channels.
+    /// </summary>
+    public AdventurersSettings Adventurers { get; set; } = new();
+
+    /// <summary>
+    /// The address the app is reached at from outside, e.g. "https://du.example.nl", for links in Slack messages
+    /// (such as a group's map). Without it the links are relative and only work for someone already in the app.
+    /// </summary>
+    public string? PublicUrl { get; set; }
 }
 
 public class BonusCategoryConfig
@@ -136,6 +148,9 @@ public class GroupConfig
     /// </summary>
     public string? Abbreviation { get; set; }
     public string SlackChannelId { get; set; } = string.Empty;
+
+    /// <summary>The Slack channel of the group's Avonturiers; empty when the group has none.</summary>
+    public string? AdventurersSlackChannelId { get; set; }
     public string? Description { get; set; }
 }
 

@@ -3,7 +3,9 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ScoutingAutomation.Contracts.Configuration;
+using ScoutingAutomation.Domain.Enums;
 using ScoutingAutomation.Domain.Interfaces;
+using ScoutingAutomation.Domain.Models;
 using ScoutingAutomation.Infrastructure.Settings;
 using ScoutingAutomation.Infrastructure.Slack.Events;
 using ScoutingAutomation.Infrastructure.Workflow;
@@ -156,42 +158,47 @@ public class SlackCatchUpService : BackgroundService, ISlackCatchUpService
 
         foreach (var group in groups)
         {
-            IReadOnlyList<Contracts.Slack.SlackEventItemDto> messages;
-            try
+            // The Avonturiers channel first: its check-in reviews decide which Toeristen assignments are unlocked
+            foreach (var (channelId, role) in GroupChannels.Of(group, _runtime.AdventurersEnabled).OrderByDescending(c => c.Role))
             {
-                messages = await history.GetChannelMessagesAsync(group.SlackChannelId, since, ct);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
-            {
-                // One unreadable channel must not stop the others, whatever went wrong
-                var error = ex is SlackApiException slack ? slack.Error : ex.Message;
-                _logger.LogWarning(ex, "Catch-up could not read the channel of {Group}: {Error}", group.Name, error);
-                errors.Add($"{group.Name}: {error}");
-                continue;
-            }
-
-            foreach (var message in messages.Where(m => SlackRebuildService.IsCandidate(m, _runtime, botUserId)))
-            {
-                checkedCount++;
-
-                // Live events of this channel wait meanwhile, and this waits for one in progress
-                using var turn = await _channels.EnterAsync(group.SlackChannelId, ct);
+                var label = role == ChannelRole.Avonturiers ? $"{group.Name} (Avonturiers)" : group.Name;
+                IReadOnlyList<Contracts.Slack.SlackEventItemDto> messages;
                 try
                 {
-                    var result = await workflow.ProcessMissedMessageAsync(message, ct);
-                    added += result.CreatedSubmissionIds.Count;
-
-                    // The history was read a while ago: the workflow reads the reactions again before changing a review
-                    if (await workflow.SyncReviewAsync(message.Channel!, message.Ts!, message.Reactions, ct))
-                    {
-                        reviews++;
-                    }
+                    messages = await history.GetChannelMessagesAsync(channelId, since, ct);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
                 {
-                    // One message that fails must not stop the rest of the catch-up
-                    _logger.LogWarning(ex, "Catch-up could not process message {Ts} of {Group}", message.Ts, group.Name);
-                    errors.Add($"{group.Name}: bericht {message.Ts}: {ex.Message}");
+                    // One unreadable channel must not stop the others, whatever went wrong
+                    var error = ex is SlackApiException slack ? slack.Error : ex.Message;
+                    _logger.LogWarning(ex, "Catch-up could not read the channel of {Group}: {Error}", label, error);
+                    errors.Add($"{label}: {error}");
+                    continue;
+                }
+
+                foreach (var message in messages.Where(m => SlackRebuildService.IsCandidate(m, _runtime, botUserId)))
+                {
+                    checkedCount++;
+
+                    // Live events of this channel wait meanwhile, and this waits for one in progress
+                    using var turn = await _channels.EnterAsync(channelId, ct);
+                    try
+                    {
+                        var result = await workflow.ProcessMissedMessageAsync(message, ct);
+                        added += result.CreatedSubmissionIds.Count;
+
+                        // The history was read a while ago: the workflow reads the reactions again before changing a review
+                        if (await workflow.SyncReviewAsync(message.Channel!, message.Ts!, message.Reactions, ct))
+                        {
+                            reviews++;
+                        }
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+                    {
+                        // One message that fails must not stop the rest of the catch-up
+                        _logger.LogWarning(ex, "Catch-up could not process message {Ts} of {Group}", message.Ts, label);
+                        errors.Add($"{label}: bericht {message.Ts}: {ex.Message}");
+                    }
                 }
             }
         }

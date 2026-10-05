@@ -7,6 +7,7 @@ using ScoutingAutomation.Domain.Enums;
 using ScoutingAutomation.Domain.Exceptions;
 using ScoutingAutomation.Domain.Interfaces;
 using ScoutingAutomation.Domain.Models;
+using ScoutingAutomation.Infrastructure.Adventurers;
 using ScoutingAutomation.Infrastructure.Settings;
 using ScoutingAutomation.Infrastructure.Slack;
 using ScoutingAutomation.Infrastructure.Slack.Events;
@@ -30,6 +31,8 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
     private readonly SlackChannelLocks? _channels;
     private readonly SlackProcessingGate? _gate;
     private readonly SlackOwnUploads? _ownUploads;
+    private readonly ILocationRepository? _locations;
+    private readonly UnlockNotifier? _unlocks;
 
     public SubmissionWorkflowService(
         ISubmissionRepository submissionRepository,
@@ -45,8 +48,12 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         SlackLinks? links = null,
         SlackChannelLocks? channels = null,
         SlackProcessingGate? gate = null,
-        SlackOwnUploads? ownUploads = null)
+        SlackOwnUploads? ownUploads = null,
+        ILocationRepository? locations = null,
+        UnlockNotifier? unlocks = null)
     {
+        _locations = locations;
+        _unlocks = unlocks;
         _channels = channels;
         _gate = gate;
         _ownUploads = ownUploads;
@@ -70,9 +77,13 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
     {
         // The bot blocked this attempt live, and nothing was stored then. A rebuild applies reviews only after
         // importing every message, so it cannot see that the assignment was already done: the bot's emoji tells.
-        var blocked = _options.Value.SlackFeedback?.AlreadyCompleted?.Reaction?.Trim(':');
-        if (!string.IsNullOrWhiteSpace(blocked)
-            && (message.Reactions ?? new List<SlackMessageReactionDto>()).Any(r => string.Equals(r.Name?.Trim(':'), blocked, StringComparison.OrdinalIgnoreCase)))
+        // The same goes for an assignment the Avonturiers had not unlocked yet: the bot's lock tells
+        var blocked = new[] { _options.Value.SlackFeedback?.AlreadyCompleted?.Reaction, _runtime.AdventurersFeedback.AssignmentLocked?.Reaction }
+            .Select(r => r?.Trim(':'))
+            .Where(r => !string.IsNullOrWhiteSpace(r))
+            .ToList();
+        if (blocked.Count > 0
+            && (message.Reactions ?? new List<SlackMessageReactionDto>()).Any(r => blocked.Contains(r.Name?.Trim(':'), StringComparer.OrdinalIgnoreCase)))
         {
             _logger.LogInformation("Skipped message {Ts} in {Channel}: it was blocked live as a new attempt after approval", message.Ts, message.Channel);
             return Task.FromResult(ProcessSlackMessageResult.Ignored("Nieuwe poging na goedkeuring; was al geweigerd"));
@@ -102,11 +113,19 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         }
 
         // FR-001: Ignore unknown channels
-        var group = await _groupRepository.GetBySlackChannelIdAsync(channelId, ct);
-        if (group == null)
+        var found = await _groupRepository.GetByAnyChannelIdAsync(channelId, ct);
+        if (found == null)
         {
             _logger.LogInformation("Ignored message from unknown channel {ChannelId}", channelId);
             return ProcessSlackMessageResult.Ignored($"Kanaal {channelId} hoort bij geen enkele groep");
+        }
+
+        var group = found.Group;
+        var adventurers = found.Role == ChannelRole.Avonturiers;
+        if (adventurers && !_runtime.AdventurersEnabled)
+        {
+            _logger.LogDebug("Ignored message in Avonturiers channel {ChannelId}: the Avonturiers part is off", channelId);
+            return ProcessSlackMessageResult.Ignored("Avonturiers-kanaal, maar het Avonturiers-deel staat uit");
         }
 
         // Reviewers post in group channels too, but their messages are never submissions
@@ -145,35 +164,17 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         }
 
         // FR-002: Parse assignment number
-        // Without a clear assignment number nothing is stored: the scout is asked to post again
-        var parseResult = _assignmentParser.Parse(messageEvent.Text);
-        if (!parseResult.Success || parseResult.AssignmentCode == null)
+        // Without a clear number nothing is stored: the scout is asked to post again
+        var target = adventurers
+            ? await ResolveAdventurersTargetAsync(group, messageEvent, silent, ct)
+            : await ResolveAssignmentTargetAsync(group, messageEvent, silent, manual, ct);
+        if (target.Skip != null)
         {
-            _logger.LogWarning("Skipped message '{Text}' in channel {Channel}: {Reason}",
-                messageEvent.Text, channelId, parseResult.ErrorMessage);
-            await SendFeedbackAsync(silent, feedback.MissingAssignmentNumber, channelId, messageEvent.Ts, null, null, ct);
-            return ProcessSlackMessageResult.Ignored(parseResult.ErrorMessage ?? "Geen opdrachtnummer gevonden");
+            return target.Skip;
         }
 
-        var assignmentCode = parseResult.AssignmentCode;
-        if (await _assignmentRepository.GetByCodeAsync(assignmentCode, ct) == null)
-        {
-            _logger.LogWarning("Skipped message in {Channel}: unknown assignment {Code}", channelId, assignmentCode);
-
-            // Letters that are no special assignment are most likely just a word ("opdracht is klaar"): ask for the number
-            var reply = AssignmentCode.IsLetter(assignmentCode) ? feedback.MissingAssignmentNumber : feedback.UnknownAssignmentNumber;
-            await SendFeedbackAsync(silent, reply, channelId, messageEvent.Ts, "{number}", assignmentCode, ct);
-            return ProcessSlackMessageResult.Ignored($"Opdracht {assignmentCode} bestaat niet");
-        }
-
-        // A group that already has this assignment approved or awesome may not try again for more points
-        if (!manual && await IsNewAttemptAfterApprovalAsync(group.Id, assignmentCode, channelId, messageEvent.Ts, ct))
-        {
-            _logger.LogInformation("Skipped message {Ts} in {Channel}: group {Group} already completed assignment {Number}",
-                messageEvent.Ts, channelId, group.Name, assignmentCode);
-            await SendFeedbackAsync(silent, feedback.AlreadyCompleted, channelId, messageEvent.Ts, "{number}", assignmentCode, ct);
-            return ProcessSlackMessageResult.Ignored($"Opdracht {assignmentCode} is al goedgekeurd voor deze groep");
-        }
+        var kind = target.Kind;
+        var assignmentCode = target.Code!;
 
         var createdIds = new List<Guid>();
         var unsupportedFileNames = new List<string>();
@@ -223,7 +224,7 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
             // Connected to Slack, a file without an address (hidden by a plan limit, or still being processed)
             // cannot be fetched: storing a stand-in would hide a lost submission
             var downloadUrl = file.UrlPrivateDownload ?? file.UrlPrivate ?? (_slackClient.IsConnected ? null : $"sim://{file.Name}");
-            var storedFileName = SubmissionFileName.Build(group, assignmentCode, file.Name, postedAt.ToGameTime(), FileIndex(supportedFiles, file));
+            var storedFileName = SubmissionFileName.Build(group, kind, assignmentCode, file.Name, postedAt.ToGameTime(), FileIndex(supportedFiles, file));
             string storagePath;
             try
             {
@@ -233,7 +234,9 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
                 }
 
                 await using var stream = await _slackClient.DownloadFileAsync(downloadUrl, file.Name, ct);
-                storagePath = await _fileStorageService.SaveInitialFileAsync(group.Name, storedFileName, stream, ct);
+                storagePath = kind.IsAdventurers()
+                    ? await _fileStorageService.SaveAdventurersFileAsync(group.Name, storedFileName, stream, ct)
+                    : await _fileStorageService.SaveInitialFileAsync(group.Name, storedFileName, stream, ct);
             }
             // A timeout also throws OperationCanceledException; only a stop of the app itself ends processing
             catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
@@ -281,10 +284,11 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
                 FileSizeBytes = file.Size > 0 ? file.Size : new FileInfo(storagePath).Length,
                 ContentType = file.Mimetype ?? "application/octet-stream",
                 MessageText = messageEvent.Text,
+                Kind = kind,
                 CreatedAt = postedAt
             };
 
-            submission.MarkPending(storagePath, assignmentCode);
+            submission.MarkPending(storagePath, assignmentCode, target.UnresolvedReason);
 
             try
             {
@@ -307,8 +311,8 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
 
             createdIds.Add(submission.Id);
 
-            _logger.LogInformation("Registered submission {Id} for group {Group}, assignment #{Assignment}, file {File}",
-                submission.Id, group.Name, assignmentCode, file.Name);
+            _logger.LogInformation("Registered submission {Id} for group {Group}, {Kind} #{Assignment}, file {File}",
+                submission.Id, group.Name, kind, assignmentCode, file.Name);
         }
 
         if (createdIds.Count > 0)
@@ -322,11 +326,17 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
                     group.Id,
                     group.Name,
                     group.Abbreviation,
-                    assignmentCode,
+                    kind.Label(assignmentCode),
                     string.IsNullOrWhiteSpace(submitterName) ? messageEvent.User ?? "Onbekend" : submitterName,
                     createdIds,
                     postedAt));
             }
+        }
+
+        // Stored, but the team and the jury should know why it may not count
+        if (createdIds.Count > 0 && target.AfterStore is { } note)
+        {
+            await SendFeedbackAsync(silent, note.Feedback, channelId, messageEvent.Ts, null, null, ct, reactedNow, note.Replacements);
         }
 
         if (unsupportedFileNames.Count > 0)
@@ -349,6 +359,158 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
             StoredFiles = storedFileNames
         };
     }
+
+    /// <summary>What a message is for, or why it is skipped.</summary>
+    /// <param name="Skip">The result to return without storing anything; null when the files are stored.</param>
+    /// <param name="UnresolvedReason">Why a stored submission may not count, shown on the dashboard.</param>
+    /// <param name="AfterStore">Feedback once the files are stored, e.g. a theme outside its round.</param>
+    private sealed record MessageTarget(SubmissionKind Kind, string? Code, ProcessSlackMessageResult? Skip,
+        string? UnresolvedReason = null, FeedbackNote? AfterStore = null)
+    {
+        public static MessageTarget Skipped(ProcessSlackMessageResult result) => new(SubmissionKind.Assignment, null, result);
+    }
+
+    private sealed record FeedbackNote(FeedbackConfig? Feedback, IReadOnlyDictionary<string, string?> Replacements);
+
+    /// <summary>A Toeristen message: the assignment number, which must exist and may not be done or locked already.</summary>
+    private async Task<MessageTarget> ResolveAssignmentTargetAsync(Group group, SlackEventItemDto messageEvent, bool silent, bool manual, CancellationToken ct)
+    {
+        var channelId = messageEvent.Channel!;
+        var feedback = _runtime.Feedback;
+        var parseResult = _assignmentParser.Parse(messageEvent.Text);
+        if (!parseResult.Success || parseResult.AssignmentCode == null)
+        {
+            _logger.LogWarning("Skipped message '{Text}' in channel {Channel}: {Reason}",
+                messageEvent.Text, channelId, parseResult.ErrorMessage);
+            await SendFeedbackAsync(silent, feedback.MissingAssignmentNumber, channelId, messageEvent.Ts, null, null, ct);
+            return MessageTarget.Skipped(ProcessSlackMessageResult.Ignored(parseResult.ErrorMessage ?? "Geen opdrachtnummer gevonden"));
+        }
+
+        var assignmentCode = parseResult.AssignmentCode;
+        if (await _assignmentRepository.GetByCodeAsync(assignmentCode, ct) == null)
+        {
+            _logger.LogWarning("Skipped message in {Channel}: unknown assignment {Code}", channelId, assignmentCode);
+
+            // Letters that are no special assignment are most likely just a word ("opdracht is klaar"): ask for the number
+            var reply = AssignmentCode.IsLetter(assignmentCode) ? feedback.MissingAssignmentNumber : feedback.UnknownAssignmentNumber;
+            await SendFeedbackAsync(silent, reply, channelId, messageEvent.Ts, "{number}", assignmentCode, ct);
+            return MessageTarget.Skipped(ProcessSlackMessageResult.Ignored($"Opdracht {assignmentCode} bestaat niet"));
+        }
+
+        // A group that already has this assignment approved or awesome may not try again for more points
+        if (!manual && await IsNewAttemptAfterApprovalAsync(group.Id, assignmentCode, channelId, messageEvent.Ts, ct))
+        {
+            _logger.LogInformation("Skipped message {Ts} in {Channel}: group {Group} already completed assignment {Number}",
+                messageEvent.Ts, channelId, group.Name, assignmentCode);
+            await SendFeedbackAsync(silent, feedback.AlreadyCompleted, channelId, messageEvent.Ts, "{number}", assignmentCode, ct);
+            return MessageTarget.Skipped(ProcessSlackMessageResult.Ignored($"Opdracht {assignmentCode} is al goedgekeurd voor deze groep"));
+        }
+
+        // In pool mode the Avonturiers unlock assignments in a fixed order. A rebuild reads the bot's lock instead:
+        // it applies reviews only after importing every message, so the check-ins are not approved yet at this point.
+        if (!manual && !silent && await IsLockedAsync(group.Id, assignmentCode, channelId, messageEvent.Ts, ct))
+        {
+            _logger.LogInformation("Skipped message {Ts} in {Channel}: assignment {Number} is not unlocked for group {Group} yet",
+                messageEvent.Ts, channelId, assignmentCode, group.Name);
+            await SendFeedbackAsync(silent, _runtime.AdventurersFeedback.AssignmentLocked, channelId, messageEvent.Ts, "{number}", assignmentCode, ct);
+            return MessageTarget.Skipped(ProcessSlackMessageResult.Ignored($"Opdracht {assignmentCode} is nog niet vrijgespeeld door de Avonturiers"));
+        }
+
+        return new MessageTarget(SubmissionKind.Assignment, assignmentCode, null);
+    }
+
+    /// <summary>
+    /// Whether an assignment is still locked for the group: the Avonturiers part is on, the pool is used, the assignment
+    /// is in it, and the group has fewer approved check-ins than its place in the pool. A message that is already
+    /// registered is never locked: nothing is locked after the fact.
+    /// </summary>
+    private async Task<bool> IsLockedAsync(Guid groupId, string assignmentCode, string channelId, string? messageTs, CancellationToken ct)
+    {
+        if (!_runtime.AdventurersEnabled) return false;
+
+        var index = _runtime.UnlockPool.ToList().IndexOf(assignmentCode);
+        if (index < 0) return false;
+
+        if (!string.IsNullOrWhiteSpace(messageTs) && (await _submissionRepository.GetBySlackMessageIdAsync(channelId, messageTs, ct)).Count > 0)
+        {
+            return false;
+        }
+
+        var checkIns = await _submissionRepository.SearchSubmissionsAsync(new SubmissionFilter { GroupId = groupId, Kind = SubmissionKind.CheckIn }, ct);
+        return AdventurersScoring.ApprovedLocations(checkIns).Count <= index;
+    }
+
+    /// <summary>An Avonturiers message: a check-in at a known location, or a theme (stored also outside its round).</summary>
+    private async Task<MessageTarget> ResolveAdventurersTargetAsync(Group group, SlackEventItemDto messageEvent, bool silent, CancellationToken ct)
+    {
+        var channelId = messageEvent.Channel!;
+        var feedback = _runtime.AdventurersFeedback;
+        var parsed = AdventurersParser.Parse(messageEvent.Text);
+        if (!parsed.Success)
+        {
+            _logger.LogWarning("Skipped message '{Text}' in Avonturiers channel {Channel}: no location or theme number", messageEvent.Text, channelId);
+            await SendFeedbackAsync(silent, feedback.MissingNumber, channelId, messageEvent.Ts, null, null, ct);
+            return MessageTarget.Skipped(ProcessSlackMessageResult.Ignored("Geen locatie- of themanummer gevonden"));
+        }
+
+        var number = parsed.Number!;
+        if (parsed.Kind == SubmissionKind.CheckIn)
+        {
+            var (known, unlocked) = await LocationStateAsync(group.Id, number, ct);
+            if (!known)
+            {
+                _logger.LogWarning("Skipped check-in in {Channel}: unknown location {Number}", channelId, number);
+                await SendFeedbackAsync(silent, feedback.UnknownLocation, channelId, messageEvent.Ts, "{number}", number, ct);
+                return MessageTarget.Skipped(ProcessSlackMessageResult.Ignored($"Locatie {number} bestaat niet"));
+            }
+
+            return !unlocked && _runtime.RequireUnlockedLocation
+                ? new MessageTarget(SubmissionKind.CheckIn, number, null, $"Locatie {number} is nog niet vrijgespeeld voor deze groep",
+                    new FeedbackNote(feedback.LocationNotUnlocked, Replace(("{number}", number))))
+                : new MessageTarget(SubmissionKind.CheckIn, number, null);
+        }
+
+        // A theme is stored whenever it comes: a late review or a fixed round must still be able to count it
+        var (reason, note) = ThemeNote(number, SlackTimestamp.ToDateTimeOffset(messageEvent.Ts) ?? DateTimeOffset.UtcNow, feedback);
+        return new MessageTarget(SubmissionKind.Theme, number, null, reason, note);
+    }
+
+    /// <summary>Why a theme posted at <paramref name="postedAt"/> does not count, with the bot's reply; nulls when it counts.</summary>
+    private (string? Reason, FeedbackNote? Note) ThemeNote(string theme, DateTimeOffset postedAt, AdventurersFeedbackConfig feedback)
+    {
+        var rounds = _runtime.ThemeRounds;
+        var current = AdventurersScoring.RoundAt(rounds, postedAt);
+        if (current != null && current.Themes.Contains(theme)) return (null, null);
+
+        if (AdventurersScoring.RoundOfTheme(rounds, theme) is { } other)
+        {
+            return ($"Thema {theme} hoort bij ronde {other.Number}",
+                new FeedbackNote(feedback.ThemeOutsideRound, Replace(("{number}", theme), ("{round}", other.Number.ToString()))));
+        }
+
+        return current == null
+            ? ("Er liep geen ronde", new FeedbackNote(feedback.NoRoundOpen, Replace(("{number}", theme))))
+            : ($"Thema {theme} hoort bij geen ronde", new FeedbackNote(feedback.UnknownTheme, Replace(("{number}", theme))));
+    }
+
+    /// <summary>
+    /// Whether a location exists, and whether it is unlocked for the group. Without any locations set up every number
+    /// is accepted, so check-ins work before the map is filled in.
+    /// </summary>
+    private async Task<(bool Known, bool Unlocked)> LocationStateAsync(Guid groupId, string number, CancellationToken ct)
+    {
+        if (_locations == null || !int.TryParse(number, out var n)) return (true, true);
+
+        var all = await _locations.GetAllAsync(ct);
+        if (all.Count == 0) return (true, true);
+        if (all.All(l => l.Number != n)) return (false, false);
+
+        var unlocks = await _locations.GetUnlocksAsync(groupId, ct);
+        return (true, unlocks.Any(u => u.LocationNumber == n));
+    }
+
+    private static IReadOnlyDictionary<string, string?> Replace(params (string Placeholder, string? Value)[] values) =>
+        values.ToDictionary(v => v.Placeholder, v => v.Value);
 
     /// <summary>The files of a message that are stored, in the order Slack lists them.</summary>
     private List<SlackFileItemDto> SupportedFiles(IEnumerable<SlackFileItemDto> files) =>
@@ -436,30 +598,61 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
     /// <summary>The scout corrected the assignment number: the submissions and their file names follow.</summary>
     private async Task<ProcessSlackMessageResult> ReassignAsync(IReadOnlyList<Submission> submissions, SlackEventItemDto message, CancellationToken ct)
     {
-        var parsed = _assignmentParser.Parse(message.Text);
-        if (!parsed.Success || parsed.AssignmentCode == null
-            || await _assignmentRepository.GetByCodeAsync(parsed.AssignmentCode, ct) == null)
+        var first = submissions[0];
+        SubmissionKind kind;
+        string number;
+        string? reason = null;
+        if (first.Kind.IsAdventurers())
         {
-            // Keep the number that was valid; a typo in an edit must not lose a registered submission
-            _logger.LogInformation("Edit of message {Ts} has no valid assignment number; submissions keep #{Number}",
-                message.Ts, submissions[0].AssignmentCode);
-            return ProcessSlackMessageResult.Ignored("Bewerkte tekst heeft geen geldig opdrachtnummer; er is niets veranderd");
+            var parsed = AdventurersParser.Parse(message.Text);
+            var known = parsed.Success && (parsed.Kind != SubmissionKind.CheckIn || (await LocationStateAsync(first.GroupId, parsed.Number!, ct)).Known);
+            if (!known)
+            {
+                _logger.LogInformation("Edit of message {Ts} has no valid location or theme number; submissions keep {Code}", message.Ts, first.CodeLabel);
+                return ProcessSlackMessageResult.Ignored("Bewerkte tekst heeft geen geldig locatie- of themanummer; er is niets veranderd");
+            }
+
+            kind = parsed.Kind!.Value;
+            number = parsed.Number!;
+            // A theme counts for the round of the original message's time, whatever time it is now
+            if (kind == SubmissionKind.Theme) reason = ThemeNote(number, first.CreatedAt, _runtime.AdventurersFeedback).Reason;
+            else if (_runtime.RequireUnlockedLocation && !(await LocationStateAsync(first.GroupId, number, ct)).Unlocked)
+            {
+                reason = $"Locatie {number} is nog niet vrijgespeeld voor deze groep";
+            }
+        }
+        else
+        {
+            var parsed = _assignmentParser.Parse(message.Text);
+            if (!parsed.Success || parsed.AssignmentCode == null
+                || await _assignmentRepository.GetByCodeAsync(parsed.AssignmentCode, ct) == null)
+            {
+                // Keep the number that was valid; a typo in an edit must not lose a registered submission
+                _logger.LogInformation("Edit of message {Ts} has no valid assignment number; submissions keep #{Number}",
+                    message.Ts, first.AssignmentCode);
+                return ProcessSlackMessageResult.Ignored("Bewerkte tekst heeft geen geldig opdrachtnummer; er is niets veranderd");
+            }
+
+            kind = SubmissionKind.Assignment;
+            number = parsed.AssignmentCode;
         }
 
-        var number = parsed.AssignmentCode;
-        if (submissions.All(s => s.AssignmentCode == number))
+        var label = kind.Label(number);
+        if (submissions.All(s => s.AssignmentCode == number && s.Kind == kind))
         {
-            return ProcessSlackMessageResult.Ignored($"Opdracht {number} is niet veranderd");
+            return ProcessSlackMessageResult.Ignored($"{(kind.IsAdventurers() ? label : $"Opdracht {number}")} is niet veranderd");
         }
 
         // Moving to an assignment the group already completed would be a new attempt after approval
-        if (await IsNewAttemptAfterApprovalAsync(submissions[0].GroupId, number, submissions[0].SlackChannelId, message.Ts, ct, isRegistered: true))
+        if (kind == SubmissionKind.Assignment
+            && await IsNewAttemptAfterApprovalAsync(first.GroupId, number, first.SlackChannelId, message.Ts, ct, isRegistered: true))
         {
             _logger.LogInformation("Edit of message {Ts} not applied: the group already completed assignment {Number}", message.Ts, number);
-            await SendFeedbackAsync(silent: false, _runtime.Feedback.AlreadyCompleted, submissions[0].SlackChannelId, message.Ts, "{number}", number, ct);
+            await SendFeedbackAsync(silent: false, _runtime.Feedback.AlreadyCompleted, first.SlackChannelId, message.Ts, "{number}", number, ct);
             return ProcessSlackMessageResult.Ignored($"Opdracht {number} is al goedgekeurd voor deze groep; er is niets veranderd");
         }
 
+        var checkInsChanged = false;
         var supportedFiles = SupportedFiles(message.Files ?? new List<SlackFileItemDto>());
         foreach (var submission in submissions)
         {
@@ -470,12 +663,13 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
             {
                 var file = supportedFiles.FirstOrDefault(f => f.Id != null && f.Id == submission.SlackFileId)
                            ?? new SlackFileItemDto { Name = submission.FileName };
-                var newName = SubmissionFileName.Build(group, number, submission.FileName, submission.CreatedAt.ToGameTime(), FileIndex(supportedFiles, file));
+                var newName = SubmissionFileName.Build(group, kind, number, submission.FileName, submission.CreatedAt.ToGameTime(), FileIndex(supportedFiles, file));
                 storagePath = await _fileStorageService.RenameFileAsync(submission.StoragePath, newName, ct);
             }
 
-            var previousNumber = submission.AssignmentCode;
-            submission.Reassign(number, storagePath);
+            var previousLabel = submission.CodeLabel;
+            checkInsChanged |= (submission.Kind == SubmissionKind.CheckIn || kind == SubmissionKind.CheckIn) && IsCounted(submission.Status);
+            submission.Reassign(number, storagePath, kind, reason);
             try
             {
                 await _submissionRepository.UpdateAsync(submission, ct);
@@ -486,12 +680,17 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
                 await UndoMoveAsync(storagePath, previousPath);
                 throw;
             }
-            _logger.LogInformation("Submission {Id} moved from assignment #{From} to #{To} after an edit in Slack", submission.Id, previousNumber, number);
+            _logger.LogInformation("Submission {Id} moved from {From} to {To} after an edit in Slack", submission.Id, previousLabel, label);
         }
 
         _changeNotifier.NotifyChanged();
-        return ProcessSlackMessageResult.Succeeded(Array.Empty<Guid>(), $"{submissions.Count} inzending(en) verplaatst naar opdracht {number}");
+        if (checkInsChanged) _unlocks?.Enqueue(first.GroupId);
+        return ProcessSlackMessageResult.Succeeded(Array.Empty<Guid>(), kind.IsAdventurers()
+            ? $"{submissions.Count} inzending(en) verplaatst naar {label}"
+            : $"{submissions.Count} inzending(en) verplaatst naar opdracht {number}");
     }
+
+    private static bool IsCounted(SubmissionStatus status) => status is SubmissionStatus.Approved or SubmissionStatus.Awesome;
 
     /// <summary>
     /// Whether this message is a new attempt at an assignment the group already completed: blocking is on, the message
@@ -513,7 +712,8 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
 
         // Without a timestamp of its own the message counts as the newest
         var hasTs = SlackTimestamp.ToDateTimeOffset(messageTs) != null;
-        var existing = await _submissionRepository.SearchSubmissionsAsync(new SubmissionFilter { GroupId = groupId, AssignmentCode = assignmentCode }, ct);
+        var existing = await _submissionRepository.SearchSubmissionsAsync(
+            new SubmissionFilter { GroupId = groupId, AssignmentCode = assignmentCode, Kind = SubmissionKind.Assignment }, ct);
         return existing.Any(s => s.Status is SubmissionStatus.Approved or SubmissionStatus.Awesome
                                  && !(s.SlackChannelId == channelId && s.SlackMessageId == messageTs)
                                  && (!hasTs || SlackTimestamp.IsBefore(s.SlackMessageId, messageTs)));
@@ -523,7 +723,12 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
     private async Task WithdrawNumberFeedbackAsync(string channel, string messageTs, CancellationToken ct)
     {
         var feedback = _options.Value.SlackFeedback ?? new SlackFeedbackConfig();
-        var reactions = new[] { feedback.MissingAssignmentNumber?.Reaction, feedback.UnknownAssignmentNumber?.Reaction }
+        var adventurers = _runtime.AdventurersFeedback;
+        var reactions = new[]
+            {
+                feedback.MissingAssignmentNumber?.Reaction, feedback.UnknownAssignmentNumber?.Reaction,
+                adventurers.MissingNumber?.Reaction, adventurers.UnknownLocation?.Reaction
+            }
             .Where(r => !string.IsNullOrWhiteSpace(r))
             .Distinct();
         foreach (var reaction in reactions)
@@ -579,6 +784,10 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         }
 
         _changeNotifier.NotifyChanged();
+        foreach (var groupId in submissions.Where(s => s.Kind == SubmissionKind.CheckIn && IsCounted(s.Status)).Select(s => s.GroupId).Distinct())
+        {
+            _unlocks?.Enqueue(groupId);
+        }
     }
 
     public async Task<ProcessSlackReactionResult> ProcessSlackReactionAsync(SlackEventItemDto reactionEvent, CancellationToken ct = default)
@@ -634,18 +843,18 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         var review = ChooseReview(WithReaction(current, reaction, reviewer!))!;
 
         // Slack delivers an event again when it got no answer in time: the same review is not added twice
-        if (submissions.All(s => s.Status == review.Status && s.Reviews.FirstOrDefault() is { } last
+        if (submissions.All(s => s.Status == s.Kind.Effective(review.Status) && s.Reviews.FirstOrDefault() is { } last
                                  && last.Reviewer == review.Reviewer && last.ReactionEmoji == review.Emoji))
         {
-            return ProcessSlackReactionResult.Ignored($"Status blijft {review.Status.StatusLabel()}");
+            return ProcessSlackReactionResult.Ignored($"Status blijft {submissions[0].Kind.Effective(review.Status).StatusLabel()}");
         }
 
-        await ApplyStatusAsync(submissions, review.Status, review.Reviewer, review.Emoji, ct);
+        await ApplyStatusAsync(submissions, review.Status, review.Reviewer, review.Emoji, ct, live: true);
 
         _logger.LogInformation("Processed reaction '{Reaction}' on message {Ts}: {Count} submission(s) now {Status}",
             reaction, targetTs, submissions.Count, review.Status);
 
-        return ProcessSlackReactionResult.Succeeded(submissions[0].Id, review.Status);
+        return ProcessSlackReactionResult.Succeeded(submissions[0].Id, submissions[0].Status);
     }
 
     public async Task<ImportedReviewResult> ApplyImportedReactionsAsync(string channelId, string messageTs, IReadOnlyList<SlackMessageReactionDto>? reactions, CancellationToken ct = default)
@@ -704,7 +913,7 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         var review = ChooseReview(reactions);
         if (review != null)
         {
-            if (submissions.All(s => s.Status == review.Status)) return false;
+            if (submissions.All(s => s.Status == s.Kind.Effective(review.Status))) return false;
 
             await ApplyStatusAsync(submissions, review.Status, review.Reviewer, review.Emoji, ct);
             return true;
@@ -724,7 +933,7 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
     /// <summary>Whether <see cref="SyncReviewAsync"/> would change these submissions for this review.</summary>
     private static bool WouldChange(IReadOnlyList<Submission> submissions, ChosenReview? review) =>
         review != null
-            ? submissions.Any(s => s.Status != review.Status)
+            ? submissions.Any(s => s.Status != s.Kind.Effective(review.Status))
             : submissions.Any(s => s.Status is not (SubmissionStatus.Pending or SubmissionStatus.Received)
                                    && s.Reviews.FirstOrDefault()?.Reviewer != DashboardOverrideReviewer);
 
@@ -766,24 +975,24 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
 
         var review = ChooseReview(remaining);
         var newStatus = review?.Status ?? SubmissionStatus.Pending;
-        if (submissions.All(s => s.Status == newStatus))
+        if (submissions.All(s => s.Status == s.Kind.Effective(newStatus)))
         {
             return ProcessSlackReactionResult.Ignored($"Status blijft {newStatus.StatusLabel()}");
         }
 
         if (review == null)
         {
-            await ApplyStatusAsync(submissions, SubmissionStatus.Pending, reactionEvent.User!, reaction, ct, notes: "Beoordelingsemoji weggehaald");
+            await ApplyStatusAsync(submissions, SubmissionStatus.Pending, reactionEvent.User!, reaction, ct, notes: "Beoordelingsemoji weggehaald", live: true);
         }
         else
         {
-            await ApplyStatusAsync(submissions, review.Status, review.Reviewer, review.Emoji, ct);
+            await ApplyStatusAsync(submissions, review.Status, review.Reviewer, review.Emoji, ct, live: true);
         }
 
         _logger.LogInformation("Reaction '{Reaction}' removed from message {Ts}: {Count} submission(s) now {Status}",
             reaction, messageTs, submissions.Count, newStatus);
 
-        return ProcessSlackReactionResult.Succeeded(submissions[0].Id, newStatus);
+        return ProcessSlackReactionResult.Succeeded(submissions[0].Id, submissions[0].Status);
     }
 
     /// <summary>
@@ -829,17 +1038,26 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         return new ChosenReview(best, winner.Reviewer, winner.Emoji, Conflict: reviews.Select(r => r.Status).Distinct().Count() > 1);
     }
 
-    private async Task ApplyStatusAsync(IReadOnlyList<Submission> submissions, SubmissionStatus status, string reviewer, string? emoji, CancellationToken ct, string? notes = null)
+    /// <param name="live">
+    /// A review as it happens (an emoji, an override): a changed check-in tells the Toeristen. A catch-up or rebuild
+    /// brings old reviews in, which Slack already heard about.
+    /// </param>
+    private async Task ApplyStatusAsync(IReadOnlyList<Submission> submissions, SubmissionStatus status, string reviewer, string? emoji, CancellationToken ct,
+        string? notes = null, bool live = false)
     {
+        var unlockGroups = new HashSet<Guid>();
         foreach (var submission in submissions)
         {
             var group = submission.Group ?? await _groupRepository.GetByIdAsync(submission.GroupId, ct);
             var groupName = group?.Name ?? "unknown-group";
+            // Avonturiers have no awesome tier: awesome counts as approved
+            var target = submission.Kind.Effective(status);
+            if (submission.Kind == SubmissionKind.CheckIn && IsCounted(submission.Status) != IsCounted(target)) unlockGroups.Add(submission.GroupId);
 
             // FR-008: Move file
             var previousPath = submission.StoragePath;
-            var newStoragePath = await _fileStorageService.MoveFileToStatusAsync(groupName, previousPath, status, ct);
-            submission.TransitionStatus(status, newStoragePath, reviewer, emoji, notes);
+            var newStoragePath = await _fileStorageService.MoveFileToStatusAsync(groupName, previousPath, target, ct);
+            submission.TransitionStatus(target, newStoragePath, reviewer, emoji, notes);
             try
             {
                 await _submissionRepository.UpdateAsync(submission, ct);
@@ -853,6 +1071,12 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         }
 
         _changeNotifier.NotifyChanged();
+        if (!live) return;
+
+        foreach (var groupId in unlockGroups)
+        {
+            _unlocks?.Enqueue(groupId);
+        }
     }
 
     /// <summary>Puts a file back at <paramref name="previousPath"/> after the database refused the change.</summary>
@@ -906,7 +1130,7 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
             ? siblings.Select(s => s.Id == submission.Id ? submission : s).ToList()
             : new List<Submission> { submission };
 
-        await ApplyStatusAsync(targets, newStatus, DashboardOverrideReviewer, emoji: null, ct, notes: reason);
+        await ApplyStatusAsync(targets, newStatus, DashboardOverrideReviewer, emoji: null, ct, notes: reason, live: true);
 
         _logger.LogWarning("Submission {Id} status overridden from the dashboard to {Status} ({Count} file(s) of message {Ts}). Reason: {Reason}",
             submissionId, newStatus, targets.Count, submission.SlackMessageId, reason.ReplaceLineEndings(" "));
@@ -930,7 +1154,7 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
 
     /// <param name="reactedNow">Emoji placed while handling this message: a second reply with the same emoji is still posted.</param>
     private async Task SendFeedbackAsync(bool silent, FeedbackConfig? config, string channel, string? messageTs, string? placeholder, string? value,
-        CancellationToken ct, ISet<string>? reactedNow = null)
+        CancellationToken ct, ISet<string>? reactedNow = null, IReadOnlyDictionary<string, string?>? replacements = null)
     {
         if (silent || config == null || string.IsNullOrWhiteSpace(messageTs)) return;
 
@@ -946,6 +1170,11 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         if (!string.IsNullOrWhiteSpace(config.Message))
         {
             var text = placeholder != null ? config.Message.Replace(placeholder, value) : config.Message;
+            foreach (var (key, replacement) in replacements ?? new Dictionary<string, string?>())
+            {
+                text = text.Replace(key, replacement);
+            }
+
             await _slackClient.PostThreadReplyAsync(channel, messageTs, text, ct);
         }
     }
