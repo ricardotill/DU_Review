@@ -1,4 +1,4 @@
-# DU Review
+# 🏕 ️DU Review
 
 DU Review verwerkt de inzendingen van het **Destination Unknown regiospel**. Groepen plaatsen hun opdrachten als foto, video, geluidsopname of document in hun eigen Slack-kanaal. De jury beoordeelt ze met een emoji. DU Review doet de rest: bestanden opslaan en sorteren, punten tellen, en live een scorebord tonen.
 
@@ -251,6 +251,15 @@ De app draait dan op <http://localhost:5231>. De database `scouting_dev.db` en d
 ```bash
 dotnet run --project src/ScoutingAutomation.AppHost
 ```
+
+**In productie, met Docker Compose** (PostgreSQL en de app in containers; alleen Docker vereist):
+
+```bash
+cp .env.example .env   # vul POSTGRES_PASSWORD, SLACK_BOT_TOKEN en SLACK_APP_TOKEN in
+docker compose up -d --build
+```
+
+De app draait dan op <http://localhost:5231>. Gegevens staan in Docker-volumes; zie de [handleiding](docs/handleiding.md#met-docker-compose-productie) voor sleutels, back-ups en het overnemen van instellingen.
 
 Om zonder Slack te testen, zet je **simulatiemodus** aan met `Scouting:Slack:SimulationMode` = `true`, bijvoorbeeld in `appsettings.Development.json`. Er gaat dan niets naar Slack, en je kunt alles testen via de pagina **Slack-simulator**. Zonder die instelling staat simulatiemodus uit.
 

@@ -1,0 +1,17 @@
+**/bin/
+**/obj/
+**/node_modules/
+**/wwwroot/lib/
+**/.DS_Store
+.git/
+.idea/
+.vs/
+tests/
+docs/
+**/*.db
+**/*.db-*
+**/scouting_storage/
+**/access-keys.json*
+**/runtime-settings.json*
+**/appsettings.Development.json
+.env

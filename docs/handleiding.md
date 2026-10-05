@@ -1,6 +1,6 @@
 # Handleiding DU Review
 
-Laatst bijgewerkt: 2 oktober 2026
+Laatst bijgewerkt: 6 oktober 2026
 
 ## Zo werkt het
 
@@ -210,6 +210,15 @@ Beheertaken doe je in beheermodus. Daarvoor heb je de aparte beheerderssleutel n
 ### Sleutels
 
 - Bij de eerste start maakt de app een toegangssleutel en een beheerderssleutel aan. Ze staan eenmalig in het logboek en worden bewaard in `access-keys.json`.
+- **Sleutel kwijt?** Bij een volgende start staan de sleutels niet meer in het logboek. Je leest ze dan uit `access-keys.json`, op de computer waar de app draait:
+
+  | Gestart met | Commando |
+  |---|---|
+  | `run-gameday.sh` | `cat ~/du-app/access-keys.json` |
+  | Docker Compose | `docker compose exec app cat /data/access-keys.json` |
+  | `dotnet run` | `cat src/ScoutingAutomation.Web/access-keys.json` |
+
+  Wie dit bestand kan lezen, heeft beheerderstoegang. Deel het dus nooit.
 - Op de pagina **Beheer** maak je een nieuwe sleutel aan. Iedereen die met de oude sleutel is ingelogd, wordt direct uitgelogd. Jij blijft ingelogd.
 - Een nieuwe beheerderssleutel wordt maar één keer getoond. Schrijf hem meteen op.
 - **Groepssleutels**: op **Beheer** > **Groepssleutels** maak je in één keer sleutels voor alle groepen. Per groep kun je een nieuwe sleutel maken of de sleutel intrekken; dat logt alleen die groep uit.
@@ -288,6 +297,136 @@ scouting_storage/
   _backup/20261001-143000/          ← back-up van opnieuw opbouwen
 ```
 
+## De app starten
+
+Er zijn drie manieren om de app te starten:
+
+| Manier | Wanneer | Database |
+|---|---|---|
+| `run-gameday.sh` | Speeldag op een Mac | SQLite |
+| Docker Compose | Speeldag op een server of een andere computer met Docker | PostgreSQL |
+| .NET Aspire | Ontwikkelen en testen | PostgreSQL |
+
+Voor `run-gameday.sh` en Aspire heb je de [.NET 10 SDK](https://dotnet.microsoft.com/download) en [Node.js](https://nodejs.org/) (met npm) nodig, en de Slack-tokens in de user secrets (zie [Slack koppelen](slack-koppelen.md)). Voor Docker Compose heb je alleen Docker nodig.
+
+### Op de speeldag: `run-gameday.sh`
+
+Start in de map van de repository:
+
+```bash
+./run-gameday.sh
+```
+
+Het script doet het volgende:
+
+1. Het bouwt een Release-versie van de app in `~/du-app`.
+2. De eerste keer neemt het `access-keys.json` en `runtime-settings.json` over uit de projectmap. Zo blijven de sleutels, juryleden en regels hetzelfde. Staan ze al in `~/du-app`, dan blijven die staan.
+3. Het haalt de Slack-tokens uit de user secrets. Ontbreekt de BotToken of de AppToken, dan stopt het script met een melding. De app start dan niet.
+4. Het start de app met SQLite. De database `scouting_dev.db` staat in `~/du-app`. Het puntenbestand `opdrachtenpunten.csv` leest de app uit de repository, dus een aanpassing daarin geldt na een herstart.
+5. Zolang de app draait, gaat de Mac niet in de slaapstand en blijft het scherm aan.
+
+Het script toont het adres van de app: <http://localhost:5231> en het adres in het netwerk, zoals `http://192.168.1.20:5231`. Met dat tweede adres kunnen de jury en de beamer meekijken op hetzelfde netwerk. Stop de app met **Ctrl+C**.
+
+Een andere map of poort kies je zo:
+
+```bash
+APP_DIR=~/du-test PORT=8080 ./run-gameday.sh
+```
+
+Laat de Mac aan de stroom hangen en houd het deksel open: met het deksel dicht gaat een MacBook toch slapen.
+
+### Met Docker Compose (productie)
+
+In de repository staan een `Dockerfile` en een `docker-compose.yml`. Samen starten ze twee containers: een PostgreSQL-database (`db`) en de app (`app`). De app draait als productieversie, met Socket Mode en zonder simulatiemodus.
+
+**De eerste keer**
+
+1. Installeer Docker (op een Mac: Docker Desktop) en start het.
+2. Maak in de map van de repository het bestand `.env` aan, met `.env.example` als voorbeeld:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+3. Vul in `.env` in:
+   - `POSTGRES_PASSWORD`: een zelfgekozen, lang wachtwoord voor de database.
+   - `SLACK_BOT_TOKEN` (`xoxb-...`) en `SLACK_APP_TOKEN` (`xapp-...`): de tokens uit [Slack koppelen](slack-koppelen.md).
+   - Optioneel `PORT`, de poort op deze computer (standaard `5231`).
+   - Optioneel `ACCESS_KEY` en `ADMIN_KEY`, als je de sleutels zelf wilt kiezen. Dat werkt alleen bij de allereerste start.
+
+   `.env` bevat geheimen en staat niet in Git. Ontbreekt een verplichte waarde, dan start Docker Compose niet en noemt het de ontbrekende waarde.
+
+4. Bouw en start de app:
+
+   ```bash
+   docker compose up -d --build
+   ```
+
+   De eerste keer duurt het bouwen een paar minuten. De app wacht tot de database klaar is.
+
+5. Zoek de sleutels op. Bij de eerste start maakt de app een toegangssleutel en een beheerderssleutel aan:
+
+   ```bash
+   docker compose logs app | grep "Generated"
+   ```
+
+   Kwijt na een herstart? Zie **Sleutel kwijt?** bij [Sleutels](#sleutels).
+
+6. Open <http://localhost:5231>, of in het netwerk het adres van de computer, zoals `http://192.168.1.20:5231`. Controleer bovenaan de pagina de Slack-status: **Verbonden met Slack**.
+
+**Instellingen overnemen van een eerdere installatie**
+
+Heb je juryleden, regels en bottekst al ingesteld in `runtime-settings.json`? Zet dat bestand dan in de container en herstart de app:
+
+```bash
+docker compose exec -T app sh -c 'cat > /data/runtime-settings.json' < src/ScoutingAutomation.Web/runtime-settings.json
+docker compose restart app
+```
+
+Gebruik dit commando en niet `docker compose cp`: met `cp` hoort het bestand bij een andere gebruiker, en dan kan de app het niet lezen. Voor sleutels uit een eerdere `access-keys.json` werkt het op dezelfde manier, met `/data/access-keys.json`.
+
+**Dagelijks gebruik**
+
+| Wat | Commando |
+|---|---|
+| Starten | `docker compose up -d` |
+| Stoppen | `docker compose down` |
+| Logboek volgen | `docker compose logs -f app` |
+| Herstarten, bijvoorbeeld na een aanpassing in `opdrachtenpunten.csv` | `docker compose restart app` |
+| Nieuwe versie van de code | `git pull` en daarna `docker compose up -d --build` |
+
+Gaat de computer opnieuw aan, dan starten de containers vanzelf mee zodra Docker draait.
+
+**Waar staat alles?**
+
+- De database staat in het Docker-volume `db-data`.
+- De bestanden, `runtime-settings.json` en `access-keys.json` staan in het volume `app-data`, in de container onder `/data`. De bestanden van de groepen staan in `/data/storage`.
+- De sleutels voor de inlogcookies staan in het volume `app-keys`. Daardoor blijft iedereen ingelogd na een herstart.
+- Het puntenbestand komt direct uit de repository: `src/ScoutingAutomation.Web/opdrachtenpunten.csv`.
+- Andere instellingen, zoals de start- en eindtijd, pas je aan in de app (beheermodus). Of je zet ze in `docker-compose.yml` onder `environment`, met `__` in plaats van `:`, bijvoorbeeld `Scouting__EventStart: "2026-10-03T09:00"`. Een waarde die je in de app hebt aangepast, gaat altijd voor.
+
+Volumes blijven bewaard bij `docker compose down`, maar `docker compose down -v` wist ze, met de database en alle bestanden. Gebruik `-v` dus nooit op de speeldag.
+
+Een kopie van alle bestanden maak je zo:
+
+```bash
+docker compose cp app:/data/storage ./du-bestanden
+```
+
+Let op: de app draait zonder HTTPS. In een eigen netwerk is dat goed. Moet de app via internet bereikbaar zijn, zet er dan een reverse proxy met HTTPS voor.
+
+### Voor ontwikkelen: .NET Aspire
+
+Start eerst Docker Desktop. Start dan in de map van de repository:
+
+```bash
+dotnet run --project src/ScoutingAutomation.AppHost
+```
+
+Aspire start een PostgreSQL-database in Docker (met pgAdmin erbij) en daarna de app. De database blijft bewaard in een Docker-volume, ook na een herstart. In de terminal staat een link naar het Aspire-dashboard. Daar zie je het adres van de app (`web`) en de logboeken. Stop alles met **Ctrl+C**.
+
+De app draait hier als ontwikkelversie en is alleen lokaal te bereiken. Gebruik op de speeldag `run-gameday.sh` of Docker Compose.
+
 ## Draaiboek voor de speeldag
 
 Doe de generale repetitie een paar dagen vóór het spel, op dezelfde server en in dezelfde Slack-workspace. Dan is de speeldag zelf vooral kijken.
@@ -311,7 +450,7 @@ Doe de generale repetitie een paar dagen vóór het spel, op dezelfde server en 
 
 ### Op de ochtend van het spel
 
-- [ ] Start de app en controleer bovenaan de pagina de Slack-status: **Verbonden met Slack**.
+- [ ] Start de app met `./run-gameday.sh` of `docker compose up -d` (zie [De app starten](#de-app-starten)) en controleer bovenaan de pagina de Slack-status: **Verbonden met Slack**.
 - [ ] Kijk op **Gebeurtenissen**: er staat **Verbonden met Slack** en een **Bijwerken**-melding, en geen **Fout in de app**. Houd deze pagina tijdens het spel ergens open.
 - [ ] **Handmatige modus** staat uit (geen melding bovenaan).
 - [ ] Plaats in elk kanaal een testbericht met een foto en `Opdracht 1`. Controleer dat het op het dashboard verschijnt, en verwijder het daarna in Slack.

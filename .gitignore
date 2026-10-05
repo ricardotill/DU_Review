@@ -641,3 +641,6 @@ src/ScoutingAutomation.Web/wwwroot/lib/
 
 # macOS
 .DS_Store
+
+# Docker Compose secrets
+.env

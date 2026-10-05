@@ -1,0 +1,49 @@
+# DU Review in production: PostgreSQL plus the app, data in Docker volumes.
+# Fill in .env first (copy .env.example), then: docker compose up -d --build
+# See docs/handleiding.md, "Met Docker Compose".
+
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: scoutingdb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d scoutingdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  app:
+    build: .
+    image: du-review
+    restart: unless-stopped
+    # The app prepares the database at startup: wait until PostgreSQL accepts connections
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${PORT:-5231}:8080"
+    environment:
+      ConnectionStrings__scoutingdb: "Host=db;Database=scoutingdb;Username=postgres;Password=${POSTGRES_PASSWORD}"
+      Scouting__Slack__BotToken: ${SLACK_BOT_TOKEN:?Set SLACK_BOT_TOKEN in .env}
+      Scouting__Slack__AppToken: ${SLACK_APP_TOKEN:?Set SLACK_APP_TOKEN in .env}
+      Scouting__Slack__SocketMode: "true"
+      Scouting__Slack__SimulationMode: "false"
+      # Only used while access-keys.json does not exist yet; empty means the app generates a key
+      Scouting__AccessKey: ${ACCESS_KEY:-}
+      Scouting__AdminKey: ${ADMIN_KEY:-}
+    volumes:
+      - app-data:/data
+      - app-keys:/home/app/.aspnet/DataProtection-Keys
+      # Edits to the points file count after `docker compose restart app`, without a rebuild
+      - ./src/ScoutingAutomation.Web/opdrachtenpunten.csv:/app/opdrachtenpunten.csv:ro
+
+volumes:
+  db-data:
+  app-data:
+  app-keys:
