@@ -112,7 +112,9 @@ public sealed class UnlockNotifier : BackgroundService
     {
         if (string.IsNullOrWhiteSpace(template)) return "";
 
-        var total = pool.Count > 0 ? pool.Count.ToString() : locationCount > 0 ? locationCount.ToString() : "?";
+        var total = pool.Count > 0 ? pool.Count.ToString() : locationCount > 0 ? locationCount.ToString() : null;
+        // Without a pool or locations there is no total: "opdracht 4 van {total}" becomes "opdracht 4"
+        if (total == null) template = template.Replace(" van {total}", "").Replace("{total}", "");
         var assignment = "";
         if (pool.Count > 0 && count > previous)
         {

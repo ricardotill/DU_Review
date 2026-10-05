@@ -205,7 +205,9 @@ public sealed class ThemeRoundAnnouncer : BackgroundService
                 await PostAsync(round.Number, RoundMessage.Close, resend: false, ct);
             }
 
-            if (now - round.End <= ResultWindow && !Done(round, RoundMessage.Result))
+            // A result waits for the jury, but only for a round this app closed itself: a late start posts no old results
+            var closedHere = now - round.End <= ScheduledAnnouncer.AutoPostWindow || Done(round, RoundMessage.Close);
+            if (closedHere && now - round.End <= ResultWindow && !Done(round, RoundMessage.Result))
             {
                 if (overview == null)
                 {
