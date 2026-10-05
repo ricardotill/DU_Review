@@ -11,6 +11,7 @@ Jullie sturen opdrachten in via Slack. De jury beoordeelt ze daar, en in de app 
 - Zet de bot een ❓, bewerk dan je bericht en zet het juiste nummer erin.
 - Zet de bot een ⚠️, lees de uitleg in de thread.
 - Met jullie groepssleutel zie je in de app jullie score, de stand en jullie inzendingen.
+- Avonturiers plaatsen hun foto's in hun eigen kanaal, met `Locatie 7` bij een check-in en `Thema 3` bij een themafoto. Zie **Voor de Avonturiers**.
 
 ## Een opdracht insturen
 
@@ -55,6 +56,51 @@ De bot zet een emoji op je bericht en legt in de thread uit wat er mis is.
 
 Geen reactie van de bot betekent dat alles goed is ontvangen. De beoordeling van de jury zie je als emoji van een jurylid op je bericht.
 
+## Voor de Avonturiers
+
+Doet jullie groep mee met de Avonturiers, dan hebben jullie een tweede Slack-kanaal: dat van de Avonturiers. Alles wat de Avonturiers insturen, gaat daarin. Het kanaal van de Toeristen blijft voor de opdrachten.
+
+### Een check-in op een locatie
+
+1. Maak op de locatie een foto van jullie groep.
+2. Plaats hem in het Avonturiers-kanaal met het locatienummer: `Locatie 7`, `Loc 7`, `L7` of `#7`.
+
+Keurt de jury de check-in goed, dan spelen jullie daarmee een opdracht vrij voor de Toeristen van je groep. De bot meldt dat in het kanaal van de Toeristen: "Jullie Avonturiers hebben opdracht 4 van 12 vrijgespeeld!". Elke locatie telt één keer. Wordt een goedkeuring teruggedraaid, dan meldt de bot ook dat.
+
+Speelt jullie organisatie met een vaste volgorde van opdrachten, dan noemt de bot de opdracht die erbij komt. Een opdracht uit die lijst insturen voordat hij is vrijgespeeld, telt niet: de bot zet er een 🔒 op in het kanaal van de Toeristen.
+
+### Een themafoto in een ronde
+
+De middag is verdeeld in rondes, meestal van een half uur. Bij het begin van elke ronde zet de bot het thema in jullie kanaal.
+
+1. Maak een foto of video bij het thema.
+2. Plaats hem in het Avonturiers-kanaal met het themanummer: `Thema 3` of `T3`. `Opdracht 3` mag ook.
+3. Doe dat vóór het einde van de ronde: het tijdstip waarop je bericht in Slack staat telt, niet wanneer de jury kijkt.
+
+Per ronde telt het aantal verschillende goedgekeurde thema's. De beste groep krijgt 2 punten, de tweede 1. Na de ronde zet de bot de uitslag in jullie kanaal, zodra de jury alles heeft bekeken.
+
+### De kaart
+
+In de startinformatie van de bot staat een link naar jullie kaart. Daarop staan de locaties die jullie mogen bezoeken, met een kleur:
+
+| Kleur | Betekenis |
+| --- | --- |
+| grijs | nog niet bezocht |
+| oranje | check-in geplaatst, wacht op de jury |
+| groen | goedgekeurd |
+| rood | afgekeurd |
+
+Voor de kaart hoef je niet in te loggen. Hij ververst elke halve minuut vanzelf. Deel de link alleen binnen je groep. Komen er locaties bij, dan verschijnen ze vanzelf op de kaart.
+
+### Als de bot reageert in het Avonturiers-kanaal
+
+| De bot zet | Betekenis | Wat jij doet |
+| --- | --- | --- |
+| ❓ | Geen locatie- of themanummer gevonden, of dat nummer bestaat niet | Plaats je foto opnieuw met het juiste nummer |
+| ⌛ | Dit thema hoort niet bij de ronde die nu loopt, of er loopt geen ronde | Niets: de foto is bewaard maar telt niet. Kijk welk thema nu aan de beurt is |
+
+In het kanaal van de Toeristen kan de bot ook een 🔒 zetten met de uitleg dat de opdracht nog niet is vrijgespeeld door jullie Avonturiers. Die inzending telt dan niet; stuur hem opnieuw in als de opdracht is vrijgespeeld.
+
 ## Het dashboard van je groep
 
 Het dashboard toont live jullie score en inzendingen. Je hoeft de pagina nooit te verversen: nieuwe inzendingen en beoordelingen verschijnen vanzelf.
@@ -80,7 +126,7 @@ Inzendingen van andere groepen zie je niet. Jullie eigen score en de punten per 
 
 - Goedgekeurd geeft de standaardpunten van de opdracht, Awesome de awesome-punten. Open en Afgekeurd geven 0.
 - Elke opdracht telt één keer per groep: de beste beoordeling van al haar inzendingen voor die opdracht. Twee foto's in één bericht leveren dus niet dubbel punten op.
-- Daarbij komen de extra punten uit de puntencategorieën die in gebruik zijn, zoals Avonturiers en Reisbureau.
+- Daarbij komen de extra punten uit de puntencategorieën die in gebruik zijn, zoals Avonturiers en Reisbureau. De Avonturiers-punten zijn de punten van de themarondes plus het eindspel.
 - Groepen met evenveel punten delen een plaats.
 
 ## Problemen
