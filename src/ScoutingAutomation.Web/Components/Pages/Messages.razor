@@ -3,10 +3,11 @@
 @implements IDisposable
 @inject IServiceScopeFactory ScopeFactory
 @inject ISlackClient Slack
+@inject RuntimeSettingsService Runtime
 
 <PageTitle>Bericht sturen - DU Review</PageTitle>
 
-<PageHeader Title="Bericht sturen" Subtitle="Plaats een bericht van de bot in de Slack-kanalen van de groepen." />
+<PageHeader Title="Bericht sturen" Subtitle="Plaats een bericht van de bot in de Slack-kanalen van de groepen: die van de Toeristen, de Avonturiers of beide." />
 
 @if (groups == null)
 {
@@ -122,6 +123,19 @@ else
                 </div>
                 <div class="stat-caption mb-2">@selected.Count van @groups.Count groepen</div>
 
+                @if (Runtime.AdventurersEnabled)
+                {
+                    <div class="btn-group btn-group-sm w-100 mb-2 channel-filter" role="group" aria-label="Kanalen">
+                        @foreach (var (value, label) in new[] { (MessageChannels.Toeristen, "Toeristen"), (MessageChannels.Avonturiers, "Avonturiers"), (MessageChannels.Both, "Beide") })
+                        {
+                            <button type="button" class="btn @(channels == value ? "btn-success" : "btn-outline-secondary")" disabled="@posting" @onclick="() => SetChannels(value)">@label</button>
+                        }
+                    </div>
+                    <button type="button" class="btn btn-sm btn-link text-info p-0 mb-2 all-adventurers" disabled="@posting" @onclick="AllAdventurers">
+                        <i class="bi bi-compass me-1"></i>Alle Avonturiers
+                    </button>
+                }
+
                 @if (groups.Count == 0)
                 {
                     <p class="text-muted small mb-0">Geen groepen ingesteld.</p>
@@ -130,7 +144,7 @@ else
                     @foreach (var group in groups)
                     {
                         var id = $"message-group-{group.Id}";
-                        var hasChannel = !string.IsNullOrWhiteSpace(group.SlackChannelId);
+                        var hasChannel = HasChannel(group);
                         <div class="form-check">
                             <input class="form-check-input" type="checkbox" id="@id" checked="@selected.Contains(group.Id)"
                                    disabled="@(posting || !hasChannel)" @onchange="e => Toggle(group.Id, e.Value is true)" />
@@ -171,7 +185,30 @@ else
 
     private bool CanSend => Slack.IsConnected && !posting && !loadingPicture && (!empty || picture != null) && selected.Count > 0;
 
-    private string ChannelCount => selected.Count == 1 ? "1 kanaal" : $"{selected.Count} kanalen";
+    private MessageChannels channels = MessageChannels.Toeristen;
+
+    private int SelectedChannels => groups!.Where(g => selected.Contains(g.Id))
+        .Sum(g => (channels != MessageChannels.Avonturiers && !string.IsNullOrWhiteSpace(g.SlackChannelId) ? 1 : 0)
+                  + (channels != MessageChannels.Toeristen && !string.IsNullOrWhiteSpace(g.AdventurersSlackChannelId) ? 1 : 0));
+
+    private string ChannelCount => SelectedChannels == 1 ? "1 kanaal" : $"{SelectedChannels} kanalen";
+
+    // A group can get the message when it has at least one of the chosen channels
+    private bool HasChannel(Group group) =>
+        (channels != MessageChannels.Avonturiers && !string.IsNullOrWhiteSpace(group.SlackChannelId))
+        || (channels != MessageChannels.Toeristen && !string.IsNullOrWhiteSpace(group.AdventurersSlackChannelId));
+
+    private void SetChannels(MessageChannels value)
+    {
+        channels = value;
+        Select(selected.ToList());
+    }
+
+    private void AllAdventurers()
+    {
+        channels = MessageChannels.Avonturiers;
+        SelectAll();
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -186,7 +223,7 @@ else
 
     private void Select(IEnumerable<Guid> ids)
     {
-        var withChannel = groups!.Where(g => !string.IsNullOrWhiteSpace(g.SlackChannelId)).Select(g => g.Id).ToHashSet();
+        var withChannel = groups!.Where(HasChannel).Select(g => g.Id).ToHashSet();
         selected = ids.Where(withChannel.Contains).ToHashSet();
         confirming = false;
     }
@@ -228,11 +265,12 @@ else
             var sent = selected.ToList();
             await using (var scope = ScopeFactory.CreateAsyncScope())
             {
-                results = await scope.ServiceProvider.GetRequiredService<GroupMessageSender>().PostAsync(text, sent, attached);
+                results = await scope.ServiceProvider.GetRequiredService<GroupMessageSender>().PostAsync(text, sent, attached, channels: channels);
             }
 
             // Channels that have the message drop out, so sending again only retries the ones that failed
-            var posted = groups!.Where(g => results.Any(r => r.Posted && r.ChannelId == g.SlackChannelId)).Select(g => g.Id);
+            var posted = groups!.Where(g => sent.Contains(g.Id) && !results.Any(r => !r.Posted
+                && (r.ChannelId == g.SlackChannelId || r.ChannelId == g.AdventurersSlackChannelId))).Select(g => g.Id);
             selected.ExceptWith(posted);
             if (results.All(r => r.Posted))
             {

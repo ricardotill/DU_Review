@@ -185,10 +185,10 @@ else
 
         var repository = services.GetRequiredService<ISubmissionRepository>();
         var groups = await services.GetRequiredService<IGroupRepository>().GetAllAsync();
-        var submissions = await repository.SearchSubmissionsAsync(new SubmissionFilter { AssignmentCode = Current });
+        var submissions = await repository.SearchSubmissionsAsync(new SubmissionFilter { AssignmentCode = Current, Kind = SubmissionKind.Assignment });
 
         // The next assignment with something to review, starting again at the first one after the last
-        var openCodes = (await repository.SearchSubmissionsAsync(new SubmissionFilter { Status = SubmissionStatus.Pending }))
+        var openCodes = (await repository.SearchSubmissionsAsync(new SubmissionFilter { Status = SubmissionStatus.Pending, Kind = SubmissionKind.Assignment }))
             .Select(s => s.AssignmentCode).OfType<string>().Where(c => c != Current).Distinct().Order(AssignmentCode.Comparer).ToList();
         nextOpenCode = openCodes.FirstOrDefault(c => AssignmentCode.Compare(c, Current) > 0) ?? openCodes.FirstOrDefault();
 

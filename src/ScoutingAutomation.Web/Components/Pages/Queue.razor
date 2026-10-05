@@ -21,17 +21,31 @@
                 }
             </select>
         </div>
-        <div class="col-md-4 col-6">
+        @if (Runtime.AdventurersEnabled)
+        {
+            <div class="col-md-2 col-6">
+                <label class="form-label text-secondary small fw-semibold mb-1" for="queueKind">Soort</label>
+                <select class="form-select form-select-dark" id="queueKind" @bind="selectedKind" @bind:after="FirstPage">
+                    <option value="">Alles</option>
+                    @foreach (var kind in Enum.GetValues<SubmissionKind>())
+                    {
+                        <option value="@kind">@kind.KindLabel()</option>
+                    }
+                </select>
+            </div>
+        }
+        <div class="@(Runtime.AdventurersEnabled ? "col-md-3" : "col-md-4") col-6">
             <label class="form-label text-secondary small fw-semibold mb-1" for="queueAssignment">Opdracht</label>
             <select class="form-select form-select-dark" id="queueAssignment" @bind="selectedAssignmentCode" @bind:after="FirstPage">
                 <option value="">Alle opdrachten</option>
-                @foreach (var assignmentCode in queue.Select(i => i.AssignmentCode).OfType<string>().Distinct().Order(AssignmentCode.Comparer))
+                @foreach (var item in queue.Where(i => i.AssignmentCode != null && MatchesKind(i)).DistinctBy(i => i.CodeLabel)
+                    .OrderBy(i => i.Kind).ThenBy(i => i.AssignmentCode, AssignmentCode.Comparer))
                 {
-                    <option value="@assignmentCode">#@assignmentCode</option>
+                    <option value="@item.CodeLabel">#@item.CodeLabel</option>
                 }
             </select>
         </div>
-        <div class="col-md-4 text-md-end small text-secondary">
+        <div class="@(Runtime.AdventurersEnabled ? "col-md-3" : "col-md-4") text-md-end small text-secondary">
             @if (Runtime.ReviewReminderMinutes is { } minutes)
             {
                 <span><i class="bi bi-hourglass-split me-1"></i>Herinnering aan de jury na @minutes min</span>
@@ -98,6 +112,7 @@
     private bool loaded;
     private string? selectedGroupId;
     private string? selectedAssignmentCode;
+    private string? selectedKind;
     private Timer? refresh;
     private int page = 1;
 
@@ -105,9 +120,22 @@
 
     private IEnumerable<ReviewQueueItem> Filtered => queue
         .Where(i => !Guid.TryParse(selectedGroupId, out var groupId) || i.Group?.Id == groupId)
-        .Where(i => string.IsNullOrEmpty(selectedAssignmentCode) || i.AssignmentCode == selectedAssignmentCode);
+        .Where(MatchesKind)
+        .Where(i => string.IsNullOrEmpty(selectedAssignmentCode) || i.CodeLabel == selectedAssignmentCode);
 
-    private List<ReviewQueueItem> ToReview => Filtered.Where(i => !i.AlreadyCompleted).ToList();
+    private bool MatchesKind(ReviewQueueItem item) => !Enum.TryParse<SubmissionKind>(selectedKind, out var kind) || item.Kind == kind;
+
+    // Themes of the running round first: their result is due when the round ends
+    private List<ReviewQueueItem> ToReview => Filtered.Where(i => !i.AlreadyCompleted)
+        .OrderBy(i => IsRunningRoundTheme(i) ? 0 : 1)
+        .ToList();
+
+    private bool IsRunningRoundTheme(ReviewQueueItem item)
+    {
+        if (item.Kind != SubmissionKind.Theme || item.AssignmentCode == null || !Runtime.AdventurersEnabled) return false;
+        var round = AdventurersScoring.RoundAt(Runtime.ThemeRounds, Time.GetUtcNow());
+        return round != null && round.Contains(item.PostedAt) && round.Themes.Contains(item.AssignmentCode);
+    }
 
     private List<ReviewQueueItem> NoLongerCounting => Filtered.Where(i => i.AlreadyCompleted).ToList();
 
@@ -136,7 +164,15 @@
                 <div class="flex-grow-1 min-w-0">
                     <div class="fw-semibold text-white text-truncate">
                         @(item.Group?.Name ?? "Onbekende groep")
-                        <span class="badge assignment-badge ms-1">#@(item.AssignmentCode ?? "?")</span>
+                        <span class="badge assignment-badge ms-1">#@item.CodeLabel</span>
+                        @if (item.Kind.IsAdventurers())
+                        {
+                            <span class="badge bg-info text-dark ms-1">@item.Kind.KindLabel()</span>
+                        }
+                        @if (IsRunningRoundTheme(item))
+                        {
+                            <span class="badge bg-warning text-dark ms-1" title="Hoort bij de ronde die nu loopt">lopende ronde</span>
+                        }
                     </div>
                     <div class="text-muted small text-truncate">
                         @item.First.SubmitterDisplayName · @item.PostedAt.ToGameTime().ToString("HH:mm")

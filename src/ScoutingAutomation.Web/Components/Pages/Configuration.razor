@@ -21,6 +21,10 @@
                             <th>Naam</th>
                             <th>Afkorting</th>
                             <th>Slack-kanaal</th>
+                            @if (Runtime.AdventurersEnabled)
+                            {
+                                <th>Avonturiers-kanaal</th>
+                            }
                             <th>Omschrijving</th>
                         </tr>
                     </thead>
@@ -40,6 +44,19 @@
                                     }
                                 </td>
                                 <td><span class="badge assignment-badge">#@g.SlackChannelId</span></td>
+                                @if (Runtime.AdventurersEnabled)
+                                {
+                                    <td>
+                                        @if (string.IsNullOrWhiteSpace(g.AdventurersSlackChannelId))
+                                        {
+                                            <span class="text-warning small">niet ingesteld</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge assignment-badge">#@g.AdventurersSlackChannelId</span>
+                                        }
+                                    </td>
+                                }
                                 <td class="text-secondary small">@(g.Description ?? "–")</td>
                             </tr>
                         }
@@ -48,6 +65,13 @@
             </div>
         </div>
     </div>
+
+    @if (Runtime.AdventurersEnabled)
+    {
+        <div class="col-12">
+            <AdventurersSettingsPanel />
+        </div>
+    }
 
     <!-- Review in Slack -->
     <div class="col-lg-6">
