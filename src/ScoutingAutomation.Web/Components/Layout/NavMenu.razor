@@ -23,96 +23,119 @@
             </NavLink>
         </div>
 
-        <span class="nav-section">Beoordelen</span>
+        @* Groups only see their own dashboard and uploads; the pages below are closed to them anyway *@
+        <AuthorizeView Roles="@KeyAuth.JuryRole">
+            <Authorized>
+                <span class="nav-section">Beoordelen</span>
 
-        <div class="nav-item">
-            <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="queue">
-                <i class="bi bi-inbox-fill" style="color: #fbbf24;"></i>
-                <span class="nav-label fw-medium">Te beoordelen</span>
-            </NavLink>
-        </div>
+                <div class="nav-item">
+                    <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="queue">
+                        <i class="bi bi-inbox-fill" style="color: #fbbf24;"></i>
+                        <span class="nav-label fw-medium">Te beoordelen</span>
+                    </NavLink>
+                </div>
 
-        <div class="nav-item">
-            <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="submissions">
-                <i class="bi bi-folder2-open" style="color: #38bdf8;"></i>
-                <span class="nav-label fw-medium">Inzendingen</span>
-            </NavLink>
-        </div>
+                <div class="nav-item">
+                    <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="submissions">
+                        <i class="bi bi-folder2-open" style="color: #38bdf8;"></i>
+                        <span class="nav-label fw-medium">Inzendingen</span>
+                    </NavLink>
+                </div>
 
-        <div class="nav-item">
-            <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="assignments">
-                <i class="bi bi-list-ol" style="color: #a78bfa;"></i>
-                <span class="nav-label fw-medium">Opdrachten</span>
-            </NavLink>
-        </div>
+                <div class="nav-item">
+                    <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="assignments">
+                        <i class="bi bi-list-ol" style="color: #a78bfa;"></i>
+                        <span class="nav-label fw-medium">Opdrachten</span>
+                    </NavLink>
+                </div>
 
-        <div class="nav-item">
-            <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="groups">
-                <i class="bi bi-people-fill" style="color: #34d399;"></i>
-                <span class="nav-label fw-medium">Groepen</span>
-            </NavLink>
-        </div>
+                <div class="nav-item">
+                    <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="groups">
+                        <i class="bi bi-people-fill" style="color: #34d399;"></i>
+                        <span class="nav-label fw-medium">Groepen</span>
+                    </NavLink>
+                </div>
 
-        <div class="nav-item">
-            <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="messages">
-                <i class="bi bi-megaphone-fill" style="color: #60a5fa;"></i>
-                <span class="nav-label fw-medium">Bericht sturen</span>
-            </NavLink>
-        </div>
+                <div class="nav-item">
+                    <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="messages">
+                        <i class="bi bi-megaphone-fill" style="color: #60a5fa;"></i>
+                        <span class="nav-label fw-medium">Bericht sturen</span>
+                    </NavLink>
+                </div>
 
-        <span class="nav-section">Presenteren</span>
+                <span class="nav-section">Presenteren</span>
 
-        <div class="nav-item">
-            <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="scoreboard">
-                <i class="bi bi-trophy-fill text-warning"></i>
-                <span class="nav-label fw-medium">Scorebord</span>
-            </NavLink>
-        </div>
+                <div class="nav-item">
+                    <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="scoreboard">
+                        <i class="bi bi-trophy-fill text-warning"></i>
+                        <span class="nav-label fw-medium">Scorebord</span>
+                    </NavLink>
+                </div>
 
-        <div class="nav-item">
-            <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="slideshow">
-                <i class="bi bi-play-btn-fill" style="color: #f472b6;"></i>
-                <span class="nav-label fw-medium">Diavoorstelling</span>
-            </NavLink>
-        </div>
+                <div class="nav-item">
+                    <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="standing">
+                        <i class="bi bi-eye-slash-fill" style="color: #94a3b8;"></i>
+                        <span class="nav-label fw-medium">Stand voor groepen</span>
+                    </NavLink>
+                </div>
 
-        <span class="nav-section">Systeem</span>
+                <div class="nav-item">
+                    <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="slideshow">
+                        <i class="bi bi-play-btn-fill" style="color: #f472b6;"></i>
+                        <span class="nav-label fw-medium">Diavoorstelling</span>
+                    </NavLink>
+                </div>
 
-        <div class="nav-item">
-            <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="events">
-                <i class="bi bi-activity" style="color: #fb923c;"></i>
-                <span class="nav-label fw-medium">Gebeurtenissen</span>
-            </NavLink>
-        </div>
+                <span class="nav-section">Systeem</span>
 
-        @if (ScoutingOptions.Value.Slack.SimulationMode)
-        {
-            <div class="nav-item">
-                <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="simulator">
-                    <i class="bi bi-slack" style="color: #e01e5a;"></i>
-                    <span class="nav-label fw-medium">Slack Simulator</span>
-                    <span class="badge ms-auto flex-shrink-0" style="background: rgba(224, 30, 90, 0.2); color: #ff7597; font-size: 0.65rem;">TEST POC</span>
-                </NavLink>
-            </div>
-        }
+                <div class="nav-item">
+                    <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="events">
+                        <i class="bi bi-activity" style="color: #fb923c;"></i>
+                        <span class="nav-label fw-medium">Gebeurtenissen</span>
+                    </NavLink>
+                </div>
 
-        <div class="nav-item">
-            <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="configuration">
-                <i class="bi bi-sliders" style="color: #fbbf24;"></i>
-                <span class="nav-label fw-medium">Configuratie</span>
-            </NavLink>
-        </div>
+                @if (ScoutingOptions.Value.Slack.SimulationMode)
+                {
+                    <div class="nav-item">
+                        <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="simulator">
+                            <i class="bi bi-slack" style="color: #e01e5a;"></i>
+                            <span class="nav-label fw-medium">Slack Simulator</span>
+                            <span class="badge ms-auto flex-shrink-0" style="background: rgba(224, 30, 90, 0.2); color: #ff7597; font-size: 0.65rem;">TEST POC</span>
+                        </NavLink>
+                    </div>
+                }
 
-        <div class="nav-item">
-            <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="admin">
-                <i class="bi bi-shield-lock" style="color: #f87171;"></i>
-                <span class="nav-label fw-medium">Beheer</span>
-            </NavLink>
-        </div>
+                <div class="nav-item">
+                    <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="configuration">
+                        <i class="bi bi-sliders" style="color: #fbbf24;"></i>
+                        <span class="nav-label fw-medium">Configuratie</span>
+                    </NavLink>
+                </div>
+
+                <div class="nav-item">
+                    <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="admin">
+                        <i class="bi bi-shield-lock" style="color: #f87171;"></i>
+                        <span class="nav-label fw-medium">Beheer</span>
+                    </NavLink>
+                </div>
+            </Authorized>
+            <NotAuthorized>
+                <div class="nav-item">
+                    <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="submissions">
+                        <i class="bi bi-folder2-open" style="color: #38bdf8;"></i>
+                        <span class="nav-label fw-medium">Onze inzendingen</span>
+                    </NavLink>
+                </div>
+            </NotAuthorized>
+        </AuthorizeView>
     </nav>
 
     <div class="mt-auto p-3 text-muted d-flex justify-content-between align-items-center" style="font-size: 0.75rem; border-top: 1px solid var(--border-color);">
-        <span>Destination Unknown regiospel</span>
+        <AuthorizeView Roles="@KeyAuth.GroupRole">
+            <Authorized><span class="text-truncate" title="Ingelogd als groep">@context.User.Identity?.Name</span></Authorized>
+            <NotAuthorized><span>Destination Unknown regiospel</span></NotAuthorized>
+        </AuthorizeView>
         <form method="post" action="logout">
             <AntiforgeryToken />
             <button type="submit" class="btn btn-link btn-sm text-secondary p-0 logout" title="Uitloggen"><i class="bi bi-box-arrow-right"></i> Uitloggen</button>

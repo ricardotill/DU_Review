@@ -33,7 +33,7 @@ public abstract class PageTestBase : BunitContext
         JSInterop.Mode = JSRuntimeMode.Loose;
         Auth = AddAuthorization();
         Auth.SetAuthorized("Admin");
-        Auth.SetRoles(ScoutingAutomation.Web.Auth.KeyAuth.AdminRole);
+        Auth.SetRoles(ScoutingAutomation.Web.Auth.KeyAuth.AdminRole, ScoutingAutomation.Web.Auth.KeyAuth.JuryRole);
         // Resolved lazily so tests can adjust Settings before rendering
         Services.AddSingleton<IOptions<ScoutingSettings>>(_ => Options.Create(Settings));
 
@@ -57,13 +57,21 @@ public abstract class PageTestBase : BunitContext
 
     protected ScoutingSettings Settings { get; }
 
-    /// <summary>Tests run as an admin; call <see cref="LogInAsJury"/> to check what others see.</summary>
+    /// <summary>Tests run as an admin; call <see cref="LogInAsJury"/> or <see cref="LogInAsGroup"/> to check what others see.</summary>
     protected Bunit.TestDoubles.BunitAuthorizationContext Auth { get; }
 
     protected void LogInAsJury()
     {
         Auth.SetAuthorized("Jury");
-        Auth.SetRoles();
+        Auth.SetRoles(ScoutingAutomation.Web.Auth.KeyAuth.JuryRole);
+    }
+
+    /// <summary>A login with the key of <paramref name="group"/>, which must be in the database by the time a page renders.</summary>
+    protected void LogInAsGroup(Group group)
+    {
+        Auth.SetAuthorized(group.Name);
+        Auth.SetRoles(ScoutingAutomation.Web.Auth.KeyAuth.GroupRole);
+        Auth.SetClaims(new System.Security.Claims.Claim(ScoutingAutomation.Web.Auth.KeyAuth.GroupIdClaim, group.Id.ToString()));
     }
 
     protected string StorageRoot => _temp.Path;

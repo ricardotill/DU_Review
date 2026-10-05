@@ -1,0 +1,7 @@
+.standing-table tr.own-group td {
+    background: rgba(16, 185, 129, 0.12);
+}
+
+.standing-table tr.own-group td:first-child {
+    box-shadow: inset 4px 0 0 #10b981;
+}

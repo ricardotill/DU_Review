@@ -2,6 +2,8 @@
 @rendermode InteractiveServer
 @inherits LiveComponentBase
 @inject IJSRuntime JS
+@inject RuntimeSettingsService Runtime
+@inject TimeProvider Time
 
 <PageTitle>Scorebord - DU Review</PageTitle>
 
@@ -24,10 +26,28 @@
     else
     {
         <SubmissionTotals Stats="stats" />
-        <div class="beamer-body">
-            <div class="beamer-board"><ScoreboardBoard Stats="stats" /></div>
-            <div class="beamer-chart"><ScoreChart Stats="stats" Large="true" /></div>
-        </div>
+        @* The jury can hide the standing here too, for when the groups can see the beamer *@
+        @if (!clock!.IsHiddenOnBeamer)
+        {
+            <div class="beamer-body">
+                <div class="beamer-board"><ScoreboardBoard Stats="stats" /></div>
+                <div class="beamer-chart"><ScoreChart Stats="stats" Large="true" /></div>
+            </div>
+        }
+        else if (clock.Interim is { } interim)
+        {
+            <div class="beamer-interim">
+                <h2 class="h4 text-white-50 mb-3"><i class="bi bi-eye-slash"></i> Tussenstand van @interim.PublishedAt.ToGameTime().ToString("HH:mm")</h2>
+                <ScoreboardBoard Stats="interim.ToStatistics()" />
+            </div>
+        }
+        else
+        {
+            <div class="empty-state beamer-hidden">
+                <i class="bi bi-eye-slash"></i>
+                De stand is tijdelijk verborgen.
+            </div>
+        }
     }
 </div>
 
@@ -35,7 +55,21 @@
     private SubmissionStatistics? stats;
     private ElementReference beamer;
 
+    private StandingClock? clock;
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        clock = new StandingClock(Runtime, Time, () => InvokeAsync(StateHasChanged));
+    }
+
     protected override Task OnInitializedAsync() => ReloadAsync();
+
+    protected override void Dispose(bool disposing)
+    {
+        clock?.Dispose();
+        base.Dispose(disposing);
+    }
 
     protected override async Task LoadAsync(IServiceProvider services)
     {

@@ -14,6 +14,7 @@ using ScoutingAutomation.Web.Export;
 using ScoutingAutomation.Web.Security;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Http.Features;
@@ -86,7 +87,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
 });
 
-// One shared access key, plus an admin key: see Auth/KeyAuth.cs
+// One shared access key, plus an admin key and a key per group: see Auth/KeyAuth.cs
 builder.Services.AddAuthentication(KeyAuth.Scheme)
     .AddCookie(options =>
     {
@@ -94,12 +95,21 @@ builder.Services.AddAuthentication(KeyAuth.Scheme)
         options.Cookie.HttpOnly = true;
         options.Cookie.SameSite = SameSiteMode.Lax;
         options.LoginPath = "/login";
-        options.AccessDeniedPath = "/admin";
+        // Reached by a group that opens a jury page; a jury member without admin mode is not sent here
+        options.AccessDeniedPath = "/geen-toegang";
         options.ExpireTimeSpan = TimeSpan.FromDays(30);
         options.SlidingExpiration = true;
         options.Events.OnValidatePrincipal = KeyAuth.ValidatePrincipalAsync;
     });
-builder.Services.AddAuthorization();
+// Every page and endpoint is for the jury, unless marked [GroupAccess]: see Auth/GroupAccessHandler.cs
+builder.Services.AddAuthorization(options =>
+{
+    options.DefaultPolicy = new AuthorizationPolicyBuilder(KeyAuth.Scheme)
+        .RequireAuthenticatedUser()
+        .AddRequirements(new StaffOrGroupPageRequirement())
+        .Build();
+});
+builder.Services.AddSingleton<IAuthorizationHandler, GroupAccessHandler>();
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddScoped<AuthenticationStateProvider, KeyAuthenticationStateProvider>();
 
@@ -271,7 +281,8 @@ api.MapGet("/files/{id:guid}", async (
     IFileStorageService fileStorage) =>
 {
     var submission = await repository.GetByIdAsync(id);
-    if (submission == null)
+    // A group only gets its own files; another group's file looks the same as one that does not exist
+    if (submission == null || (KeyAuth.GroupId(request.HttpContext.User) is { } ownGroup && submission.GroupId != ownGroup))
     {
         return Results.NotFound();
     }
@@ -287,7 +298,7 @@ api.MapGet("/files/{id:guid}", async (
     var http = request.HttpContext;
     http.Response.Headers.ContentSecurityPolicy = "sandbox; default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'";
     return Results.File(stream, SafeContentType.For(submission.FileName), submission.FileName, enableRangeProcessing: true);
-}).RequireAuthorization();
+}).RequireAuthorization().WithMetadata(new GroupAccessAttribute());
 
 api.MapExportEndpoints();
 

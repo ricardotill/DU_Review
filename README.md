@@ -54,6 +54,13 @@ Bekijken, zoeken, filteren en favorieten markeren kan iedereen met de toegangssl
 
 Na 5 verkeerde sleutels binnen een minuut moet een apparaat even wachten voordat het opnieuw mag proberen.
 
+**Groepssleutels.** Elke groep kan een eigen sleutel krijgen. Een groep logt daarmee in op hetzelfde loginscherm en ziet alleen:
+
+- een eigen dashboard met haar score, plaats, de stand en de punten in de loop van het spel;
+- haar eigen inzendingen (**Onze inzendingen**) met de beoordeling, en de bestanden zelf.
+
+Inzendingen en bestanden van andere groepen, de namen van juryleden, opmerkingen bij beoordelingen en alle pagina's voor de jury (zoals **Te beoordelen**, **Groepen**, **Opdrachten**, **Scorebord** en **Configuratie**) zijn voor een groep afgeschermd; die komt dan op **Geen toegang** uit. Nieuwe pagina's zijn standaard ook afgeschermd: alleen pagina's met `[GroupAccess]` staan open voor groepen, en zulke pagina's tonen een groep alleen haar eigen gegevens. Groepssleutels beheer je in beheermodus op **Beheer** > **Groepssleutels**: maak sleutels voor alle groepen, maak voor één groep een nieuwe sleutel of trek een sleutel in. Een nieuwe of ingetrokken sleutel logt die groep direct uit; de jury en andere groepen merken er niets van. De sleutels staan per Slack-kanaal in `access-keys.json`.
+
 > **Let op:** de sleutel en het login-cookie gaan onversleuteld over het netwerk als de app via gewone `http://` wordt geopend. Iedereen op hetzelfde netwerk kan ze dan meelezen. Gebruik HTTPS (bijvoorbeeld via een reverse proxy) als de app buiten een vertrouwd netwerk bereikbaar is.
 
 ## Favorieten
@@ -128,7 +135,10 @@ Een los getal ergens in de tekst telt **niet**. Zo wordt "we deden het met 3 man
 | **Gebeurtenissen** | Live elke Slack-gebeurtenis (bericht, bewerking, verwijdering, emoji erbij of eraf) met wat de app ermee deed: verwerkt, genegeerd met reden, of mislukt. Ook de verbinding met Slack (verbonden, weggevallen, vernieuwd), elke inhaalronde, en elke fout die de app logt. Valt de verbinding weg, dan staat er een rode balk bovenaan tot hij terug is. Toont de laatste 500 sinds de start van de app; na een herstart begint de lijst leeg. |
 | **Slack-simulator** | Nep-inzendingen en -reacties versturen om te testen. Alleen zichtbaar in simulatiemodus. |
 | **Configuratie** | Alle instellingen, de juryleden met hun namen, de **Beoordelingsregels**, en **Opnieuw opbouwen uit Slack** (zie hieronder). |
-| **Beheer** | Naar beheermodus gaan, de toegangssleutel bekijken en sleutels opnieuw aanmaken. |
+| **Stand voor groepen** | De stand verbergen voor groepen (en desgewenst op de beamer), periodes plannen en een tussenstand publiceren. Zie **Stand verbergen**. |
+| **Beheer** | Naar beheermodus gaan, de toegangssleutel bekijken, sleutels opnieuw aanmaken en de groepssleutels beheren. |
+
+Een groep die met haar groepssleutel inlogt, ziet alleen **Dashboard** en **Onze inzendingen**. Zie **Toegang**.
 
 Beoordelen gebeurt in Slack. Voor noodgevallen kan een status op de detailpagina van een inzending handmatig worden aangepast, onder **Status handmatig aanpassen** (alleen in beheermodus). Dit vraagt om een reden en wordt vastgelegd in de beoordelingsgeschiedenis. Een latere emoji in Slack overschrijft zo'n aanpassing weer.
 
@@ -147,6 +157,20 @@ Beoordelen gebeurt in Slack. Voor noodgevallen kan een status op de detailpagina
 - `/api/export/files.zip?status=approved`: alle goedgekeurde en awesome bestanden. Op de pagina van een groep doet **Downloaden** hetzelfde voor alleen die groep (`&group={id}`).
 
 De ZIP heeft per groep een map, met daarin `approved/` en `awesome/`. Bestanden die niet meer op schijf staan, worden overgeslagen en in het logboek gemeld.
+
+## Stand verbergen
+
+Op de pagina **Stand voor groepen** kan de jury (ook zonder beheermodus) de stand verbergen voor groepen, bijvoorbeeld in het laatste uur van het spel:
+
+- **Stand verbergen**: een schakelaar die direct werkt, los van de periodes.
+- **Periodes**: van–tot, in de tijdzone van het spel. Binnen een periode is de stand vanzelf verborgen; het begin telt mee, het einde niet. Open pagina's wisselen op het moment zelf.
+- **Ook verbergen op het scorebord (beamer)**: dan verbergen de pagina **Scorebord** en het scorebord in de **Diavoorstelling** de stand ook. Staat dit uit, dan blijft de beamer de actuele stand tonen.
+
+Zolang de stand verborgen is, ziet een groep geen plaatsen, geen scores van andere groepen en geen grafiek. Haar eigen score, de punten per opdracht en de beoordeling van haar inzendingen blijft ze altijd zien. Het dashboard van de jury toont altijd de actuele stand, met een melding dat hij verborgen is voor groepen.
+
+**Tussenstand.** Met **Tussenstand publiceren** leg je de stand van dat moment vast. Zolang de stand verborgen is, zien groepen (en de beamer, als die ook verbergt) deze tussenstand met het tijdstip erbij, in plaats van niets. De tussenstand verandert daarna niet meer mee; publiceer opnieuw voor een nieuwere, of verwijder hem. Is de stand weer zichtbaar, dan zien groepen gewoon de actuele stand.
+
+Alles op deze pagina wordt bewaard in `runtime-settings.json` en blijft staan na een herstart en na **Opnieuw opbouwen uit Slack**.
 
 ## Te beoordelen
 
@@ -348,7 +372,7 @@ Het oorspronkelijke ontwerp staat in `ScoutingAutomation.Complete.SDD.md`.
 
 ## Beperkingen
 
-- Iedereen deelt dezelfde toegangssleutel. De app weet dus niet wie iets heeft gedaan; alleen dat het in beheermodus was.
+- De jury deelt dezelfde toegangssleutel. De app weet dus niet wie iets heeft gedaan; alleen dat het in beheermodus was. Groepen hebben elk een eigen sleutel, maar binnen een groep delen de leden die sleutel.
 - Zonder HTTPS gaan de sleutel en het login-cookie onversleuteld over het netwerk.
 - Live bijwerken werkt binnen één server. Draai je meerdere exemplaren van de app, dan is extra werk nodig.
 - Inhalen kijkt alleen naar berichten van vandaag. Een bericht dat is verwijderd of waarvan het nummer is aangepast terwijl de app weg was, wordt niet bijgewerkt. Herbouw in dat geval vanuit Slack.

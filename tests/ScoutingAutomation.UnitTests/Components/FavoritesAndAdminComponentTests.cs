@@ -181,6 +181,7 @@ public class AdminOnlyComponentTests : PageTestBase
     [Fact]
     public void RedirectToLogin_ShouldReloadTheLoginPageWithTheCurrentPage()
     {
+        Auth.SetNotAuthorized();
         var navigation = Services.GetRequiredService<Bunit.TestDoubles.BunitNavigationManager>();
         navigation.NavigateTo("groups?x=1");
 
@@ -188,6 +189,18 @@ public class AdminOnlyComponentTests : PageTestBase
 
         navigation.Uri.Should().EndWith("login?ReturnUrl=%2Fgroups%3Fx%3D1");
         navigation.History.First().Options.ForceLoad.Should().BeTrue();
+    }
+
+    [Fact]
+    public void RedirectToLogin_WhenLoggedInAsGroup_ShouldShowNoAccessInsteadOfLoggingInAgain()
+    {
+        LogInAsGroup(Wolves);
+        var navigation = Services.GetRequiredService<Bunit.TestDoubles.BunitNavigationManager>();
+        navigation.NavigateTo("groups");
+
+        Render<RedirectToLogin>();
+
+        navigation.Uri.Should().EndWith("geen-toegang");
     }
 
     [Fact]

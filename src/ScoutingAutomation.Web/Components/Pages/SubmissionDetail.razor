@@ -2,6 +2,7 @@
 @rendermode InteractiveServer
 @inherits LiveComponentBase
 @inject RuntimeSettingsService Runtime
+@attribute [GroupAccess]
 
 <PageTitle>Inzending - DU Review</PageTitle>
 
@@ -23,19 +24,30 @@ else
         <Details>
             <div class="d-flex align-items-center gap-2 flex-wrap mt-2">
                 <StatusBadge Status="@submission.Status" />
-                <a href="groups/@submission.GroupId" class="badge bg-secondary text-decoration-none">@(submission.Group?.Name ?? "Onbekende groep")</a>
-                @if (submission.AssignmentNumber.HasValue)
+                @* The group and assignment pages are for the jury *@
+                @if (!IsGroup)
                 {
-                    <a href="assignments/@submission.AssignmentNumber" class="badge assignment-badge text-decoration-none">Opdracht @submission.AssignmentNumber</a>
+                    <a href="groups/@submission.GroupId" class="badge bg-secondary text-decoration-none">@(submission.Group?.Name ?? "Onbekende groep")</a>
+                }
+                @if (!submission.AssignmentNumber.HasValue)
+                {
+                    <span class="badge bg-danger">Onopgelost</span>
+                }
+                else if (IsGroup)
+                {
+                    <span class="badge assignment-badge">Opdracht @submission.AssignmentNumber</span>
                 }
                 else
                 {
-                    <span class="badge bg-danger">Onopgelost</span>
+                    <a href="assignments/@submission.AssignmentNumber" class="badge assignment-badge text-decoration-none">Opdracht @submission.AssignmentNumber</a>
                 }
             </div>
         </Details>
         <Actions>
-            <span class="align-self-center fs-5"><FavoriteStar Submission="submission" /></span>
+            @if (!IsGroup)
+            {
+                <span class="align-self-center fs-5"><FavoriteStar Submission="submission" /></span>
+            }
             <a href="@fileUrl" download="@submission.FileName" class="btn btn-scout-secondary d-flex align-items-center gap-2">
                 <i class="bi bi-download"></i>
                 <span>Download</span>
@@ -85,7 +97,10 @@ else
             <div class="glass-panel p-4">
                 <div class="d-flex justify-content-between align-items-start gap-2">
                     <h2 class="panel-title"><i class="bi bi-slack" style="color: #e01e5a;"></i> Slack-bericht</h2>
-                    <div class="d-flex gap-1"><SlackMessageLinks ChannelId="@submission.SlackChannelId" MessageTs="@submission.SlackMessageId" /></div>
+                    @if (!IsGroup)
+                    {
+                        <div class="d-flex gap-1"><SlackMessageLinks ChannelId="@submission.SlackChannelId" MessageTs="@submission.SlackMessageId" /></div>
+                    }
                 </div>
                 <div class="slack-message">
                     <div class="d-flex justify-content-between flex-wrap gap-2 mb-2 small">
@@ -108,12 +123,16 @@ else
                     <dd class="text-break">@submission.FileName</dd>
                     <dt>Type</dt>
                     <dd>@submission.ContentType · @FormatFileSize(submission.FileSizeBytes)</dd>
-                    <dt>Kanaal</dt>
-                    <dd>#@submission.SlackChannelId</dd>
-                    <dt>Bericht-ID</dt>
-                    <dd class="font-monospace small">@submission.SlackMessageId</dd>
-                    <dt>Opgeslagen in</dt>
-                    <dd class="font-monospace small text-info text-break">@submission.StoragePath</dd>
+                    @* Where the jury finds it; a group has no use for it *@
+                    @if (!IsGroup)
+                    {
+                        <dt>Kanaal</dt>
+                        <dd>#@submission.SlackChannelId</dd>
+                        <dt>Bericht-ID</dt>
+                        <dd class="font-monospace small">@submission.SlackMessageId</dd>
+                        <dt>Opgeslagen in</dt>
+                        <dd class="font-monospace small text-info text-break">@submission.StoragePath</dd>
+                    }
                 </dl>
             </div>
 
@@ -132,17 +151,18 @@ else
                         {
                             <div class="timeline-item" style="border-left-color: @GetReviewColor(rev.Status);">
                                 <div class="d-flex justify-content-between align-items-center gap-2">
-                                    <span class="fw-semibold text-white text-truncate" title="@rev.Reviewer">@Runtime.DisplayName(rev.Reviewer)</span>
+                                    @* A group sees what was decided, not who decided it *@
+                                    <span class="fw-semibold text-white text-truncate" title="@(IsGroup ? null : rev.Reviewer)">@(IsGroup ? "Jury" : Runtime.DisplayName(rev.Reviewer))</span>
                                     <StatusBadge Status="@rev.Status" />
                                 </div>
                                 <div class="text-muted small mt-1">
                                     @rev.CreatedAt.ToGameTime().ToString("g")
-                                    @if (!string.IsNullOrEmpty(rev.ReactionEmoji))
+                                    @if (!string.IsNullOrEmpty(rev.ReactionEmoji) && !IsGroup)
                                     {
                                         <span> · <code>:@rev.ReactionEmoji:</code></span>
                                     }
                                 </div>
-                                @if (!string.IsNullOrEmpty(rev.Notes))
+                                @if (!string.IsNullOrEmpty(rev.Notes) && !IsGroup)
                                 {
                                     <div class="text-white-50 small mt-1">@rev.Notes</div>
                                 }
@@ -237,11 +257,21 @@ else
         && overrideConfirmed
         && !string.IsNullOrWhiteSpace(overrideReason);
 
-    protected override Task OnParametersSetAsync() => ReloadAsync();
+    // Set for a group login: only its own submissions can be opened
+    private Guid? ownGroup;
+    private bool IsGroup => ownGroup.HasValue;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!loaded) ownGroup = AuthState == null ? null : KeyAuth.GroupId((await AuthState).User);
+        await ReloadAsync();
+    }
 
     protected override async Task LoadAsync(IServiceProvider services)
     {
         submission = await services.GetRequiredService<ISubmissionRepository>().GetByIdAsync(Id);
+        // Another group's submission looks the same as one that does not exist
+        if (ownGroup is { } own && submission?.GroupId != own) submission = null;
         loaded = true;
 
         // Keep what the user picked in the override form, unless it became the current status

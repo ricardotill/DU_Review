@@ -69,7 +69,7 @@ Two separate HTTP clients talk to Slack: `SlackClient` (Web API calls + file dow
 
 ### UI
 
-Interactive Server Blazor. Pages update live through `SubmissionChangeNotifier`. Access is one shared access key plus an admin key (cookie auth, `Auth/KeyAuth.cs`); admin-only actions check `KeyAuth.AdminRole` (see `Auth/AdminActions.cs`). Culture is fixed to `nl-NL`, and times use `GameTime` (the configured `Scouting:TimeZone`, default Europe/Amsterdam) rather than server-local time.
+Interactive Server Blazor. Pages update live through `SubmissionChangeNotifier`. Access is one shared access key (role `KeyAuth.JuryRole`) plus an admin key, and a key per group (role `KeyAuth.GroupRole`, keyed by Slack channel in `AccessKeyService`); cookie auth in `Auth/KeyAuth.cs`. Admin-only actions check `KeyAuth.AdminRole` (`Auth/AdminActions.cs`), jury actions `Auth/StaffActions.cs`. The default policy (`Auth/GroupAccessHandler.cs`) is default-deny for groups: only pages/endpoints marked `[GroupAccess]` are open to them, and those must limit a group to its own data server-side (`KeyAuth.GroupId`). Whether groups see the standing (switch, periods, beamer, interim standing) lives in `RuntimeSettingsService.Standings.cs`; pages follow it via `Standings/StandingClock`. Culture is fixed to `nl-NL`, and times use `GameTime` (the configured `Scouting:TimeZone`, default Europe/Amsterdam) rather than server-local time.
 
 ## Tests
 

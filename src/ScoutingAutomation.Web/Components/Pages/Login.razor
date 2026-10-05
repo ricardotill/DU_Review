@@ -5,6 +5,7 @@
 @inject AccessKeyService Keys
 @inject LoginAttemptLimiter Limiter
 @inject NavigationManager Navigation
+@inject IGroupRepository Groups
 
 <PageTitle>Inloggen - DU Review</PageTitle>
 
@@ -20,7 +21,7 @@
     <button type="submit" class="btn btn-scout-primary w-100">Inloggen</button>
 </EditForm>
 
-<p class="text-muted small text-center mt-3 mb-0">Vraag de organisatie om de sleutel.</p>
+<p class="text-muted small text-center mt-3 mb-0">Jury: vraag de organisatie om de toegangssleutel. Groepen: gebruik de groepssleutel die jullie van de organisatie kregen.</p>
 
 @code {
     [CascadingParameter]
@@ -53,15 +54,25 @@
         }
 
         var admin = Keys.IsAdminKey(Input.Key);
-        if (!admin && !Keys.IsAccessKey(Input.Key))
+        if (admin || Keys.IsAccessKey(Input.Key))
         {
-            error = "Deze sleutel klopt niet.";
+            Limiter.Reset(client);
+            await KeyAuth.SignInAsync(HttpContext, Keys, admin);
+            Navigation.NavigateTo(KeyAuth.SafeReturnUrl(ReturnUrl));
             return;
         }
 
-        Limiter.Reset(client);
-        await KeyAuth.SignInAsync(HttpContext, Keys, admin);
-        Navigation.NavigateTo(KeyAuth.SafeReturnUrl(ReturnUrl));
+        // A key of a group that is no longer in the settings does not log in
+        if (Keys.FindGroupChannel(Input.Key) is { } channel && await Groups.GetBySlackChannelIdAsync(channel) is { } group)
+        {
+            Limiter.Reset(client);
+            await KeyAuth.SignInAsync(HttpContext, KeyAuth.CreateGroupPrincipal(Keys, group.Id, group.SlackChannelId, group.Name));
+            // A return link from a jury page would only lead to "no access": a group starts on its dashboard
+            Navigation.NavigateTo("/");
+            return;
+        }
+
+        error = "Deze sleutel klopt niet.";
     }
 
     private sealed class LoginInput

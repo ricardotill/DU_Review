@@ -184,8 +184,6 @@ else
     [Parameter]
     public Guid Id { get; set; }
 
-    private sealed record AssignmentResult(int Number, SubmissionStatus BestStatus, int Points, List<Submission> Uploads, Guid CountingSubmissionId);
-
     private bool loaded;
     private Group? group;
     private SubmissionStatistics? stats;
@@ -218,19 +216,7 @@ else
 
         var submissions = await submissionRepository.SearchSubmissionsAsync(new SubmissionFilter { GroupId = Id });
 
-        results = submissions
-            .Where(s => s.AssignmentNumber.HasValue)
-            .GroupBy(s => s.AssignmentNumber!.Value)
-            .Select(g =>
-            {
-                var uploads = g.OrderByDescending(s => s.CreatedAt).ToList();
-                var best = uploads.Select(s => s.Status).Best();
-                var points = assignments.TryGetValue(g.Key, out var assignment) ? assignment.PointsFor(best) : 0;
-                // The newest submission with the best status is the one that counts
-                return new AssignmentResult(g.Key, best, points, uploads, uploads.First(s => s.Status == best).Id);
-            })
-            .OrderBy(r => r.Number)
-            .ToList();
+        results = AssignmentResult.For(submissions, assignments);
 
         unresolved = submissions
             .Where(s => !s.AssignmentNumber.HasValue)

@@ -10,7 +10,8 @@ namespace ScoutingAutomation.Infrastructure.Services;
 /// <summary>
 /// Settings that can change while the app runs: manual mode, reviewers added on the fly, reviewer names,
 /// the texts of the bot's Slack messages, the start and end of the event, the channels that got the
-/// game-start and game-end messages, whether attempts after approval are blocked, and when the jury is reminded.
+/// game-start and game-end messages, whether attempts after approval are blocked, when the jury is reminded,
+/// and whether groups see the standing (see RuntimeSettingsService.Standings.cs).
 /// Manual mode starts from appsettings on every start; the rest is saved to a file.
 /// </summary>
 public partial class RuntimeSettingsService
@@ -613,6 +614,8 @@ public partial class RuntimeSettingsService
             {
                 _reminder = reminder;
             }
+
+            LoadStandings(saved?.Standings);
         }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
         {
@@ -636,6 +639,7 @@ public partial class RuntimeSettingsService
         _eventEnd = null;
         _blockAttempts = null;
         _reminder = null;
+        ResetStandings();
     }
 
     /// <summary>
@@ -647,7 +651,7 @@ public partial class RuntimeSettingsService
         var settings = new SavedSettings { Reviewers = _addedReviewers, ReviewerNames = _names, GameStartPosted = _gameStartPosted,
             GameEndPosted = _gameEndPosted, EventStart = _eventStart, EventEnd = _eventEnd,
             SlackTexts = _texts.ToDictionary(t => t.Key.ToString(), t => t.Value),
-            BlockAttemptsAfterApproval = _blockAttempts, ReviewReminder = _reminder };
+            BlockAttemptsAfterApproval = _blockAttempts, ReviewReminder = _reminder, Standings = SaveStandings() };
         try
         {
             DurableFile.WriteAllText(_file, JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true }));
@@ -674,6 +678,7 @@ public partial class RuntimeSettingsService
         public Dictionary<string, string>? SlackTexts { get; set; }
         public bool? BlockAttemptsAfterApproval { get; set; }
         public ReminderOverride? ReviewReminder { get; set; }
+        public SavedStandings? Standings { get; set; }
     }
 
     /// <summary>A reminder time set in the app; <see cref="Minutes"/> null means reminders are off.</summary>

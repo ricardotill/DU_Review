@@ -3,10 +3,18 @@
 @inherits LiveComponentBase
 @inject RuntimeSettingsService Runtime
 @inject FavoritesService Favorites
+@attribute [GroupAccess]
 
 <PageTitle>Inzendingen - DU Review</PageTitle>
 
-<PageHeader Title="Inzendingen" Subtitle="Zoek en filter alle uploads. Beoordelen gebeurt in Slack." />
+@if (IsGroup)
+{
+    <PageHeader Title="Onze inzendingen" Subtitle="Alle uploads van jullie groep, met de beoordeling van de jury." />
+}
+else
+{
+    <PageHeader Title="Inzendingen" Subtitle="Zoek en filter alle uploads. Beoordelen gebeurt in Slack." />
+}
 
 <!-- Filters -->
 <div class="glass-panel p-3 mb-4">
@@ -20,16 +28,20 @@
             </div>
         </div>
 
-        <div class="col-lg-2 col-md-3 col-6">
-            <label class="form-label text-secondary small fw-semibold mb-1">Groep</label>
-            <select class="form-select form-select-dark" @bind="selectedGroupId" @bind:after="SearchAsync">
-                <option value="">Alle groepen</option>
-                @foreach (var g in groups)
-                {
-                    <option value="@g.Id">@g.Name</option>
-                }
-            </select>
-        </div>
+        @* A group only ever sees its own uploads: no group or jury filter *@
+        @if (!IsGroup)
+        {
+            <div class="col-lg-2 col-md-3 col-6">
+                <label class="form-label text-secondary small fw-semibold mb-1">Groep</label>
+                <select class="form-select form-select-dark" @bind="selectedGroupId" @bind:after="SearchAsync">
+                    <option value="">Alle groepen</option>
+                    @foreach (var g in groups)
+                    {
+                        <option value="@g.Id">@g.Name</option>
+                    }
+                </select>
+            </div>
+        }
 
         <div class="col-lg-2 col-md-3 col-6">
             <label class="form-label text-secondary small fw-semibold mb-1">Opdracht</label>
@@ -53,11 +65,14 @@
             </select>
         </div>
 
-        <div class="col-lg-2 col-md-3 col-6">
-            <label class="form-label text-secondary small fw-semibold mb-1">Jurylid</label>
-            <input type="text" class="form-control form-control-dark" placeholder="Naam of Slack-ID"
-                   @bind="filter.Reviewer" @bind:event="oninput" @bind:after="SearchAsync" />
-        </div>
+        @if (!IsGroup)
+        {
+            <div class="col-lg-2 col-md-3 col-6">
+                <label class="form-label text-secondary small fw-semibold mb-1">Jurylid</label>
+                <input type="text" class="form-control form-control-dark" placeholder="Naam of Slack-ID"
+                       @bind="filter.Reviewer" @bind:event="oninput" @bind:after="SearchAsync" />
+            </div>
+        }
     </div>
 </div>
 
@@ -68,16 +83,23 @@
             @VisibleSubmissions.Count @(VisibleSubmissions.Count == 1 ? "inzending" : "inzendingen")
             <span class="text-secondary fw-normal small ms-1">nieuwste eerst</span>
         </h2>
-        <div class="form-check form-switch mb-0 ms-auto me-3">
-            <input class="form-check-input" type="checkbox" role="switch" id="favoritesOnly" @bind="favoritesOnly" @bind:after="FirstPage" disabled="@(!Favorites.IsLoaded)" />
-            <label class="form-check-label text-secondary small" for="favoritesOnly">
-                <i class="bi bi-star-fill text-warning"></i> Alleen favorieten (@Favorites.Count)
-            </label>
-        </div>
-        <a href="@SlideshowHref" class="btn btn-sm btn-scout-secondary d-flex align-items-center gap-1 me-2 slideshow-link" title="Toon deze foto's, video's en geluidsopnames als diavoorstelling">
-            <i class="bi bi-play-btn"></i>
-            <span>Diavoorstelling</span>
-        </a>
+        @if (!IsGroup)
+        {
+            <div class="form-check form-switch mb-0 ms-auto me-3">
+                <input class="form-check-input" type="checkbox" role="switch" id="favoritesOnly" @bind="favoritesOnly" @bind:after="FirstPage" disabled="@(!Favorites.IsLoaded)" />
+                <label class="form-check-label text-secondary small" for="favoritesOnly">
+                    <i class="bi bi-star-fill text-warning"></i> Alleen favorieten (@Favorites.Count)
+                </label>
+            </div>
+            <a href="@SlideshowHref" class="btn btn-sm btn-scout-secondary d-flex align-items-center gap-1 me-2 slideshow-link" title="Toon deze foto's, video's en geluidsopnames als diavoorstelling">
+                <i class="bi bi-play-btn"></i>
+                <span>Diavoorstelling</span>
+            </a>
+        }
+        else
+        {
+            <span class="ms-auto"></span>
+        }
         @if (HasActiveFilters)
         {
             <button class="btn btn-sm btn-scout-secondary d-flex align-items-center gap-1" @onclick="ResetFilters">
@@ -104,9 +126,15 @@
             <table class="custom-table">
                 <thead>
                     <tr>
-                        <th style="width: 2.5rem;"><span class="visually-hidden">Favoriet</span></th>
+                        @if (!IsGroup)
+                        {
+                            <th style="width: 2.5rem;"><span class="visually-hidden">Favoriet</span></th>
+                        }
                         <th>Bestand</th>
-                        <th>Groep</th>
+                        @if (!IsGroup)
+                        {
+                            <th>Groep</th>
+                        }
                         <th>Opdracht</th>
                         <th>Status</th>
                         <th>Ingezonden</th>
@@ -118,7 +146,10 @@
                     {
                         var storedName = GetStoredFileName(sub);
                         <tr>
-                            <td><FavoriteStar Submission="sub" /></td>
+                            @if (!IsGroup)
+                            {
+                                <td><FavoriteStar Submission="sub" /></td>
+                            }
                             <td>
                                 <div class="d-flex align-items-center gap-3">
                                     <div class="file-icon">
@@ -138,11 +169,18 @@
                                     </div>
                                 </div>
                             </td>
+                            @if (!IsGroup)
+                            {
+                                <td>
+                                    <a href="groups/@sub.GroupId" class="text-white text-decoration-none hover-underline">@(sub.Group?.Name ?? "Onbekend")</a>
+                                </td>
+                            }
                             <td>
-                                <a href="groups/@sub.GroupId" class="text-white text-decoration-none hover-underline">@(sub.Group?.Name ?? "Onbekend")</a>
-                            </td>
-                            <td>
-                                @if (sub.AssignmentNumber.HasValue)
+                                @if (sub.AssignmentNumber.HasValue && IsGroup)
+                                {
+                                    <span class="badge assignment-badge">#@sub.AssignmentNumber</span>
+                                }
+                                else if (sub.AssignmentNumber.HasValue)
                                 {
                                     <a href="assignments/@sub.AssignmentNumber" class="badge assignment-badge text-decoration-none" title="Opdracht openen">#@sub.AssignmentNumber</a>
                                 }
@@ -190,14 +228,21 @@
     [SupplyParameterFromQuery(Name = "group")]
     public Guid? GroupFromQuery { get; set; }
 
-    protected override Task OnInitializedAsync()
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    // Set for a group login: every search is limited to this group, whatever the page is asked
+    private Guid? ownGroup;
+    private bool IsGroup => ownGroup.HasValue;
+
+    protected override async Task OnInitializedAsync()
     {
-        if (GroupFromQuery.HasValue)
+        ownGroup = AuthState == null ? null : KeyAuth.GroupId((await AuthState).User);
+        if (GroupFromQuery.HasValue && !IsGroup)
         {
             selectedGroupId = GroupFromQuery.Value.ToString();
         }
 
-        return ReloadAsync();
+        await ReloadAsync();
     }
 
     private int page = 1;
@@ -212,13 +257,19 @@
 
     protected override async Task LoadAsync(IServiceProvider services)
     {
-        if (groups.Count == 0)
+        if (assignments.Count == 0)
         {
-            groups = await services.GetRequiredService<IGroupRepository>().GetAllAsync();
+            // A group does not get the names of the others
+            if (!IsGroup) groups = await services.GetRequiredService<IGroupRepository>().GetAllAsync();
             assignments = await services.GetRequiredService<IAssignmentRepository>().GetAllAsync();
         }
 
-        if (Guid.TryParse(selectedGroupId, out var gId))
+        if (ownGroup is { } own)
+        {
+            filter.GroupId = own;
+            filter.Reviewer = null;
+        }
+        else if (Guid.TryParse(selectedGroupId, out var gId))
         {
             filter.GroupId = gId;
         }

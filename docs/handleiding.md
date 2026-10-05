@@ -98,10 +98,19 @@ Het dashboard toont live de stand, alle inzendingen en de bestanden zelf. Je hoe
 ### Inloggen
 
 1. Open het adres van de app dat je van de organisatie kreeg.
-2. Vul de toegangssleutel in. Hoofdletters en spaties maken niet uit.
+2. Vul de toegangssleutel in (jury) of de groepssleutel (groepen). Hoofdletters en spaties maken niet uit.
 3. Je browser blijft daarna 30 dagen ingelogd.
 
 Na 5 verkeerde sleutels binnen een minuut moet je even wachten voordat je het opnieuw kunt proberen.
+
+### Voor groepen: het dashboard van je groep
+
+Met de groepssleutel zie je alleen je eigen groep:
+
+- **Dashboard**: jullie score en plaats, de stand van alle groepen, de punten in de loop van het spel, en per opdracht de beoordeling en de punten.
+- **Onze inzendingen**: al jullie uploads, met de beoordeling. Klik op een upload om het bestand te bekijken.
+
+Inzendingen van andere groepen zie je niet. Jullie eigen score en de punten per opdracht zie je altijd. Heeft de jury de stand verborgen, dan zie je jullie plaats, de scores van andere groepen en de grafiek niet, en eventueel wel een **Tussenstand** met het tijdstip waarop die is vastgelegd.
 
 ### De pagina's
 
@@ -113,15 +122,26 @@ Na 5 verkeerde sleutels binnen een minuut moet je even wachten voordat je het op
 | **Opdrachten** | Alle opdrachten. Per opdracht zie je de inzendingen van alle groepen naast elkaar, desgewenst alleen de open inzendingen. Daar start je ook een diavoorstelling van die opdracht. |
 | **Groepen** | Alle groepen. Per groep zie je score, plaats, de punten in de loop van het spel naast die van de andere groepen, en alle opdrachten. |
 | **Bericht sturen** | Een bericht van de bot in de Slack-kanalen van de groepen. Zie [Bericht sturen](#bericht-sturen). |
+| **Stand voor groepen** | De stand verbergen voor groepen, periodes plannen en een tussenstand publiceren. Zie [Stand verbergen](#stand-verbergen). |
 | **Scorebord** | De totalen van de inzendingen en het scorebord in grote letters, met de punten in de loop van het spel, voor een beamer. Werkt zichzelf bij. |
 | **Diavoorstelling** | Alle foto's, video's en geluidsopnames achter elkaar, bijvoorbeeld op een beamer. Afgekeurde inzendingen worden overgeslagen. Kies een groep, een opdracht, alleen awesome of alleen favorieten, herhalen, door elkaar, het aantal seconden per foto, en of het scorebord tussendoor komt. |
 | **Gebeurtenissen** | Alles wat er live uit Slack binnenkomt, en wat de app ermee deed. Zie [Gebeurtenissen](#gebeurtenissen). |
 | **Configuratie** | De instellingen en de juryleden. Voor de organisatie. |
-| **Beheer** | Naar beheermodus gaan. Voor de organisatie. |
+| **Beheer** | Naar beheermodus gaan en de sleutels beheren, ook die van de groepen. Voor de organisatie. |
 
 Lange lijsten op **Te beoordelen**, **Inzendingen** en **Gebeurtenissen** staan op pagina's van 50. Kies een ander filter, dan begin je weer op de eerste pagina.
 
 Klik op een inzending voor de detailpagina: het bestand, wie het plaatste, het bericht, en de hele beoordelingsgeschiedenis met namen van juryleden.
+
+### Stand verbergen
+
+Op **Stand voor groepen** verberg je de stand voor de groepen, bijvoorbeeld in het laatste uur zodat de uitslag een verrassing blijft. Dat kan iedereen van de jury.
+
+- Zet **Stand verbergen** aan om hem meteen te verbergen, of voeg een **periode** toe (van–tot). Binnen een periode is de stand vanzelf verborgen.
+- Zet **Ook verbergen op het scorebord (beamer)** aan als de groepen de beamer kunnen zien.
+- Met **Tussenstand publiceren** krijgen de groepen de stand van dat moment te zien zolang de actuele stand verborgen is. Die tussenstand verandert niet meer mee; publiceer opnieuw voor een nieuwere.
+
+Jouw eigen dashboard blijft altijd de actuele stand tonen.
 
 ### Zo wordt de score berekend
 
@@ -188,6 +208,7 @@ Beheertaken doe je in beheermodus. Daarvoor heb je de aparte beheerderssleutel n
 - Bij de eerste start maakt de app een toegangssleutel en een beheerderssleutel aan. Ze staan eenmalig in het logboek en worden bewaard in `access-keys.json`.
 - Op de pagina **Beheer** maak je een nieuwe sleutel aan. Iedereen die met de oude sleutel is ingelogd, wordt direct uitgelogd. Jij blijft ingelogd.
 - Een nieuwe beheerderssleutel wordt maar één keer getoond. Schrijf hem meteen op.
+- **Groepssleutels**: op **Beheer** > **Groepssleutels** maak je in één keer sleutels voor alle groepen. Per groep kun je een nieuwe sleutel maken of de sleutel intrekken; dat logt alleen die groep uit.
 
 ### Juryleden
 
@@ -268,6 +289,8 @@ Doe de generale repetitie een paar dagen vóór het spel, op dezelfde server en 
 - [ ] Er is genoeg schijfruimte: reken op enkele GB voor video's.
 - [ ] Generale repetitie: vier mensen plaatsen tegelijk, één met een grote video (200 MB of meer). Twee juryleden zetten verschillende emoji's op één bericht. Iemand bewerkt een bericht en iemand verwijdert er een. Herstart de app halverwege en controleer dat niets ontbreekt.
 - [ ] Toegangssleutel en beheerderssleutel staan veilig genoteerd.
+- [ ] Elke groep heeft een groepssleutel (**Beheer** > **Groepssleutels**), klaar om uit te delen.
+- [ ] Wil je de stand aan het eind verbergen? Plan de periode op **Stand voor groepen**, en kies of de beamer meedoet.
 
 ### Op de ochtend van het spel
 
@@ -276,6 +299,7 @@ Doe de generale repetitie een paar dagen vóór het spel, op dezelfde server en 
 - [ ] **Handmatige modus** staat uit (geen melding bovenaan).
 - [ ] Plaats in elk kanaal een testbericht met een foto en `Opdracht 1`. Controleer dat het op het dashboard verschijnt, en verwijder het daarna in Slack.
 - [ ] Deel de toegangssleutel met de jury en de mensen bij het scorebord.
+- [ ] Geef elke groep haar eigen groepssleutel. Deel nooit de toegangssleutel met een groep: daarmee zie je alles.
 - [ ] Zet de diavoorstelling of het dashboard klaar op de beamer.
 - [ ] Na de starttijd: elk groepskanaal heeft het startbericht. Op **Configuratie** > **Startbericht in Slack** staat per groep **Geplaatst om …**. Mist er een, of is er geen starttijd ingesteld, klik dan in beheermodus op **Startbericht nu sturen**.
 - [ ] Na de eindtijd: elk groepskanaal heeft het eindbericht (**Configuratie** > **Eindbericht in Slack**), en bovenaan de app staat **Spel afgelopen**.
@@ -286,6 +310,7 @@ Doe de generale repetitie een paar dagen vóór het spel, op dezelfde server en 
 - Meerdere foto's in één bericht mag.
 - Zet de bot een ❓, bewerk dan je bericht en zet het juiste nummer erin.
 - Zet de bot een ⚠️, lees de uitleg in de thread.
+- Met jullie groepssleutel zie je in de app jullie score, de stand en jullie inzendingen.
 
 ### Uitleg aan de jury (twee minuten)
 

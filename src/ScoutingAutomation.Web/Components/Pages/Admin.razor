@@ -6,7 +6,7 @@
 
 <PageTitle>Beheer - DU Review</PageTitle>
 
-<PageHeader Title="Beheer" Subtitle="Beheerders kunnen opnieuw opbouwen uit Slack, juryleden beheren, de handmatige modus wisselen, statussen aanpassen en de sleutels wijzigen." />
+<PageHeader Title="Beheer" Subtitle="Beheerders kunnen opnieuw opbouwen uit Slack, juryleden beheren, de handmatige modus wisselen, statussen aanpassen en de sleutels (ook die van de groepen) wijzigen." />
 
 @if (!IsAdmin)
 {
@@ -88,6 +88,10 @@ else
 
         <div class="col-12">
             <BonusPointsPanel @rendermode="InteractiveServer" />
+        </div>
+
+        <div class="col-12">
+            <GroupKeysPanel @rendermode="InteractiveServer" />
         </div>
     </div>
 }

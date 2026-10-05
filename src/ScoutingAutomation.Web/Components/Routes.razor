@@ -1,6 +1,7 @@
 <Router AppAssembly="typeof(Program).Assembly" NotFoundPage="typeof(Pages.NotFound)">
     <Found Context="routeData">
-        <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)">
+        @* The route is the resource, so groups get the pages marked [GroupAccess] (see Auth/GroupAccessHandler.cs) *@
+        <AuthorizeRouteView RouteData="routeData" Resource="routeData" DefaultLayout="typeof(Layout.MainLayout)">
             <NotAuthorized>
                 <RedirectToLogin />
             </NotAuthorized>

@@ -1,0 +1,250 @@
+@inherits LiveComponentBase
+@inject RuntimeSettingsService Runtime
+@inject TimeProvider Time
+
+@* What a group sees: its own results and score, and, unless the jury hid it, the standing. Only this group's submissions are loaded. *@
+@if (!loaded)
+{
+    <div class="empty-state">
+        <div class="spinner-border text-success" role="status"></div>
+    </div>
+}
+else if (group == null)
+{
+    <PageHeader Title="Groep niet gevonden" Subtitle="Vraag de organisatie om een nieuwe groepssleutel." />
+}
+else
+{
+    var hidden = clock!.IsHidden;
+
+    <PageHeader Title="@group.Name" Subtitle="Jullie inzendingen en de stand van het spel." />
+
+    <div class="row g-3 mb-4">
+        <div class="col-lg col-md-4 col-6">
+            <div class="stat-card stat-total h-100">
+                <div class="stat-label">Score</div>
+                @* A group always sees its own score; only how it compares to the others can be hidden *@
+                <div class="stat-value text-white own-score">@(groupStats?.Score ?? 0)</div>
+                @if (hidden)
+                {
+                    <div class="stat-caption own-rank">Plaats tijdelijk verborgen</div>
+                }
+                else
+                {
+                    <div class="stat-caption own-rank">Plaats @(groupStats?.Rank ?? 0) van @(stats?.GroupStatistics.Count ?? 0)</div>
+                }
+            </div>
+        </div>
+        <div class="col-lg col-md-4 col-6">
+            <div class="stat-card h-100" style="border-left: 4px solid var(--border-color);">
+                <div class="stat-label">Ingezonden</div>
+                <div class="stat-value text-white">@results.Count</div>
+                <div class="stat-caption">van @assignmentCount opdrachten</div>
+            </div>
+        </div>
+        <div class="col-lg col-md-4 col-6">
+            <div class="stat-card stat-pending h-100">
+                <div class="stat-label">Open</div>
+                <div class="stat-value text-warning">@Count(SubmissionStatus.Pending)</div>
+            </div>
+        </div>
+        <div class="col-lg col-md-4 col-6">
+            <div class="stat-card stat-approved h-100">
+                <div class="stat-label">Goedgekeurd</div>
+                <div class="stat-value text-success">@Count(SubmissionStatus.Approved)</div>
+            </div>
+        </div>
+        <div class="col-lg col-md-4 col-6">
+            <div class="stat-card stat-awesome h-100">
+                <div class="stat-label">Awesome</div>
+                <div class="stat-value text-awesome">@Count(SubmissionStatus.Awesome)</div>
+            </div>
+        </div>
+        <div class="col-lg col-md-4 col-6">
+            <div class="stat-card stat-rejected h-100">
+                <div class="stat-label">Afgekeurd</div>
+                <div class="stat-value text-danger">@Count(SubmissionStatus.Rejected)</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="glass-panel p-4 mb-4 standing-panel">
+        @if (!hidden)
+        {
+            <h2 class="panel-title"><i class="bi bi-trophy-fill text-warning"></i> Stand</h2>
+            @StandingTable(stats!)
+        }
+        else if (clock.Interim is { } interim)
+        {
+            <h2 class="panel-title"><i class="bi bi-trophy-fill text-warning"></i> Tussenstand</h2>
+            <p class="text-secondary small interim-note">
+                De actuele stand is tijdelijk verborgen. Dit is de tussenstand van @interim.PublishedAt.ToGameTime().ToString("HH:mm").
+            </p>
+            @StandingTable(interim.ToStatistics())
+        }
+        else
+        {
+            <h2 class="panel-title"><i class="bi bi-eye-slash text-secondary"></i> Stand</h2>
+            <div class="empty-state standing-hidden">
+                <i class="bi bi-eye-slash"></i>
+                De stand is tijdelijk verborgen. Kom later terug!
+            </div>
+        }
+    </div>
+
+    @if (!hidden)
+    {
+        <div class="glass-panel p-4 mb-4">
+            <h2 class="panel-title"><i class="bi bi-graph-up text-info"></i> Punten in de loop van het spel</h2>
+            <ScoreChart Stats="stats!" Highlight="GroupId" />
+        </div>
+    }
+
+    @if (unresolved.Count > 0)
+    {
+        <div class="glass-panel p-4 mb-4">
+            <h2 class="panel-title"><i class="bi bi-exclamation-triangle-fill text-warning"></i> Uploads zonder opdracht (@unresolved.Count)</h2>
+            <div class="d-flex flex-column gap-2">
+                @foreach (var sub in unresolved)
+                {
+                    <a href="submissions/@sub.Id" class="inset-panel py-2 d-flex align-items-center gap-3 text-decoration-none">
+                        <div class="file-icon"><FileIcon ContentType="@sub.ContentType" /></div>
+                        <div class="flex-grow-1 min-w-0">
+                            <div class="fw-semibold text-white text-truncate">@sub.FileName</div>
+                            <div class="text-muted small text-truncate">@sub.UnresolvedReason</div>
+                        </div>
+                        <div class="text-muted small flex-shrink-0">@sub.CreatedAt.ToGameTime().ToString("g")</div>
+                    </a>
+                }
+            </div>
+        </div>
+    }
+
+    <div class="glass-panel p-4">
+        <div class="d-flex justify-content-between align-items-center">
+            <h2 class="panel-title"><i class="bi bi-list-ol text-info"></i> Opdrachten</h2>
+            <a href="submissions" class="small text-secondary text-decoration-none hover-underline mb-3">Alle uploads <i class="bi bi-arrow-right"></i></a>
+        </div>
+
+        @if (results.Count == 0)
+        {
+            <div class="empty-state">
+                <i class="bi bi-inbox"></i>
+                Jullie hebben nog niets ingezonden.
+            </div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="custom-table assignment-results">
+                    <thead>
+                        <tr>
+                            <th>Opdracht</th>
+                            <th>Status</th>
+                            <th class="text-center">Punten</th>
+                            <th class="text-center">Uploads</th>
+                            <th>Laatste upload</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var result in results)
+                        {
+                            <tr>
+                                <td class="fw-bold text-white">#@result.Number</td>
+                                <td><StatusBadge Status="@result.BestStatus" /></td>
+                                <td class="text-center fw-bold points @(result.Points > 0 ? "text-white" : "text-muted")">
+                                    @(result.Points > 0 ? $"+{result.Points}" : "0")
+                                </td>
+                                <td class="text-center text-white-50">@result.Uploads.Count</td>
+                                <td class="text-white-50 small">@result.Uploads[0].CreatedAt.ToGameTime().ToString("g")</td>
+                                <td class="text-end">
+                                    <a href="submissions/@result.CountingSubmissionId" class="btn btn-sm btn-scout-secondary" title="Open de inzending die telt" aria-label="Inzending openen">
+                                        <i class="bi bi-chevron-right"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public Guid GroupId { get; set; }
+
+    private StandingClock? clock;
+    private bool loaded;
+    private Group? group;
+    private SubmissionStatistics? stats;
+    private GroupStatistic? groupStats;
+    private int assignmentCount;
+    private List<AssignmentResult> results = new();
+    private List<Submission> unresolved = new();
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        clock = new StandingClock(Runtime, Time, () => InvokeAsync(StateHasChanged));
+    }
+
+    protected override Task OnParametersSetAsync() => ReloadAsync();
+
+    protected override async Task LoadAsync(IServiceProvider services)
+    {
+        group = await services.GetRequiredService<IGroupRepository>().GetByIdAsync(GroupId);
+        if (group == null)
+        {
+            loaded = true;
+            return;
+        }
+
+        var submissionRepository = services.GetRequiredService<ISubmissionRepository>();
+        // Loaded always, shown only while the standing is visible: it can become visible at any moment
+        stats = await submissionRepository.GetStatisticsAsync();
+        groupStats = stats.GroupStatistics.FirstOrDefault(g => g.GroupId == GroupId);
+
+        var assignments = (await services.GetRequiredService<IAssignmentRepository>().GetAllAsync()).ToDictionary(a => a.Number);
+        assignmentCount = assignments.Count;
+
+        var submissions = await submissionRepository.SearchSubmissionsAsync(new SubmissionFilter { GroupId = GroupId });
+        results = AssignmentResult.For(submissions, assignments);
+        unresolved = submissions.Where(s => !s.AssignmentNumber.HasValue).OrderByDescending(s => s.CreatedAt).ToList();
+        loaded = true;
+    }
+
+    private int Count(SubmissionStatus status) => results.Count(r => r.BestStatus == status);
+
+    private RenderFragment StandingTable(SubmissionStatistics standing) => __builder =>
+    {
+        <div class="table-responsive">
+            <table class="custom-table standing-table">
+                <thead>
+                    <tr>
+                        <th style="width: 3rem;">#</th>
+                        <th>Groep</th>
+                        <th class="text-end">Punten</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var g in standing.GroupStatistics.OrderBy(x => x.Rank).ThenBy(x => x.GroupName))
+                    {
+                        <tr class="@(g.GroupId == GroupId ? "own-group" : null)" @key="g.GroupId">
+                            <td class="text-secondary fw-semibold">@g.Rank</td>
+                            <td class="fw-bold text-white">@g.GroupName</td>
+                            <td class="text-end fw-bold text-white">@g.Score</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    };
+
+    protected override void Dispose(bool disposing)
+    {
+        clock?.Dispose();
+        base.Dispose(disposing);
+    }
+}

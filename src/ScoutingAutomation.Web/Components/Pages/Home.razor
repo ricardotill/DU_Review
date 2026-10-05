@@ -3,173 +3,195 @@
 @inherits LiveComponentBase
 @inject NavigationManager Navigation
 @inject RuntimeSettingsService Runtime
+@inject TimeProvider Time
+@attribute [GroupAccess]
 
 <PageTitle>Dashboard - DU Review</PageTitle>
 
-<PageHeader Title="Dashboard" Subtitle="Scores en voortgang van de beoordeling voor alle groepen.">
-    <Actions>
-        <AuthorizeView Roles="@KeyAuth.AdminRole">
-            <Authorized>
-                <div class="form-check form-switch mb-0 align-self-center me-2" title="Alleen bestanden downloaden en benoemen; verder wordt niets verwerkt">
-                    <input class="form-check-input" type="checkbox" role="switch" id="manualMode" checked="@Runtime.ManualMode" @onchange="ToggleManualMode" />
-                    <label class="form-check-label text-white small fw-semibold" for="manualMode">Handmatige modus</label>
-                </div>
-                <div class="dropdown align-self-center">
-                    <button class="btn btn-scout-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                        <i class="bi bi-download me-1"></i> Exporteren
-                    </button>
-                    <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end">
-                        <li><a class="dropdown-item" href="/api/export/scores.csv" download><i class="bi bi-filetype-csv me-2"></i>Scores (CSV)</a></li>
-                        <li><a class="dropdown-item" href="/api/export/files.zip?status=awesome" download><i class="bi bi-fire me-2"></i>Awesome bestanden (ZIP)</a></li>
-                        <li><a class="dropdown-item" href="/api/export/files.zip?status=approved" download><i class="bi bi-check2-all me-2"></i>Goedgekeurd + awesome (ZIP)</a></li>
-                    </ul>
-                </div>
-            </Authorized>
-            <NotAuthorized>
-                @if (Runtime.ManualMode)
-                {
-                    <span class="badge badge-pending align-self-center" title="Alleen beheerders kunnen de handmatige modus wisselen">Handmatige modus</span>
-                }
-            </NotAuthorized>
-        </AuthorizeView>
-        <span class="badge badge-approved align-self-center" title="Deze pagina werkt zichzelf bij">
-            <span class="live-dot me-1"></span> Live
-        </span>
-    </Actions>
-</PageHeader>
-
-@if (Runtime.ManualMode)
+@* A group gets its own dashboard and never loads the data of the others *@
+@if (ownGroup is { } groupId)
 {
-    <div class="alert alert-warning d-flex gap-2 mb-4" role="status">
-        <i class="bi bi-cone-striped"></i>
-        <div class="small">
-            <strong>Handmatige modus staat aan.</strong> Uploads met een geldig opdrachtnummer worden alleen als bestand met de juiste naam in de map van de groep opgeslagen.
-            Er wordt niets geregistreerd of beoordeeld, de bot plaatst niets in Slack en reacties worden genegeerd. Dit dashboard verandert dus niet.
-        </div>
-    </div>
+    <GroupDashboard GroupId="groupId" />
 }
-
-@if (stats == null)
+else if (isStaff)
 {
-    <div class="empty-state">
-        <div class="spinner-border text-success" role="status"></div>
-    </div>
-}
-else
-{
-    <SubmissionTotals Stats="stats" Class="mb-4" />
-
-    <!-- Leaderboard -->
-    <div class="glass-panel p-4 mb-4">
-        <h2 class="panel-title"><i class="bi bi-trophy-fill text-warning"></i> Scorebord</h2>
-
-        @if (stats.GroupStatistics.Count == 0)
-        {
-            <div class="empty-state">Geen groepen ingesteld.</div>
-        }
-        else
-        {
-            <div class="table-responsive">
-                <table class="custom-table leaderboard">
-                    <thead>
-                        <tr>
-                            <th style="width: 3rem;">#</th>
-                            <th>Groep</th>
-                            <th class="text-center">Score</th>
-                            <th class="text-center">Inzendingen</th>
-                            <th>Beoordeling</th>
-                            <th>Laatst actief</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var g in stats.GroupStatistics.OrderBy(x => x.Rank).ThenBy(x => x.GroupName))
-                        {
-                            <tr class="clickable-row" title="@g.GroupName openen" @onclick="@(() => Navigation.NavigateTo($"groups/{g.GroupId}"))">
-                                <td class="text-secondary fw-semibold">@g.Rank</td>
-                                <td>
-                                    <a href="groups/@g.GroupId" class="fw-bold text-white text-decoration-none hover-underline">@g.GroupName</a>
-                                    @if (GetAbbreviation(g.GroupId) is { } abbreviation)
-                                    {
-                                        <span class="badge bg-secondary font-monospace ms-1">@abbreviation</span>
-                                    }
-                                </td>
-                                <td class="text-center">
-                                    <div class="score-value fw-bold text-white fs-5">@g.Score</div>
-                                    <div class="score-bonus">
-                                        <span title="@BonusCategory.Adventurers.Label()">Av <span class="bonus-adventurers">@g.AdventurersPoints</span></span>
-                                        ·
-                                        <span title="@BonusCategory.TravelAgency.Label()">Rb <span class="bonus-travel">@g.TravelAgencyPoints</span></span>
-                                    </div>
-                                </td>
-                                <td class="submission-count text-center text-white">@g.TotalSubmissions</td>
-                                <td class="review-cell">
-                                    <div class="d-flex gap-1 mb-1">
-                                        <span class="badge badge-pending count-pending" title="Open">@g.PendingCount</span>
-                                        <span class="badge badge-approved count-approved" title="Goedgekeurd">@g.ApprovedCount</span>
-                                        <span class="badge badge-awesome count-awesome" title="Awesome">@g.AwesomeCount</span>
-                                        <span class="badge badge-rejected count-rejected" title="Afgekeurd">@g.RejectedCount</span>
-                                    </div>
-                                    <div class="d-flex align-items-center gap-2" title="Goedgekeurd %">
-                                        <div class="progress-bar-custom flex-grow-1" style="height: 6px;">
-                                            <div class="progress-fill-scout" style="width: @(g.ApprovalRate)%"></div>
-                                        </div>
-                                        <span class="text-white-50 small">@g.ApprovalRate%</span>
-                                    </div>
-                                </td>
-                                <td class="small"><LastActivity At="g.LastSubmissionAt" /></td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-        }
-    </div>
-
-    <div class="glass-panel p-4 mb-4">
-        <h2 class="panel-title"><i class="bi bi-graph-up text-info"></i> Punten in de loop van het spel</h2>
-        <ScoreChart Stats="stats" />
-    </div>
-
-    <!-- Assignments with submissions -->
-    <div class="glass-panel p-4">
-        <div class="d-flex justify-content-between align-items-center">
-            <h2 class="panel-title"><i class="bi bi-list-ol text-info"></i> Voortgang per opdracht</h2>
-            <a href="assignments" class="small text-secondary text-decoration-none hover-underline mb-3">Alle opdrachten <i class="bi bi-arrow-right"></i></a>
-        </div>
-
-        @if (!ActiveAssignments.Any())
-        {
-            <div class="empty-state">
-                <i class="bi bi-inbox"></i>
-                Nog geen inzendingen.
-            </div>
-        }
-        else
-        {
-            <div class="row g-3">
-                @foreach (var assign in ActiveAssignments)
-                {
-                    <div class="col-xl-3 col-md-4 col-sm-6">
-                        <a href="assignments/@assign.AssignmentNumber" class="inset-panel d-block h-100 text-decoration-none assignment-card">
-                            <div class="d-flex justify-content-between align-items-center mb-2">
-                                <span class="fw-bold text-white">#@assign.AssignmentNumber</span>
-                                <span class="text-secondary small">@assign.TotalSubmissions / @stats.GroupStatistics.Count groepen</span>
-                            </div>
-                            <div class="d-flex gap-3 mb-2 small">
-                                <span class="text-success" title="Goedgekeurd"><i class="bi bi-check2"></i> @assign.ApprovedCount</span>
-                                <span class="text-awesome" title="Awesome"><i class="bi bi-star-fill"></i> @assign.AwesomeCount</span>
-                                <span class="text-warning" title="Open"><i class="bi bi-hourglass-split"></i> @assign.PendingCount</span>
-                                <span class="text-danger" title="Afgekeurd"><i class="bi bi-x-circle"></i> @assign.RejectedCount</span>
-                            </div>
-                            <div class="progress-bar-custom" style="height: 6px;">
-                                <div class="progress-fill-scout" style="width: @((assign.ApprovedCount + assign.AwesomeCount) * 100 / assign.TotalSubmissions)%"></div>
-                            </div>
-                        </a>
+    <PageHeader Title="Dashboard" Subtitle="Scores en voortgang van de beoordeling voor alle groepen.">
+        <Actions>
+            <AuthorizeView Roles="@KeyAuth.AdminRole">
+                <Authorized>
+                    <div class="form-check form-switch mb-0 align-self-center me-2" title="Alleen bestanden downloaden en benoemen; verder wordt niets verwerkt">
+                        <input class="form-check-input" type="checkbox" role="switch" id="manualMode" checked="@Runtime.ManualMode" @onchange="ToggleManualMode" />
+                        <label class="form-check-label text-white small fw-semibold" for="manualMode">Handmatige modus</label>
                     </div>
-                }
+                    <div class="dropdown align-self-center">
+                        <button class="btn btn-scout-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-download me-1"></i> Exporteren
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end">
+                            <li><a class="dropdown-item" href="/api/export/scores.csv" download><i class="bi bi-filetype-csv me-2"></i>Scores (CSV)</a></li>
+                            <li><a class="dropdown-item" href="/api/export/files.zip?status=awesome" download><i class="bi bi-fire me-2"></i>Awesome bestanden (ZIP)</a></li>
+                            <li><a class="dropdown-item" href="/api/export/files.zip?status=approved" download><i class="bi bi-check2-all me-2"></i>Goedgekeurd + awesome (ZIP)</a></li>
+                        </ul>
+                    </div>
+                </Authorized>
+                <NotAuthorized>
+                    @if (Runtime.ManualMode)
+                    {
+                        <span class="badge badge-pending align-self-center" title="Alleen beheerders kunnen de handmatige modus wisselen">Handmatige modus</span>
+                    }
+                </NotAuthorized>
+            </AuthorizeView>
+            <span class="badge badge-approved align-self-center" title="Deze pagina werkt zichzelf bij">
+                <span class="live-dot me-1"></span> Live
+            </span>
+        </Actions>
+    </PageHeader>
+
+    @if (clock?.IsHidden == true)
+    {
+        <div class="alert alert-info d-flex gap-2 mb-4 standing-hidden-banner" role="status">
+            <i class="bi bi-eye-slash"></i>
+            <div class="small">
+                <strong>De stand is nu verborgen voor groepen@(Runtime.HideStandingOnBeamer ? " en op het scorebord" : "").</strong>
+                @(Runtime.InterimStanding is { } interim ? $"Ze zien de tussenstand van {interim.PublishedAt.ToGameTime():HH:mm}." : "Ze zien geen tussenstand.")
+                <a href="standing" class="alert-link">Stand voor groepen</a>
             </div>
-        }
-    </div>
+        </div>
+    }
+
+    @if (Runtime.ManualMode)
+    {
+        <div class="alert alert-warning d-flex gap-2 mb-4" role="status">
+            <i class="bi bi-cone-striped"></i>
+            <div class="small">
+                <strong>Handmatige modus staat aan.</strong> Uploads met een geldig opdrachtnummer worden alleen als bestand met de juiste naam in de map van de groep opgeslagen.
+                Er wordt niets geregistreerd of beoordeeld, de bot plaatst niets in Slack en reacties worden genegeerd. Dit dashboard verandert dus niet.
+            </div>
+        </div>
+    }
+
+    @if (stats == null)
+    {
+        <div class="empty-state">
+            <div class="spinner-border text-success" role="status"></div>
+        </div>
+    }
+    else
+    {
+        <SubmissionTotals Stats="stats" Class="mb-4" />
+
+        <!-- Leaderboard -->
+        <div class="glass-panel p-4 mb-4">
+            <h2 class="panel-title"><i class="bi bi-trophy-fill text-warning"></i> Scorebord</h2>
+
+            @if (stats.GroupStatistics.Count == 0)
+            {
+                <div class="empty-state">Geen groepen ingesteld.</div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="custom-table leaderboard">
+                        <thead>
+                            <tr>
+                                <th style="width: 3rem;">#</th>
+                                <th>Groep</th>
+                                <th class="text-center">Score</th>
+                                <th class="text-center">Inzendingen</th>
+                                <th>Beoordeling</th>
+                                <th>Laatst actief</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var g in stats.GroupStatistics.OrderBy(x => x.Rank).ThenBy(x => x.GroupName))
+                            {
+                                <tr class="clickable-row" title="@g.GroupName openen" @onclick="@(() => Navigation.NavigateTo($"groups/{g.GroupId}"))">
+                                    <td class="text-secondary fw-semibold">@g.Rank</td>
+                                    <td>
+                                        <a href="groups/@g.GroupId" class="fw-bold text-white text-decoration-none hover-underline">@g.GroupName</a>
+                                        @if (GetAbbreviation(g.GroupId) is { } abbreviation)
+                                        {
+                                            <span class="badge bg-secondary font-monospace ms-1">@abbreviation</span>
+                                        }
+                                    </td>
+                                    <td class="text-center">
+                                        <div class="score-value fw-bold text-white fs-5">@g.Score</div>
+                                        <div class="score-bonus">
+                                            <span title="@BonusCategory.Adventurers.Label()">Av <span class="bonus-adventurers">@g.AdventurersPoints</span></span>
+                                            ·
+                                            <span title="@BonusCategory.TravelAgency.Label()">Rb <span class="bonus-travel">@g.TravelAgencyPoints</span></span>
+                                        </div>
+                                    </td>
+                                    <td class="submission-count text-center text-white">@g.TotalSubmissions</td>
+                                    <td class="review-cell">
+                                        <div class="d-flex gap-1 mb-1">
+                                            <span class="badge badge-pending count-pending" title="Open">@g.PendingCount</span>
+                                            <span class="badge badge-approved count-approved" title="Goedgekeurd">@g.ApprovedCount</span>
+                                            <span class="badge badge-awesome count-awesome" title="Awesome">@g.AwesomeCount</span>
+                                            <span class="badge badge-rejected count-rejected" title="Afgekeurd">@g.RejectedCount</span>
+                                        </div>
+                                        <div class="d-flex align-items-center gap-2" title="Goedgekeurd %">
+                                            <div class="progress-bar-custom flex-grow-1" style="height: 6px;">
+                                                <div class="progress-fill-scout" style="width: @(g.ApprovalRate)%"></div>
+                                            </div>
+                                            <span class="text-white-50 small">@g.ApprovalRate%</span>
+                                        </div>
+                                    </td>
+                                    <td class="small"><LastActivity At="g.LastSubmissionAt" /></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+
+        <div class="glass-panel p-4 mb-4">
+            <h2 class="panel-title"><i class="bi bi-graph-up text-info"></i> Punten in de loop van het spel</h2>
+            <ScoreChart Stats="stats" />
+        </div>
+
+        <!-- Assignments with submissions -->
+        <div class="glass-panel p-4">
+            <div class="d-flex justify-content-between align-items-center">
+                <h2 class="panel-title"><i class="bi bi-list-ol text-info"></i> Voortgang per opdracht</h2>
+                <a href="assignments" class="small text-secondary text-decoration-none hover-underline mb-3">Alle opdrachten <i class="bi bi-arrow-right"></i></a>
+            </div>
+
+            @if (!ActiveAssignments.Any())
+            {
+                <div class="empty-state">
+                    <i class="bi bi-inbox"></i>
+                    Nog geen inzendingen.
+                </div>
+            }
+            else
+            {
+                <div class="row g-3">
+                    @foreach (var assign in ActiveAssignments)
+                    {
+                        <div class="col-xl-3 col-md-4 col-sm-6">
+                            <a href="assignments/@assign.AssignmentNumber" class="inset-panel d-block h-100 text-decoration-none assignment-card">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <span class="fw-bold text-white">#@assign.AssignmentNumber</span>
+                                    <span class="text-secondary small">@assign.TotalSubmissions / @stats.GroupStatistics.Count groepen</span>
+                                </div>
+                                <div class="d-flex gap-3 mb-2 small">
+                                    <span class="text-success" title="Goedgekeurd"><i class="bi bi-check2"></i> @assign.ApprovedCount</span>
+                                    <span class="text-awesome" title="Awesome"><i class="bi bi-star-fill"></i> @assign.AwesomeCount</span>
+                                    <span class="text-warning" title="Open"><i class="bi bi-hourglass-split"></i> @assign.PendingCount</span>
+                                    <span class="text-danger" title="Afgekeurd"><i class="bi bi-x-circle"></i> @assign.RejectedCount</span>
+                                </div>
+                                <div class="progress-bar-custom" style="height: 6px;">
+                                    <div class="progress-fill-scout" style="width: @((assign.ApprovedCount + assign.AwesomeCount) * 100 / assign.TotalSubmissions)%"></div>
+                                </div>
+                            </a>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
 }
 
 @code {
@@ -179,13 +201,26 @@ else
     private IEnumerable<AssignmentStatistic> ActiveAssignments =>
         stats?.AssignmentStatistics.Where(a => a.TotalSubmissions > 0) ?? Enumerable.Empty<AssignmentStatistic>();
 
+    private Guid? ownGroup;
+    private bool isStaff;
+    private StandingClock? clock;
+
     protected override void OnInitialized()
     {
         base.OnInitialized();
         Runtime.Changed += OnRuntimeChanged;
     }
 
-    protected override Task OnInitializedAsync() => ReloadAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        var user = AuthState == null ? null : (await AuthState).User;
+        ownGroup = user == null ? null : KeyAuth.GroupId(user);
+        isStaff = user?.IsInRole(KeyAuth.JuryRole) == true;
+        if (!isStaff) return;
+
+        clock = new StandingClock(Runtime, Time, () => InvokeAsync(StateHasChanged));
+        await ReloadAsync();
+    }
 
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
 
@@ -200,11 +235,14 @@ else
     protected override void Dispose(bool disposing)
     {
         Runtime.Changed -= OnRuntimeChanged;
+        clock?.Dispose();
         base.Dispose(disposing);
     }
 
     protected override async Task LoadAsync(IServiceProvider services)
     {
+        // A live reload also runs for a group's tab: its data is loaded by GroupDashboard only
+        if (!isStaff) return;
         stats = await services.GetRequiredService<ISubmissionRepository>().GetStatisticsAsync();
         groupsById = (await services.GetRequiredService<IGroupRepository>().GetAllAsync()).ToDictionary(g => g.Id);
     }

@@ -1,0 +1,213 @@
+@page "/standing"
+@rendermode InteractiveServer
+@inherits LiveComponentBase
+@inject RuntimeSettingsService Runtime
+@inject TimeProvider Time
+
+<PageTitle>Stand voor groepen - DU Review</PageTitle>
+
+<PageHeader Title="Stand voor groepen" Subtitle="Verberg de stand voor de groepen, bijvoorbeeld tegen het einde van het spel, en geef ze zo nodig een tussenstand." />
+
+@* The jury and admins manage this; groups never reach this page *@
+<div class="row g-4">
+    <div class="col-lg-6">
+        <div class="glass-panel p-4 h-100">
+            <h2 class="panel-title"><i class="bi bi-eye-slash-fill text-info"></i> Nu</h2>
+            @if (clock!.IsHidden)
+            {
+                <div class="alert alert-info small standing-state" role="status">
+                    <strong>Verborgen.</strong> Groepen zien alleen hun eigen score en punten, niet hun plaats, de andere groepen of de grafiek@(Runtime.InterimStanding != null ? "; wel de tussenstand" : "").
+                </div>
+            }
+            else
+            {
+                <div class="alert alert-success small standing-state" role="status">
+                    <strong>Zichtbaar.</strong> Groepen zien de actuele stand.
+                </div>
+            }
+
+            <div class="form-check form-switch mb-2">
+                <input class="form-check-input" type="checkbox" role="switch" id="hideNow" checked="@Runtime.StandingHiddenManually" @onchange="SetHiddenAsync" />
+                <label class="form-check-label text-white small fw-semibold" for="hideNow">Stand verbergen (los van de periodes)</label>
+            </div>
+            <div class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox" role="switch" id="hideBeamer" checked="@Runtime.HideStandingOnBeamer" @onchange="SetBeamerAsync" />
+                <label class="form-check-label text-white small fw-semibold" for="hideBeamer">Ook verbergen op het scorebord (beamer)</label>
+            </div>
+            <div class="stat-caption mt-1">Het dashboard van de jury blijft altijd de actuele stand tonen.</div>
+            @if (switchError != null)
+            {
+                <div class="text-danger small mt-2">@switchError</div>
+            }
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="glass-panel p-4 h-100">
+            <h2 class="panel-title"><i class="bi bi-calendar-range text-warning"></i> Periodes</h2>
+            <p class="text-secondary small">In deze periodes is de stand vanzelf verborgen. Tijden in de tijdzone van het spel.</p>
+
+            @if (Runtime.StandingHideWindows.Count == 0)
+            {
+                <div class="text-muted small mb-3">Geen periodes.</div>
+            }
+            else
+            {
+                <ul class="list-unstyled d-flex flex-column gap-2 mb-3 hide-windows">
+                    @foreach (var window in Runtime.StandingHideWindows)
+                    {
+                        <li class="inset-panel py-2 d-flex align-items-center gap-2" @key="window.Id">
+                            <i class="bi bi-eye-slash text-secondary"></i>
+                            <span class="text-white small flex-grow-1">@Format(window.From) – @Format(window.To)</span>
+                            <button type="button" class="btn btn-sm btn-link text-danger p-0 remove-window" title="Periode verwijderen" aria-label="Periode verwijderen" @onclick="() => RemoveWindowAsync(window.Id)">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </li>
+                    }
+                </ul>
+            }
+
+            <form class="d-flex gap-2 flex-wrap align-items-end" @onsubmit="AddWindowAsync">
+                <div>
+                    <label class="form-label text-secondary small fw-semibold mb-1" for="windowFrom">Van</label>
+                    <input id="windowFrom" type="datetime-local" class="form-control form-control-dark form-control-sm window-from" step="60" @bind="fromDraft" />
+                </div>
+                <div>
+                    <label class="form-label text-secondary small fw-semibold mb-1" for="windowTo">Tot</label>
+                    <input id="windowTo" type="datetime-local" class="form-control form-control-dark form-control-sm window-to" step="60" @bind="toDraft" />
+                </div>
+                <button type="submit" class="btn btn-sm btn-scout-secondary text-nowrap add-window"><i class="bi bi-plus-lg me-1"></i> Toevoegen</button>
+            </form>
+            @if (windowError != null)
+            {
+                <div class="text-danger small mt-2">@windowError</div>
+            }
+        </div>
+    </div>
+
+    <div class="col-12">
+        <div class="glass-panel p-4">
+            <h2 class="panel-title"><i class="bi bi-trophy-fill text-warning"></i> Tussenstand</h2>
+            <p class="text-secondary small">
+                Zolang de stand verborgen is, zien groepen de tussenstand als die er is. Publiceren legt de stand van dit moment vast;
+                die verandert daarna niet meer mee. Zonder tussenstand zien groepen alleen dat de stand verborgen is.
+            </p>
+
+            <div class="d-flex gap-2 mb-3 flex-wrap">
+                <button type="button" class="btn btn-sm btn-scout-primary publish-interim" disabled="@(stats == null)" @onclick="PublishAsync">
+                    <i class="bi bi-megaphone me-1"></i> @(Runtime.InterimStanding == null ? "Tussenstand publiceren" : "Nieuwe tussenstand publiceren")
+                </button>
+                @if (Runtime.InterimStanding != null)
+                {
+                    <button type="button" class="btn btn-sm btn-outline-danger clear-interim" @onclick="ClearAsync">
+                        <i class="bi bi-x-lg me-1"></i> Tussenstand verwijderen
+                    </button>
+                }
+            </div>
+            @if (interimError != null)
+            {
+                <div class="text-danger small mb-2">@interimError</div>
+            }
+
+            @if (Runtime.InterimStanding is { } interim)
+            {
+                <div class="small text-white-50 mb-2 interim-published">Gepubliceerd om @interim.PublishedAt.ToGameTime().ToString("HH:mm") (@interim.PublishedAt.ToGameTime().ToString("dd-MM-yyyy")). Dit zien de groepen:</div>
+                <div class="table-responsive">
+                    <table class="custom-table interim-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 3rem;">#</th>
+                                <th>Groep</th>
+                                <th class="text-end">Punten</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in interim.Rows)
+                            {
+                                <tr @key="row.GroupId">
+                                    <td class="text-secondary fw-semibold">@row.Rank</td>
+                                    <td class="fw-bold text-white">@row.GroupName</td>
+                                    <td class="text-end fw-bold text-white">@row.Score</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            else
+            {
+                <div class="text-muted small">Nog geen tussenstand gepubliceerd.</div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private StandingClock? clock;
+    private SubmissionStatistics? stats;
+    private DateTime? fromDraft;
+    private DateTime? toDraft;
+    private string? switchError;
+    private string? windowError;
+    private string? interimError;
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        clock = new StandingClock(Runtime, Time, () => InvokeAsync(StateHasChanged));
+    }
+
+    protected override Task OnInitializedAsync() => ReloadAsync();
+
+    protected override async Task LoadAsync(IServiceProvider services)
+    {
+        stats = await services.GetRequiredService<ISubmissionRepository>().GetStatisticsAsync();
+    }
+
+    private static string Format(DateTime time) => time.ToString("dd-MM-yyyy HH:mm");
+
+    private async Task SetHiddenAsync(ChangeEventArgs e) =>
+        switchError = await StaffActions.RunAsync(AuthState, () => Runtime.SetStandingHidden(e.Value is true));
+
+    private async Task SetBeamerAsync(ChangeEventArgs e) =>
+        switchError = await StaffActions.RunAsync(AuthState, () => Runtime.SetHideStandingOnBeamer(e.Value is true));
+
+    private async Task AddWindowAsync()
+    {
+        if (fromDraft is not { } from || toDraft is not { } to)
+        {
+            windowError = "Vul een begin- en eindtijd in.";
+            return;
+        }
+
+        windowError = await StaffActions.RunAsync(AuthState, () => Runtime.AddStandingHideWindow(from, to));
+        if (windowError == null)
+        {
+            fromDraft = null;
+            toDraft = null;
+        }
+    }
+
+    private async Task RemoveWindowAsync(Guid id) =>
+        windowError = await StaffActions.RunAsync(AuthState, () => { Runtime.RemoveStandingHideWindow(id); });
+
+    private async Task PublishAsync()
+    {
+        // The standing of this moment, not of when the page was opened
+        await ReloadAsync();
+        var current = stats;
+        if (current == null) return;
+        interimError = await StaffActions.RunAsync(AuthState, () => Runtime.PublishInterimStanding(current.ToInterimRows(), Time.GetUtcNow()));
+    }
+
+    private async Task ClearAsync() =>
+        interimError = await StaffActions.RunAsync(AuthState, Runtime.ClearInterimStanding);
+
+    protected override void Dispose(bool disposing)
+    {
+        clock?.Dispose();
+        base.Dispose(disposing);
+    }
+}

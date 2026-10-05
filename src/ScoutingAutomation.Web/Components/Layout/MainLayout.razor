@@ -13,37 +13,42 @@
             @* Game first, then the connection, then modes that change how the app behaves *@
             <div class="top-tags">
                 <GameStatusBadge />
-                @if (ScoutingOptions.Value.Slack.SimulationMode)
-                {
-                    <span class="top-tag badge-pending" title="Er gaan geen berichten naar Slack">
-                        <i class="bi bi-cone-striped"></i> Simulatiemodus
-                    </span>
-                }
-                else if (ScoutingOptions.Value.Slack.SocketMode && ConnectionStatus.State != SlackConnectionState.Connected)
-                {
-                    <a href="configuration" class="top-tag badge-rejected" title="@ConnectionStatus.Detail">
-                        <i class="bi bi-exclamation-triangle-fill"></i> Slack: @ConnectionStatus.State.Label()
-                    </a>
-                }
-                else
-                {
-                    <span class="top-tag badge-approved">
-                        <span class="live-dot"></span> Verbonden met Slack
-                    </span>
-                }
-                @if (Runtime.ManualMode)
-                {
-                    <a href="" class="top-tag badge-pending" title="Bestanden worden alleen gedownload en benoemd">
-                        <i class="bi bi-hand-index-thumb"></i> Handmatige modus
-                    </a>
-                }
-                <AuthorizeView Roles="@KeyAuth.AdminRole">
-                    <a href="admin" class="top-tag badge-awesome" title="Beheermodus: acties voor beheerders zijn beschikbaar">
-                        <i class="bi bi-shield-lock-fill"></i> Beheer
-                    </a>
+                @* Slack and modes are jury business; a group only sees where the game stands *@
+                <AuthorizeView Roles="@KeyAuth.JuryRole">
+                    @if (ScoutingOptions.Value.Slack.SimulationMode)
+                    {
+                        <span class="top-tag badge-pending" title="Er gaan geen berichten naar Slack">
+                            <i class="bi bi-cone-striped"></i> Simulatiemodus
+                        </span>
+                    }
+                    else if (ScoutingOptions.Value.Slack.SocketMode && ConnectionStatus.State != SlackConnectionState.Connected)
+                    {
+                        <a href="configuration" class="top-tag badge-rejected" title="@ConnectionStatus.Detail">
+                            <i class="bi bi-exclamation-triangle-fill"></i> Slack: @ConnectionStatus.State.Label()
+                        </a>
+                    }
+                    else
+                    {
+                        <span class="top-tag badge-approved">
+                            <span class="live-dot"></span> Verbonden met Slack
+                        </span>
+                    }
+                    @if (Runtime.ManualMode)
+                    {
+                        <a href="" class="top-tag badge-pending" title="Bestanden worden alleen gedownload en benoemd">
+                            <i class="bi bi-hand-index-thumb"></i> Handmatige modus
+                        </a>
+                    }
+                    <AuthorizeView Roles="@KeyAuth.AdminRole" Context="admin">
+                        <a href="admin" class="top-tag badge-awesome" title="Beheermodus: acties voor beheerders zijn beschikbaar">
+                            <i class="bi bi-shield-lock-fill"></i> Beheer
+                        </a>
+                    </AuthorizeView>
                 </AuthorizeView>
             </div>
-            <NotificationSettings />
+            <AuthorizeView Roles="@KeyAuth.JuryRole">
+                <NotificationSettings />
+            </AuthorizeView>
         </div>
 
         <article class="content px-4 py-4" style="max-width: 1400px; margin: 0 auto;">

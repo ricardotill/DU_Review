@@ -6,17 +6,17 @@
 @switch (State)
 {
     case GameState.Waiting:
-        <a href="configuration" class="top-tag badge-pending game-status game-waiting" title="Inzendingen van voor de start tellen niet mee">
+        <a href="@link" class="top-tag badge-pending game-status game-waiting" title="Inzendingen van voor de start tellen niet mee">
             <i class="bi bi-hourglass-split"></i> Wacht op start · @Runtime.EventStart!.Value.ToGameTime().ToString("HH:mm")
         </a>
         break;
     case GameState.Busy:
-        <a href="configuration" class="top-tag badge-approved game-status game-busy" title="Het spel loopt">
+        <a href="@link" class="top-tag badge-approved game-status game-busy" title="Het spel loopt">
             <i class="bi bi-play-fill"></i> Spel bezig@(Runtime.EventEnd is { } end ? $" · tot {end.ToGameTime():HH:mm}" : "")
         </a>
         break;
     case GameState.Ended:
-        <a href="configuration" class="top-tag badge-rejected game-status game-ended" title="Inzendingen tellen niet meer mee">
+        <a href="@link" class="top-tag badge-rejected game-status game-ended" title="Inzendingen tellen niet meer mee">
             <i class="bi bi-stopwatch-fill"></i> Spel afgelopen om @Runtime.EventEnd!.Value.ToGameTime().ToString("HH:mm")
         </a>
         break;
@@ -26,6 +26,16 @@
     private enum GameState { None, Waiting, Busy, Ended }
 
     private ITimer? timer;
+
+    // The configuration page is for the jury: for a group the tag is not a link
+    private string? link = "configuration";
+
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        link = AuthState != null && KeyAuth.IsGroup((await AuthState).User) ? null : "configuration";
+    }
 
     // Without a start or end time there is no game to show
     private GameState State

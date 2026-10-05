@@ -3,6 +3,8 @@
 @inherits LiveComponentBase
 @inject FavoritesService Favorites
 @inject IJSRuntime JS
+@inject RuntimeSettingsService Runtime
+@inject TimeProvider Time
 
 <PageTitle>Diavoorstelling - DU Review</PageTitle>
 
@@ -110,8 +112,21 @@ else
             {
                 <div class="media scoreboard-slide" @key="(nameof(showingScoreboard), showCount)">
                     <div class="scoreboard-slide-inner">
-                        <h2 class="scoreboard-slide-title"><i class="bi bi-trophy-fill text-warning"></i> Tussenstand</h2>
-                        <ScoreboardBoard Stats="stats" />
+                        @* Hidden from the beamer by the jury: the published interim standing, or nothing *@
+                        @if (!clock!.IsHiddenOnBeamer)
+                        {
+                            <h2 class="scoreboard-slide-title"><i class="bi bi-trophy-fill text-warning"></i> Tussenstand</h2>
+                            <ScoreboardBoard Stats="stats" />
+                        }
+                        else if (clock.Interim is { } interim)
+                        {
+                            <h2 class="scoreboard-slide-title"><i class="bi bi-trophy-fill text-warning"></i> Tussenstand van @interim.PublishedAt.ToGameTime().ToString("HH:mm")</h2>
+                            <ScoreboardBoard Stats="interim.ToStatistics()" />
+                        }
+                        else
+                        {
+                            <h2 class="scoreboard-slide-title"><i class="bi bi-eye-slash"></i> De stand is tijdelijk verborgen</h2>
+                        }
                     </div>
                 </div>
             }
@@ -254,8 +269,11 @@ else
         }
     }
 
+    private StandingClock? clock;
+
     protected override Task OnInitializedAsync()
     {
+        clock = new StandingClock(Runtime, Time, () => InvokeAsync(StateHasChanged));
         Favorites.Changed += OnFavoritesChanged;
         favoritesOnly = FavoritesFromQuery == true;
         awesomeOnly = StatusFromQuery == nameof(SubmissionStatus.Awesome);
@@ -488,6 +506,7 @@ else
         if (disposing)
         {
             Favorites.Changed -= OnFavoritesChanged;
+            clock?.Dispose();
             StopImageTimer();
         }
     }
