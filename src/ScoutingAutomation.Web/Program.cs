@@ -9,6 +9,7 @@ using ScoutingAutomation.Infrastructure.Data;
 using ScoutingAutomation.Infrastructure.Extensions;
 using ScoutingAutomation.Infrastructure.Settings;
 using ScoutingAutomation.Infrastructure.Slack.Events;
+using ScoutingAutomation.Web.Adventurers;
 using ScoutingAutomation.Web.Auth;
 using ScoutingAutomation.Web.Components;
 using ScoutingAutomation.Web.Export;
@@ -308,6 +309,7 @@ api.MapGet("/files/{id:guid}", async (
 }).RequireAuthorization().WithMetadata(new GroupAccessAttribute());
 
 api.MapExportEndpoints();
+app.MapPublicMapEndpoints();
 
 app.MapPost("/logout", async (HttpContext http) =>
 {

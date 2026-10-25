@@ -344,6 +344,7 @@ public partial class RuntimeSettingsService
             SlackText.DownloadFailed => feedback.DownloadFailed?.Message,
             SlackText.AlreadyCompleted => feedback.AlreadyCompleted?.Message,
             SlackText.TooLate => feedback.TooLate?.Message,
+            _ when IsAdventurersText(kind) => ConfiguredAdventurersText(kind),
             _ => throw new ArgumentOutOfRangeException(nameof(kind))
         };
     }
@@ -620,6 +621,7 @@ public partial class RuntimeSettingsService
 
             LoadStandings(saved?.Standings);
             LoadBonusCategories(saved?.BonusCategories);
+            LoadAdventurers(saved?.Adventurers);
         }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
         {
@@ -645,6 +647,7 @@ public partial class RuntimeSettingsService
         _reminder = null;
         ResetStandings();
         _bonusCategories = null;
+        LoadAdventurers(null);
     }
 
     /// <summary>
@@ -657,7 +660,7 @@ public partial class RuntimeSettingsService
             GameEndPosted = _gameEndPosted, EventStart = _eventStart, EventEnd = _eventEnd,
             SlackTexts = _texts.ToDictionary(t => t.Key.ToString(), t => t.Value),
             BlockAttemptsAfterApproval = _blockAttempts, ReviewReminder = _reminder, Standings = SaveStandings(),
-            BonusCategories = _bonusCategories };
+            BonusCategories = _bonusCategories, Adventurers = SaveAdventurers() };
         try
         {
             DurableFile.WriteAllText(_file, JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true }));
@@ -686,6 +689,7 @@ public partial class RuntimeSettingsService
         public ReminderOverride? ReviewReminder { get; set; }
         public SavedStandings? Standings { get; set; }
         public List<BonusCategoryConfig>? BonusCategories { get; set; }
+        public SavedAdventurers? Adventurers { get; set; }
     }
 
     /// <summary>A reminder time set in the app; <see cref="Minutes"/> null means reminders are off.</summary>
@@ -717,5 +721,19 @@ public enum SlackText
     UnknownAssignmentNumber,
     DownloadFailed,
     AlreadyCompleted,
-    TooLate
+    TooLate,
+    AdventurersStart,
+    AdventurersFinal,
+    RoundOpen,
+    RoundClose,
+    RoundResult,
+    UnlockNotice,
+    UnlockCorrection,
+    AdventurersMissingNumber,
+    UnknownLocation,
+    UnknownTheme,
+    ThemeOutsideRound,
+    NoRoundOpen,
+    LocationNotUnlocked,
+    AssignmentLocked
 }

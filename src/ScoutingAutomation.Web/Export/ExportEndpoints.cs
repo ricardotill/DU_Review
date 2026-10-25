@@ -5,6 +5,7 @@ using ScoutingAutomation.Domain.Entities;
 using ScoutingAutomation.Domain.Enums;
 using ScoutingAutomation.Domain.Interfaces;
 using ScoutingAutomation.Domain.Models;
+using ScoutingAutomation.Infrastructure.Adventurers;
 using ScoutingAutomation.Infrastructure.Settings;
 using ScoutingAutomation.Web.Auth;
 
@@ -22,17 +23,24 @@ public static class ExportEndpoints
         export.MapGet("/files.zip", FilesZipAsync);
     }
 
-    private static async Task<IResult> ScoresCsvAsync(ISubmissionRepository submissions, IGroupRepository groups, RuntimeSettingsService runtime, TimeProvider time)
+    private static async Task<IResult> ScoresCsvAsync(ISubmissionRepository submissions, IGroupRepository groups, RuntimeSettingsService runtime,
+        AdventurersScoreService adventurersScores, TimeProvider time)
     {
         var stats = await submissions.GetStatisticsAsync();
         var categories = runtime.BonusCategories;
         var groupsById = (await groups.GetAllAsync()).ToDictionary(g => g.Id);
+        // The Avonturiers columns only while that part is on
+        var adventurers = runtime.AdventurersEnabled ? (await adventurersScores.GetOverviewAsync()).Standing : null;
+        var adventurersColumns = adventurers == null
+            ? Array.Empty<string>()
+            : new[] { "Locaties", "Vrijgespeeld", "Rondepunten", "Eindspel", "Avonturiers totaal" };
 
         // Semicolons and a BOM: what Dutch Excel expects when the file is double-clicked
         var csv = new StringBuilder();
         csv.AppendJoin(';', new[] { "Plaats", "Groep", "Afkorting", "Punten" }
             .Concat(categories.Select(c => Field(c.Name)))
-            .Concat(new[] { "Opdrachten", "Open", "Goedgekeurd", "Awesome", "Afgekeurd", "Laatste upload" }));
+            .Concat(new[] { "Opdrachten", "Open", "Goedgekeurd", "Awesome", "Afgekeurd", "Laatste upload" })
+            .Concat(adventurersColumns));
         csv.Append("\r\n");
         foreach (var g in stats.GroupStatistics.OrderBy(g => g.Rank).ThenBy(g => g.GroupName))
         {
@@ -52,7 +60,10 @@ public static class ExportEndpoints
                 g.AwesomeCount,
                 g.RejectedCount,
                 g.LastSubmissionAt is { } at ? at.ToGameTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) : ""
-            }));
+            })
+            .Concat(adventurers?.For(g.GroupId) is { } a
+                ? new object?[] { Field(string.Join(", ", a.ApprovedLocations)), a.UnlockedAssignments, a.ThemePoints, a.FinalPoints, a.Total }
+                : adventurers != null ? new object?[] { "", 0, 0, 0, 0 } : Array.Empty<object?>()));
             csv.Append("\r\n");
         }
 

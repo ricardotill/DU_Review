@@ -3,6 +3,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ScoutingAutomation.Contracts.Configuration;
+using ScoutingAutomation.Domain.Entities;
 using ScoutingAutomation.Domain.Interfaces;
 using ScoutingAutomation.Infrastructure.Settings;
 using ScoutingAutomation.Infrastructure.Slack;
@@ -65,6 +66,15 @@ public abstract class ScheduledAnnouncer : BackgroundService
     /// <summary>The message for one group from the template.</summary>
     protected abstract string Render(string template, string groupName);
 
+    /// <summary>The message for one group; override when it needs more of the group than its name.</summary>
+    protected virtual string Render(string template, Group group) => Render(template, group.Name);
+
+    /// <summary>The channel of a group that gets the message; the Toeristen channel unless overridden.</summary>
+    protected virtual string? ChannelOf(Group group) => group.SlackChannelId;
+
+    /// <summary>Whether the message is used at all now (e.g. only while a game part is on).</summary>
+    protected virtual bool IsActive => true;
+
     public abstract DateTimeOffset? PostedAt(string channelId);
 
     protected abstract void MarkPosted(string channelId, DateTimeOffset postedAt);
@@ -80,7 +90,7 @@ public abstract class ScheduledAnnouncer : BackgroundService
     /// Posts the message in every group channel that did not get it yet, or in all channels with <paramref name="resend"/>.
     /// Runs one at a time, so the automatic post and an admin's click never post twice.
     /// </summary>
-    public async Task<IReadOnlyList<AnnouncementPostResult>> PostAsync(bool resend, CancellationToken ct = default)
+    public async Task<IReadOnlyList<AnnouncementPostResult>> PostAsync(bool resend, CancellationToken ct = default, MessagePicture? picture = null)
     {
         var template = Template;
         if (string.IsNullOrWhiteSpace(template))
@@ -97,34 +107,40 @@ public abstract class ScheduledAnnouncer : BackgroundService
             var slack = scope.ServiceProvider.GetRequiredService<ISlackClient>();
 
             var results = new List<AnnouncementPostResult>();
-            foreach (var group in groups.Where(g => !string.IsNullOrWhiteSpace(g.SlackChannelId)))
+            foreach (var group in groups)
             {
-                if (!resend && PostedAt(group.SlackChannelId) != null)
+                var channel = ChannelOf(group);
+                if (string.IsNullOrWhiteSpace(channel)) continue;
+
+                if (!resend && PostedAt(channel) != null)
                 {
-                    results.Add(new AnnouncementPostResult(group.Name, group.SlackChannelId, Posted: false, Skipped: true, Error: null));
+                    results.Add(new AnnouncementPostResult(group.Name, channel, Posted: false, Skipped: true, Error: null));
                     continue;
                 }
 
-                var error = await slack.PostMessageAsync(group.SlackChannelId, Render(template, group.Name), ct);
+                var text = Render(template, group);
+                var error = picture == null
+                    ? await slack.PostMessageAsync(channel, text, ct)
+                    : await slack.PostFileAsync(channel, picture.Content, GroupMessageSender.SafeFileName(picture.FileName), text, ct);
                 if (error == null)
                 {
-                    Logger.LogInformation("Posted the {Name} message for {Group} in {Channel}", Name, group.Name, group.SlackChannelId);
+                    Logger.LogInformation("Posted the {Name} message for {Group} in {Channel}", Name, group.Name, channel);
                     try
                     {
-                        MarkPosted(group.SlackChannelId, Time.GetUtcNow());
+                        MarkPosted(channel, Time.GetUtcNow());
                     }
                     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                     {
                         // Posted all the same: the other channels still get it
-                        Logger.LogError(ex, "Posted the {Name} message in {Channel}, but could not save that", Name, group.SlackChannelId);
+                        Logger.LogError(ex, "Posted the {Name} message in {Channel}, but could not save that", Name, channel);
                     }
                 }
                 else
                 {
-                    Logger.LogWarning("Could not post the {Name} message for {Group} in {Channel}: {Error}", Name, group.Name, group.SlackChannelId, error);
+                    Logger.LogWarning("Could not post the {Name} message for {Group} in {Channel}: {Error}", Name, group.Name, channel, error);
                 }
 
-                results.Add(new AnnouncementPostResult(group.Name, group.SlackChannelId, Posted: error == null, Skipped: false, error));
+                results.Add(new AnnouncementPostResult(group.Name, channel, Posted: error == null, Skipped: false, error));
             }
 
             return results;
@@ -158,7 +174,7 @@ public abstract class ScheduledAnnouncer : BackgroundService
                 {
                     var at = PostTime;
                     // The text is checked when posting: an admin can still set it before the time
-                    if (AutoPost && at is { } time && time != postedFor)
+                    if (IsActive && AutoPost && at is { } time && time != postedFor)
                     {
                         var now = Time.GetUtcNow();
                         if (now - time > AutoPostWindow)

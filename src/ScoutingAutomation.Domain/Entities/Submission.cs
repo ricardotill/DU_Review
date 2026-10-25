@@ -7,8 +7,17 @@ public class Submission
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid GroupId { get; set; }
     public Group? Group { get; set; }
-    /// <summary>The assignment's code ("12" or "A"); null when the message gave no valid one.</summary>
+    /// <summary>
+    /// The assignment's code ("12" or "A"); for a check-in or theme the location or theme number.
+    /// Null when the message gave no valid one.
+    /// </summary>
     public string? AssignmentCode { get; set; }
+
+    /// <summary>Toeristen assignment (the default, also for rows from before kinds existed), check-in or theme.</summary>
+    public SubmissionKind Kind { get; set; } = SubmissionKind.Assignment;
+
+    /// <summary>"12", "L7" or "T3".</summary>
+    public string CodeLabel => Kind.Label(AssignmentCode);
     public string SlackChannelId { get; set; } = string.Empty;
     public string SlackMessageId { get; set; } = string.Empty;
 
@@ -43,11 +52,12 @@ public class Submission
     }
 
     /// <summary>Moves the submission to another assignment, e.g. after the scout corrected the number in Slack.</summary>
-    public void Reassign(string assignmentCode, string storagePath)
+    public void Reassign(string assignmentCode, string storagePath, SubmissionKind? kind = null, string? unresolvedReason = null)
     {
         AssignmentCode = assignmentCode;
+        Kind = kind ?? Kind;
         StoragePath = storagePath;
-        UnresolvedReason = null;
+        UnresolvedReason = unresolvedReason;
         UpdatedAt = DateTimeOffset.UtcNow;
     }
 

@@ -17,6 +17,11 @@ public class ScoutingDbContext : DbContext
     public const string BonusEntryGroupIndexName = "IX_BonusPointsEntries_GroupId";
     public const string AssignmentCodeIndexName = "IX_Assignments_Code";
     public const string SubmissionAssignmentCodeIndexName = "IX_Submissions_AssignmentCode";
+    public const string AdventurersChannelIndexName = "IX_Groups_AdventurersSlackChannelId";
+    public const string MapTokenIndexName = "IX_Groups_MapToken";
+    public const string SubmissionKindIndexName = "IX_Submissions_Kind";
+    public const int MaxLocationNameLength = 150;
+    public const int MaxLocationHintLength = 1000;
     public const int MaxAssignmentTitleLength = 200;
     public const int MaxAssignmentDescriptionLength = 4000;
 
@@ -27,6 +32,8 @@ public class ScoutingDbContext : DbContext
     public DbSet<FailedSlackEvent> FailedSlackEvents => Set<FailedSlackEvent>();
     public DbSet<BonusPointsEntry> BonusPointsEntries => Set<BonusPointsEntry>();
     public DbSet<GroupBonusPoints> GroupBonusPoints => Set<GroupBonusPoints>();
+    public DbSet<Location> Locations => Set<Location>();
+    public DbSet<LocationUnlock> LocationUnlocks => Set<LocationUnlock>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -41,6 +48,14 @@ public class ScoutingDbContext : DbContext
             entity.Property(g => g.Abbreviation).HasMaxLength(20);
             entity.Property(g => g.SlackChannelId).IsRequired().HasMaxLength(50);
             entity.HasIndex(g => g.SlackChannelId).IsUnique();
+            entity.Property(g => g.AdventurersSlackChannelId).HasMaxLength(50);
+            entity.HasIndex(g => g.AdventurersSlackChannelId).IsUnique()
+                  .HasDatabaseName(AdventurersChannelIndexName)
+                  .HasFilter("\"AdventurersSlackChannelId\" IS NOT NULL");
+            entity.Property(g => g.MapToken).HasMaxLength(64);
+            entity.HasIndex(g => g.MapToken).IsUnique()
+                  .HasDatabaseName(MapTokenIndexName)
+                  .HasFilter("\"MapToken\" IS NOT NULL");
         });
 
         // Assignment
@@ -67,6 +82,11 @@ public class ScoutingDbContext : DbContext
             entity.Property(s => s.Submitter).IsRequired().HasMaxLength(100);
             entity.Property(s => s.SubmitterName).HasMaxLength(100);
             entity.Ignore(s => s.SubmitterDisplayName);
+            entity.Ignore(s => s.CodeLabel);
+            // A number, so rows from before kinds existed read as 0: a Toeristen assignment
+            // A default in the table, so rows written without the column (older code, raw SQL) are assignments
+            entity.Property(s => s.Kind).HasConversion<int>().HasDefaultValueSql("0");
+            entity.HasIndex(s => s.Kind).HasDatabaseName(SubmissionKindIndexName);
             entity.Property(s => s.ContentType).HasMaxLength(100);
             entity.Property(s => s.Status).HasConversion<string>();
 
@@ -133,6 +153,25 @@ public class ScoutingDbContext : DbContext
                   .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasIndex(e => e.GroupId).HasDatabaseName(BonusEntryGroupIndexName);
+        });
+
+        // Location
+        modelBuilder.Entity<Location>(entity =>
+        {
+            entity.HasKey(l => l.Number);
+            entity.Property(l => l.Number).ValueGeneratedNever();
+            entity.Property(l => l.Name).IsRequired().HasMaxLength(MaxLocationNameLength);
+            entity.Property(l => l.Hint).HasMaxLength(MaxLocationHintLength);
+        });
+
+        // LocationUnlock
+        modelBuilder.Entity<LocationUnlock>(entity =>
+        {
+            entity.HasKey(u => new { u.GroupId, u.LocationNumber });
+            entity.HasOne(u => u.Group)
+                  .WithMany()
+                  .HasForeignKey(u => u.GroupId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         // GroupBonusPoints

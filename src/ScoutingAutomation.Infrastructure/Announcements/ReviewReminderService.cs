@@ -1,3 +1,4 @@
+using ScoutingAutomation.Domain.Enums;
 using System.Text;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -110,7 +111,12 @@ public class ReviewReminderService : BackgroundService
         foreach (var item in due.Take(MaxLines))
         {
             var group = item.Group?.Abbreviation is { Length: > 0 } abbreviation ? abbreviation : item.Group?.Name ?? "Onbekende groep";
-            var label = $"{group} – opdracht {item.AssignmentCode ?? "?"}";
+            var label = item.Kind switch
+            {
+                SubmissionKind.CheckIn => $"{group} – locatie {item.AssignmentCode ?? "?"}",
+                SubmissionKind.Theme => $"{group} – thema {item.AssignmentCode ?? "?"}",
+                _ => $"{group} – opdracht {item.AssignmentCode ?? "?"}"
+            };
             var link = _links.WebLink(item.ChannelId, item.MessageTs);
             text.Append($"\n• {(link == null ? label : $"<{link}|{label}>")} ({ReviewQueue.FormatWait(item.WaitingFor(now))})");
         }

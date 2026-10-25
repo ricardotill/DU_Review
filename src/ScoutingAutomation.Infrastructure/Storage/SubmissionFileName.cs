@@ -24,6 +24,13 @@ public static class SubmissionFileName
         return RemoveInvalidCharacters($"{prefix.Trim()} {suffix.Trim()} {postedAt:HH-mm-ss}{number}") + extension;
     }
 
+    /// <summary>
+    /// Like <see cref="Build(Group, string?, string, DateTimeOffset, int?)"/>, with the code written for its kind:
+    /// "CDW L7 14-32-05.jpg" for a check-in at location 7, "CDW T3 14-32-05.jpg" for theme 3.
+    /// </summary>
+    public static string Build(Group group, Domain.Enums.SubmissionKind kind, string? code, string originalFileName, DateTimeOffset postedAt, int? index = null) =>
+        Build(group, code == null ? null : Domain.Enums.SubmissionKindExtensions.Label(kind, code), originalFileName, postedAt, index);
+
     /// <summary>Longest group or original name part; with the rest the name stays far below the 255 bytes a file system allows.</summary>
     private const int MaxNamePartLength = 60;
 

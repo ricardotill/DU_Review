@@ -43,6 +43,20 @@ else
             </div>
         }
 
+        @if (Runtime.AdventurersEnabled)
+        {
+            <div class="col-lg-2 col-md-3 col-6">
+                <label class="form-label text-secondary small fw-semibold mb-1">Soort</label>
+                <select class="form-select form-select-dark kind-filter" @bind="selectedKind" @bind:after="SearchAsync">
+                    <option value="">Alles</option>
+                    @foreach (var kind in Enum.GetValues<SubmissionKind>())
+                    {
+                        <option value="@kind">@kind.KindLabel()</option>
+                    }
+                </select>
+            </div>
+        }
+
         <div class="col-lg-2 col-md-3 col-6">
             <label class="form-label text-secondary small fw-semibold mb-1">Opdracht</label>
             <select class="form-select form-select-dark" @bind="selectedAssignmentCode" @bind:after="SearchAsync">
@@ -176,9 +190,13 @@ else
                                 </td>
                             }
                             <td>
-                                @if (sub.AssignmentCode != null && IsGroup)
+                                @if (sub.AssignmentCode != null && (IsGroup || sub.Kind.IsAdventurers()))
                                 {
-                                    <span class="badge assignment-badge">#@sub.AssignmentCode</span>
+                                    <span class="badge assignment-badge">#@sub.CodeLabel</span>
+                                    @if (sub.Kind.IsAdventurers())
+                                    {
+                                        <span class="badge bg-info text-dark ms-1 kind-badge">@sub.Kind.KindLabel()</span>
+                                    }
                                 }
                                 else if (sub.AssignmentCode != null)
                                 {
@@ -224,6 +242,7 @@ else
     private string? selectedGroupId;
     private string? selectedAssignmentCode;
     private string? selectedStatus;
+    private string? selectedKind;
 
     [SupplyParameterFromQuery(Name = "group")]
     public Guid? GroupFromQuery { get; set; }
@@ -279,6 +298,10 @@ else
         }
 
         filter.AssignmentCode = AssignmentCode.Normalize(selectedAssignmentCode);
+        // The assignment list holds Toeristen assignments: a check-in or theme with that number is not meant
+        filter.Kind = Enum.TryParse<SubmissionKind>(selectedKind, out var kind) ? kind
+            : filter.AssignmentCode != null ? SubmissionKind.Assignment
+            : null;
 
         if (Enum.TryParse<SubmissionStatus>(selectedStatus, out var status))
         {
@@ -306,6 +329,7 @@ else
         selectedGroupId = null;
         selectedAssignmentCode = null;
         selectedStatus = null;
+        selectedKind = null;
         await SearchAsync();
     }
 
@@ -362,7 +386,8 @@ else
         || !string.IsNullOrWhiteSpace(filter.Reviewer)
         || !string.IsNullOrEmpty(selectedGroupId)
         || !string.IsNullOrEmpty(selectedAssignmentCode)
-        || !string.IsNullOrEmpty(selectedStatus);
+        || !string.IsNullOrEmpty(selectedStatus)
+        || !string.IsNullOrEmpty(selectedKind);
 
     private static string GetStoredFileName(Submission sub) =>
         string.IsNullOrWhiteSpace(sub.StoragePath) ? sub.FileName : Path.GetFileName(sub.StoragePath);

@@ -89,22 +89,27 @@ public sealed class GroupMessageSender
     }
 
     /// <summary>
-    /// Posts <paramref name="text"/> (Slack mrkdwn) once in the channel of each chosen group,
+    /// Posts <paramref name="text"/> (Slack mrkdwn) once in the chosen channels of each chosen group,
     /// with <paramref name="picture"/> under it when given.
     /// </summary>
     public async Task<IReadOnlyList<AnnouncementPostResult>> PostAsync(string? text, IReadOnlyCollection<Guid> groupIds,
-        MessagePicture? picture = null, CancellationToken ct = default)
+        MessagePicture? picture = null, CancellationToken ct = default, MessageChannels channels = MessageChannels.Toeristen)
     {
         if (Validate(text, picture) is { } problem) throw new ArgumentException(problem, nameof(text));
 
         var groups = await _groups.GetAllAsync(ct);
+        var targets = groups
+            .Where(g => groupIds.Contains(g.Id))
+            .SelectMany(g => ChannelsOf(g, channels))
+            .ToList();
+
         var results = new List<AnnouncementPostResult>();
-        foreach (var group in groups.Where(g => groupIds.Contains(g.Id) && !string.IsNullOrWhiteSpace(g.SlackChannelId)))
+        foreach (var (group, channelId) in targets)
         {
             // Stopped halfway: what was posted is still reported, so a resend only goes to the rest
             if (ct.IsCancellationRequested)
             {
-                results.Add(new AnnouncementPostResult(group.Name, group.SlackChannelId, Posted: false, Skipped: false, Cancelled));
+                results.Add(new AnnouncementPostResult(group, channelId, Posted: false, Skipped: false, Cancelled));
                 continue;
             }
 
@@ -113,8 +118,8 @@ public sealed class GroupMessageSender
             try
             {
                 error = picture == null
-                    ? await _slack.PostMessageAsync(group.SlackChannelId, text!, ct)
-                    : await _slack.PostFileAsync(group.SlackChannelId, picture.Content, SafeFileName(picture.FileName), text, ct);
+                    ? await _slack.PostMessageAsync(channelId, text!, ct)
+                    : await _slack.PostFileAsync(channelId, picture.Content, SafeFileName(picture.FileName), text, ct);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -122,18 +127,40 @@ public sealed class GroupMessageSender
             }
             if (error == null)
             {
-                _logger.LogInformation("Posted a jury message for {Group} in {Channel}", group.Name, group.SlackChannelId);
+                _logger.LogInformation("Posted a jury message for {Group} in {Channel}", group, channelId);
             }
             else
             {
-                _logger.LogWarning("Could not post a jury message for {Group} in {Channel}: {Error}", group.Name, group.SlackChannelId, error);
+                _logger.LogWarning("Could not post a jury message for {Group} in {Channel}: {Error}", group, channelId, error);
             }
 
-            results.Add(new AnnouncementPostResult(group.Name, group.SlackChannelId, Posted: error == null, Skipped: false, error));
+            results.Add(new AnnouncementPostResult(group, channelId, Posted: error == null, Skipped: false, error));
         }
 
         return results;
     }
+
+    // The group's name, with "(Avonturiers)" for its second channel so the results tell the two apart
+    private static IEnumerable<(string Group, string ChannelId)> ChannelsOf(Domain.Entities.Group group, MessageChannels channels)
+    {
+        if (channels != MessageChannels.Avonturiers && !string.IsNullOrWhiteSpace(group.SlackChannelId))
+        {
+            yield return (group.Name, group.SlackChannelId);
+        }
+
+        if (channels != MessageChannels.Toeristen && !string.IsNullOrWhiteSpace(group.AdventurersSlackChannelId))
+        {
+            yield return ($"{group.Name} (Avonturiers)", group.AdventurersSlackChannelId);
+        }
+    }
+}
+
+/// <summary>Which channels of a group a jury message goes to.</summary>
+public enum MessageChannels
+{
+    Toeristen,
+    Avonturiers,
+    Both
 }
 
 /// <summary>A picture sent along with a jury message.</summary>

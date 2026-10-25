@@ -1,0 +1,156 @@
+@implements IDisposable
+@inject AdventurersStartAnnouncer StartAnnouncer
+@inject AdventurersFinalAnnouncer FinalAnnouncer
+@inject RuntimeSettingsService Runtime
+@inject IServiceScopeFactory ScopeFactory
+@inject IOptions<ScoutingSettings> ScoutingOptions
+
+@* The start information or the final location for every Avonturiers channel *@
+<div class="glass-panel p-4">
+    @if (Final)
+    {
+        <h2 class="panel-title"><i class="bi bi-geo-fill text-danger"></i> Eindlocatie</h2>
+        <p class="text-secondary small">Waar 'Destination Unknown' is. Gaat naar elk Avonturiers-kanaal op de ingestelde tijd, of met de hand.</p>
+    }
+    else
+    {
+        <h2 class="panel-title"><i class="bi bi-flag-fill text-success"></i> Startinformatie</h2>
+        <p class="text-secondary small">Welkom, spelregels en de link naar de kaart van de groep. Gaat naar elk Avonturiers-kanaal op de ingestelde tijd, of met de hand.</p>
+    }
+
+    <div class="inset-panel py-2 mb-3">
+        <div class="fw-semibold text-white small mb-1">Tekst</div>
+        <SlackTextEditor Kind="@(Final ? SlackText.AdventurersFinal : SlackText.AdventurersStart)" Label="@(Final ? "de eindlocatie" : "de startinformatie")" Rows="8"
+                         DraftChanged="text => draft = text" Placeholders="{group}, {map}, {time}, {approved}, {rejected}" />
+        @if (string.IsNullOrWhiteSpace(ScoutingOptions.Value.PublicUrl))
+        {
+            <div class="text-warning small mt-1"><i class="bi bi-exclamation-triangle me-1"></i>Stel <code>Scouting:PublicUrl</code> in (het adres van de app), anders wordt <code>{map}</code> "@AdventurersLinks.NoMapLink".</div>
+        }
+    </div>
+
+    <div class="mb-3">
+        <div class="fw-semibold text-white small mb-1">Tijd</div>
+        <div class="small text-white mb-2 post-time">@(PostTimeGameTime?.ToString("dd-MM-yyyy HH:mm") ?? "alleen met de hand")</div>
+        <AuthorizeView Roles="@KeyAuth.AdminRole">
+            <form class="d-flex gap-2 align-items-start" @onsubmit="SaveTime">
+                <input type="datetime-local" class="form-control form-control-dark form-control-sm" aria-label="Tijd" step="60" @bind="timeDraft" />
+                <button type="submit" class="btn btn-sm btn-scout-secondary text-nowrap"><i class="bi bi-check-lg me-1"></i> Opslaan</button>
+            </form>
+        </AuthorizeView>
+        @if (!AutoPost)
+        {
+            <div class="stat-caption mt-1">Automatisch plaatsen staat uit in appsettings: stuur het met de hand.</div>
+        }
+    </div>
+
+    @if (Announcer.Preview(PreviewGroup, draft) is { } preview)
+    {
+        <details class="mb-3">
+            <summary class="text-secondary small">Voorbeeld</summary>
+            <pre class="inset-panel small text-white-50 mt-2 mb-0 announcement-preview">@preview</pre>
+        </details>
+    }
+
+    <ul class="list-unstyled small d-flex flex-column gap-1 mb-3">
+        @foreach (var group in groups.Where(g => !string.IsNullOrWhiteSpace(g.AdventurersSlackChannelId)))
+        {
+            var result = results?.FirstOrDefault(r => r.ChannelId == group.AdventurersSlackChannelId && !r.Skipped);
+            <li class="d-flex justify-content-between gap-2">
+                <span class="text-white">@group.Name</span>
+                @if (result is { Error: { } error })
+                {
+                    <span class="text-danger">Mislukt: <code>@error</code></span>
+                }
+                else if (Announcer.PostedAt(group.AdventurersSlackChannelId!) is { } postedAt)
+                {
+                    <span class="text-success"><i class="bi bi-check-circle-fill me-1"></i>Geplaatst om @postedAt.ToGameTime().ToString("dd-MM HH:mm")</span>
+                }
+                else
+                {
+                    <span class="text-muted">Nog niet geplaatst</span>
+                }
+            </li>
+        }
+    </ul>
+
+    <AuthorizeView Roles="@KeyAuth.AdminRole">
+        <PicturePicker @bind-Picture="picture" Disabled="posting" />
+        <div class="d-flex flex-wrap gap-2 mt-2">
+            <button class="btn btn-outline-success btn-sm" disabled="@(!IsConnected || posting)" @onclick="() => Post(false)"><i class="bi bi-send me-1"></i> Nu sturen</button>
+            <button class="btn btn-outline-warning btn-sm" disabled="@(!IsConnected || posting)" @onclick="() => confirmResend = true"><i class="bi bi-arrow-repeat me-1"></i> Opnieuw naar iedereen</button>
+        </div>
+        @if (confirmResend)
+        {
+            <div class="inset-panel mt-2 p-3 small">
+                Elk Avonturiers-kanaal krijgt het bericht nog een keer.
+                <button type="button" class="btn btn-sm btn-outline-warning ms-2" disabled="@posting" @onclick="() => Post(true)">Ja, opnieuw sturen</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary ms-1" @onclick="() => confirmResend = false">Annuleren</button>
+            </div>
+        }
+    </AuthorizeView>
+    @if (postError != null)
+    {
+        <div class="text-danger small mt-2">@postError</div>
+    }
+</div>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    /// <summary>The final location instead of the start information.</summary>
+    [Parameter] public bool Final { get; set; }
+
+    private IReadOnlyList<Group> groups = new List<Group>();
+    private IReadOnlyList<AnnouncementPostResult>? results;
+    private string? draft;
+    private DateTime? timeDraft;
+    private MessagePicture? picture;
+    private bool posting;
+    private bool confirmResend;
+    private string? postError;
+
+    private AdventurersAnnouncer Announcer => Final ? FinalAnnouncer : StartAnnouncer;
+    private DateTime? PostTimeGameTime => Final ? Runtime.AdventurersFinalAtGameTime : Runtime.AdventurersStartAtGameTime;
+    private bool AutoPost => (Final ? Runtime.AdventurersOptions.FinalAnnouncement : Runtime.AdventurersOptions.StartAnnouncement)?.AutoPost ?? false;
+    private string PreviewGroup => groups.FirstOrDefault()?.Name ?? "Groepsnaam";
+
+    private bool IsConnected =>
+        !ScoutingOptions.Value.Slack.SimulationMode && !string.IsNullOrWhiteSpace(ScoutingOptions.Value.Slack.BotToken);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using (var scope = ScopeFactory.CreateAsyncScope())
+        {
+            groups = await scope.ServiceProvider.GetRequiredService<IGroupRepository>().GetAllAsync();
+        }
+
+        timeDraft = PostTimeGameTime;
+        Runtime.Changed += OnRuntimeChanged;
+    }
+
+    private async Task SaveTime() => postError = await AdminActions.RunAsync(AuthState, () => Runtime.SetAdventurersPostTime(Final, timeDraft));
+
+    private async Task Post(bool resend)
+    {
+        if (posting) return;
+        posting = true;
+        confirmResend = false;
+        try
+        {
+            postError = await AdminActions.RunTaskAsync(AuthState, async () =>
+            {
+                results = await Announcer.PostAsync(resend, picture: picture);
+                return (string?)null;
+            });
+            if (postError == null && results?.All(r => r.Error == null) == true) picture = null;
+        }
+        finally
+        {
+            posting = false;
+        }
+    }
+
+    private void OnRuntimeChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Runtime.Changed -= OnRuntimeChanged;
+}

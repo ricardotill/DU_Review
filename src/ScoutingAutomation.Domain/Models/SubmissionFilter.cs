@@ -6,6 +6,9 @@ public class SubmissionFilter
 {
     public Guid? GroupId { get; set; }
     public string? AssignmentCode { get; set; }
+
+    /// <summary>Only this kind; every kind when null.</summary>
+    public SubmissionKind? Kind { get; set; }
     public SubmissionStatus? Status { get; set; }
     public string? Reviewer { get; set; }
 

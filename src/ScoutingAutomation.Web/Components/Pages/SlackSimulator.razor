@@ -46,6 +46,10 @@ else
                     @foreach (var g in groups)
                     {
                         <option value="@g.SlackChannelId">@g.Name (#@g.SlackChannelId)</option>
+                        @if (Runtime.AdventurersEnabled && !string.IsNullOrWhiteSpace(g.AdventurersSlackChannelId))
+                        {
+                            <option value="@g.AdventurersSlackChannelId">@g.Name Avonturiers (#@g.AdventurersSlackChannelId)</option>
+                        }
                     }
                 </select>
             </div>
@@ -60,6 +64,10 @@ else
                 <textarea class="form-control form-control-dark" rows="3" placeholder="bijv. Opdracht 4: Onze patrouille heeft de post bereikt!" @bind="messageText"></textarea>
                 <div class="form-text text-muted">
                     Zet het opdrachtnummer erin, zoals <code>Opdracht 4</code>, <code>#4</code> of <code>A4</code>.
+                    @if (Runtime.AdventurersEnabled)
+                    {
+                        <span>In een Avonturiers-kanaal: <code>Locatie 7</code>, <code>L7</code> of <code>#7</code> voor een check-in, <code>Thema 3</code> of <code>T3</code> voor een thema.</span>
+                    }
                 </div>
             </div>
 
@@ -75,6 +83,11 @@ else
                         <li><a class="dropdown-item" href="javascript:void(0)" @onclick='() => SetPreset("vlaggenmast.png", "#2 Vlaggenmast staat fier overeind.")'>🚩 Vlaggenmast (.png)</a></li>
                         <li><a class="dropdown-item" href="javascript:void(0)" @onclick='() => SetPreset("knopen_demo.mp4", "Opdracht 3: Bekijk de video van de mastworp")'>🎥 Knopendemo (.mp4)</a></li>
                         <li><a class="dropdown-item" href="javascript:void(0)" @onclick='() => SetPreset("verslag_tocht.pdf", "A4 Verslag van de oriëntatietocht")'>📄 Verslag (.pdf)</a></li>
+                        @if (Runtime.AdventurersEnabled)
+                        {
+                            <li><a class="dropdown-item" href="javascript:void(0)" @onclick='() => SetPreset("checkin.jpg", "Locatie 7, iedereen staat erop!")'>📍 Check-in (Avonturiers)</a></li>
+                            <li><a class="dropdown-item" href="javascript:void(0)" @onclick='() => SetPreset("thema.jpg", "Thema 3")'>📸 Thema (Avonturiers)</a></li>
+                        }
                     </ul>
                 </div>
             </div>
@@ -111,7 +124,7 @@ else
                     @foreach (var s in pendingSubmissions)
                     {
                         <option value="@s.Id">
-                            @(s.Group?.Name ?? "Groep"): #@(s.AssignmentCode ?? "?") - @s.FileName (@s.Status.StatusLabel())
+                            @(s.Group?.Name ?? "Groep"): #@s.CodeLabel - @s.FileName (@s.Status.StatusLabel())
                         </option>
                     }
                 </select>

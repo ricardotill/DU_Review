@@ -6,7 +6,7 @@ Bron: [Claude Doc](https://claude.ai/code/artifact/5e7f69bb-3c35-4041-8553-e7375
 
 Slack is leidend: wat in het groepskanaal staat, is de waarheid. De app leest berichten met bestanden als inzendingen en emoji van juryleden als beoordelingen. Gaat er iets mis, dan herstelt de app dat vanuit Slack, niet andersom.
 
-- Elke groep heeft één Slack-kanaal.
+- Elke groep heeft één Slack-kanaal voor de Toeristen. Met de Avonturiers aan heeft elke groep een tweede kanaal voor de Avonturiers; dat kanaal loopt op precies dezelfde manier (zelfde slot, catch-up, rebuild en mislukte events).
 - Een bericht met een of meer bestanden wordt een inzending per bestand.
 - Een emoji van een jurylid (ingesteld onder Reviewers) zet de status van die inzendingen.
 - Wijzigingen op het dashboard (overrides) zijn tijdelijk: een volledige rebuild gooit ze weg.
@@ -51,6 +51,7 @@ De catch-up leest de kanalen van vandaag (vanaf middernacht) opnieuw en vult aan
 - **Herstelt**: gemiste inzendingen en emoji die niet bij de status passen.
 - **Herstelt niet**: verwijderde berichten. Daarvoor zet je het mislukte event opnieuw in gang, of herbouw je de groep.
 - **Al goedgekeurd** (🔒): de catch-up weigert alleen een bericht dat nog niet in de app staat én na de eerste goedgekeurde inzending van die opdracht is geplaatst. Berichten die al als inzending in de app staan, krijgen geen 🔒 en geen reactie van de bot.
+- **Avonturiers**: de catch-up leest het Avonturiers-kanaal van een groep vóór het Toeristen-kanaal, zodat de vrijgespeelde opdrachten kloppen voordat de Toeristen-inzendingen worden gecontroleerd. In de melding staat zo'n kanaal als "{groep} (Avonturiers)".
 - Het resultaat verschijnt als melding in de eventlog op `/events`.
 - In handmatige modus draait de catch-up niet.
 
@@ -77,8 +78,16 @@ Begin bij de lichtste stap en ga pas verder als die niet helpt. Alleen de laatst
 
 1. **Event opnieuw** op `/events`. Voor één gemist bericht of één beoordeling. Overrides blijven staan.
 2. **Catch-up nu draaien** op `/events`. Voor alles wat vandaag gemist is, ook berichten die niet als fout in de lijst staan (bijvoorbeeld tijdens een herstart). Overrides blijven staan; verwijderde berichten herstelt hij niet.
-3. **Groep herbouwen** op de pagina van de groep. Leest het kanaal van één groep helemaal opnieuw in. Overrides van die groep gaan verloren.
+3. **Groep herbouwen** op de pagina van de groep. Leest de kanalen van één groep (Toeristen en Avonturiers) helemaal opnieuw in. Overrides van die groep gaan verloren.
 4. **Volledige rebuild** onder Configuratie. Alleen als laatste redmiddel: alle overrides en handmatige beoordelingen gaan verloren. Ze staan nog in `submissions.json` in de back-upmap.
+
+## Berichten van de bot bij herstel
+
+Bij catch-up en rebuild plaatst de bot geen berichten opnieuw. Dat geldt ook voor de Avonturiers:
+
+- **Vrijgespeelde opdrachten**: het aantal wordt uit de beoordelingen uitgerekend. Na een rebuild klopt het vanzelf, en de bot meldt het niet opnieuw in het Toeristen-kanaal.
+- **Rondeberichten, startinformatie en eindlocatie**: welke al geplaatst zijn, staat in `runtime-settings.json`. Een rebuild verandert dat niet, dus elk kanaal krijgt elk bericht maar één keer. Opnieuw sturen kan met de hand op **Avonturiers → Rondes**.
+- **Rondepunten**: worden uitgerekend uit de tijd van het Slack-bericht, dus een rebuild geeft dezelfde uitslag.
 
 ## Wie mag wat
 
@@ -98,7 +107,8 @@ Wordt de beheerderssleutel opnieuw gemaakt, dan zijn open tabbladen geen admin m
 
 - [ ] Verbindingsstatus bovenin de app is groen.
 - [ ] Jury-Slack-ID's staan allemaal onder Reviewers.
-- [ ] Elke groep staat in de configuratie met het juiste kanaal.
+- [ ] Elke groep staat in de configuratie met het juiste kanaal, en met de Avonturiers aan ook het Avonturiers-kanaal.
+- [ ] De bot is lid van alle kanalen, ook die van de Avonturiers.
 - [ ] Minstens één coordinator per dienst heeft de beheerderssleutel.
 - [ ] Tijdens het spel: `/events` open houden en de lijst Mislukte events in de gaten houden.
 - [ ] Na een storing of herstart: eerst Catch-up nu draaien, dan Alles opnieuw.

@@ -11,10 +11,13 @@ namespace ScoutingAutomation.Web.Standings;
 /// <param name="CountingSubmissionId">The newest submission with the best status: the one that counts.</param>
 public sealed record AssignmentResult(string Code, string? Title, SubmissionStatus BestStatus, int Points, List<Submission> Uploads, Guid CountingSubmissionId)
 {
-    /// <summary>One result per assignment among <paramref name="submissions"/> of one group, numbers first, then letters.</summary>
+    /// <summary>
+    /// One result per assignment among <paramref name="submissions"/> of one group, numbers first, then letters.
+    /// Only Toeristen assignments: a check-in or theme with the same number is something else.
+    /// </summary>
     public static List<AssignmentResult> For(IEnumerable<Submission> submissions, IReadOnlyDictionary<string, Assignment> assignments) =>
         submissions
-            .Where(s => s.AssignmentCode != null)
+            .Where(s => s.Kind == SubmissionKind.Assignment && s.AssignmentCode != null)
             .GroupBy(s => s.AssignmentCode!)
             .Select(g =>
             {

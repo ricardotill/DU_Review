@@ -79,6 +79,29 @@ Op **Beheer** (alleen in beheermodus):
 
 Haal je een categorie weg, dan tellen de punten ervan niet meer mee, maar ze blijven bewaard. Voeg je dezelfde sleutel later weer toe, dan zijn de punten terug. De standaardlijst staat in `appsettings.json` (`Scouting:BonusCategories`); **Terug naar appsettings** zet die terug.
 
+### Avonturiers
+
+Het Avonturiers-deel staat standaard uit. Zo zet je het op:
+
+1. Maak per groep een tweede Slack-kanaal voor de Avonturiers en nodig de bot uit (`/invite @DU Review`).
+2. Zet in `appsettings.json` bij elke groep `AdventurersSlackChannelId`, en zet `Scouting:Adventurers:Enabled` op `true`. Een kanaal mag maar bij één groep horen; anders start de app niet.
+3. Zet `Scouting:PublicUrl` op het adres waarop de app van buiten bereikbaar is (bijvoorbeeld het adres van de [Cloudflare Tunnel](#via-internet-cloudflare-tunnel)). Zonder dat adres staat er "(de kaartlink volgt)" in plaats van de kaartlink.
+4. Herstart de app. In het menu staat nu **Avonturiers**.
+
+**Locaties** (**Avonturiers → Locaties**, beheermodus): klik op de kaart om een locatie te plaatsen, vul nummer, naam en eventueel een hint in, en sla op. Een hele lijst importeer je uit een GeoJSON-, GPX- of CSV-bestand, bijvoorbeeld uit Google My Maps of uMap (maximaal 5 MB). Het nummer komt uit een kolom `nummer` of vooraan de naam (`7 Molen`). Een CSV heeft de kolommen `nummer;naam;lat;lon;hint`; puntkomma's en decimale komma's van Nederlandse Excel mogen. Een import vult aan en past bestaande nummers aan; hij verwijdert niets. Wat niet gelezen kon worden, staat in een lijst onder de knop.
+
+**Vrijgespeelde locaties** (**Beheer**): per groep een vinkje per locatie. Alleen aangevinkte locaties staan op de kaart van die groep. Zet **Jury waarschuwen** aan als de jury een 🚧 moet krijgen bij een check-in op een locatie die niet is vrijgespeeld.
+
+**Opdrachten vrijspelen** (**Configuratie → Avonturiers**): laat de lijst leeg om alleen te tellen. Vul je de opdrachten in volgorde in, dan noemt de bot steeds de volgende opdracht en weigert hij (🔒) een inzending voor een opdracht uit de lijst die nog niet is vrijgespeeld. Daar pas je ook de teksten van de bot aan.
+
+**Rondes** (**Avonturiers → Rondes**, beheermodus): vul begin en einde in en klik op **Genereer rondes** voor rondes van `RoundMinutes` minuten (standaard 30) met thema N in ronde N. Pas daarna per ronde de thema's of de openingstekst aan en klik op **Opslaan**. Rondes mogen niet overlappen en een thema hoort bij één ronde. Onder **Berichten per ronde** zie je per ronde wat de bot al geplaatst heeft, en stuur je een bericht met de hand, met een foto of opnieuw naar alle groepen.
+
+**Startinformatie en eindlocatie** (**Avonturiers → Rondes**): de tekst, het tijdstip waarop de bot hem zelf plaatst, of nu sturen met eventueel een foto (bijvoorbeeld een plattegrond). In de tekst: `{group}`, `{map}`, `{time}`, `{approved}` en `{rejected}`.
+
+**Punten**: de rondepunten worden uitgerekend, met een maximum van `ThemeMaxPoints` (standaard 14). Het eindspel, en een startbonus voor groepen met eigen vervoer, vul je met de hand in op **Beheer** onder **Extra punten**, in de categorie van `FinalGameCategoryKey` (standaard `avonturiers`, maximaal `FinalMaxPoints`). Het totaal staat op **Avonturiers → Overzicht** en in de export.
+
+**Herstel**: catch-up en herbouwen lezen ook de Avonturiers-kanalen. De bot plaatst daarbij geen berichten over vrijgespeelde opdrachten of rondes opnieuw. Zie [Slack-sync](slack-sync.md).
+
 ### Handmatige modus
 
 Zet **Handmatige modus** aan met de schakelaar op het **Dashboard** als de organisatie alles zelf wil beoordelen. De app slaat dan alleen nog bestanden op met de juiste naam in de map van de groep. Er komen geen inzendingen op het dashboard, emoji's worden genegeerd en de bot zegt niets in Slack. Bovenaan elke pagina staat dan **Handmatige modus**. Na een herstart geldt weer de instelling `Scouting:ManualMode`.
@@ -87,7 +110,7 @@ Zet **Handmatige modus** aan met de schakelaar op het **Dashboard** als de organ
 
 Slack stuurt elk bericht en elke emoji maar één keer. Draaide de app even niet, of was de verbinding weg, dan haalt hij zelf in wat hij heeft gemist: bij het opstarten en bij elke nieuwe verbinding met Slack.
 
-- De app leest de berichten van vandaag uit alle groepskanalen en registreert wat ontbreekt.
+- De app leest de berichten van vandaag uit alle groepskanalen en registreert wat ontbreekt, ook uit de kanalen van de Avonturiers.
 - Beoordelingen worden gelijkgezet met de emoji's die nu in Slack staan.
 - Berichten die al in de app staan, krijgen geen 🔒, ook niet als de groep de opdracht in een ander bericht al goedgekeurd heeft. Alleen een gemist bericht dat ná de eerste goedkeuring is geplaatst, wordt geweigerd.
 - Er wordt niets weggegooid. Het logboek meldt wat er is ingehaald.
@@ -113,6 +136,10 @@ scouting_storage/
     approved/
     awesome/
     rejected/
+    avonturiers/                    ← check-ins en thema's, bijv. CDW L7 13-05-12.jpg
+      approved/
+      awesome/
+      rejected/
   _deleted/christiaan-de-wet/       ← bestanden van verwijderde berichten
   _backup/20261001-143000/          ← back-up van opnieuw opbouwen
 ```
@@ -357,6 +384,7 @@ Doe de generale repetitie een paar dagen vóór het spel, op dezelfde server en 
 - [ ] Gebruik je een [Cloudflare Tunnel](#via-internet-cloudflare-tunnel)? Open het HTTPS-adres op een telefoon via 4G (niet via de wifi), log in en controleer dat het dashboard live bijwerkt.
 - [ ] Toegangssleutel en beheerderssleutel staan veilig genoteerd.
 - [ ] Elke groep heeft een groepssleutel (**Beheer** > **Groepssleutels**), klaar om uit te delen.
+- [ ] Speel je met Avonturiers? Elke groep heeft een Avonturiers-kanaal met de bot erin, `Scouting:PublicUrl` staat goed, de locaties staan op **Avonturiers → Locaties**, de vrijgespeelde locaties op **Beheer**, en de rondes en de tijden van startinformatie en eindlocatie op **Avonturiers → Rondes**. Open een kaartlink van een groep op een telefoon via 4G.
 - [ ] Wil je de stand aan het eind verbergen? Plan de periode op **Stand voor groepen**, en kies of de beamer meedoet.
 
 ### Op de ochtend van het spel
@@ -364,7 +392,7 @@ Doe de generale repetitie een paar dagen vóór het spel, op dezelfde server en 
 - [ ] Start de app met `./run-gameday.sh` of `docker compose up -d` (zie [De app starten](#de-app-starten)) en controleer bovenaan de pagina de Slack-status: **Verbonden met Slack**.
 - [ ] Kijk op **Gebeurtenissen**: er staat **Verbonden met Slack** en een **Bijwerken**-melding, en geen **Fout in de app**. Houd deze pagina tijdens het spel ergens open.
 - [ ] **Handmatige modus** staat uit (geen melding bovenaan).
-- [ ] Plaats in elk kanaal een testbericht met een foto en `Opdracht 1`. Controleer dat het op het dashboard verschijnt, en verwijder het daarna in Slack.
+- [ ] Plaats in elk kanaal een testbericht met een foto en `Opdracht 1` (in een Avonturiers-kanaal `Locatie 1`). Controleer dat het op het dashboard verschijnt, en verwijder het daarna in Slack.
 - [ ] Gebruik je een tunnel? Controleer dat hij draait (Cloudflare-dashboard: **Healthy**) en geef groepen alleen het HTTPS-adres.
 - [ ] Deel de toegangssleutel met de jury en de mensen bij het scorebord.
 - [ ] Geef elke groep haar eigen groepssleutel. Deel nooit de toegangssleutel met een groep: daarmee zie je alles.

@@ -125,6 +125,41 @@ else
         </div>
     }
 
+    @if (Runtime.AdventurersEnabled)
+    {
+        <div class="glass-panel p-4 mb-4 adventurers-panel">
+            <h2 class="panel-title"><i class="bi bi-compass-fill text-info"></i> Avonturiers</h2>
+            <div class="small mb-3">
+                @if (string.IsNullOrWhiteSpace(group!.AdventurersSlackChannelId))
+                {
+                    <span class="text-warning">Geen Avonturiers-kanaal ingesteld.</span>
+                }
+                @if (!string.IsNullOrWhiteSpace(group.MapToken))
+                {
+                    <span class="text-secondary">Kaart van de groep (zonder inloggen):</span>
+                    <a href="@AdventurersLinks.MapPath(group.MapToken)" target="_blank" rel="noopener">@AdventurersLinks.MapPath(group.MapToken)</a>
+                }
+            </div>
+            @if (adventurers.Count == 0)
+            {
+                <p class="text-muted small mb-0">Nog geen check-ins of thema-inzendingen.</p>
+            }
+            else
+            {
+                <div class="d-flex flex-wrap gap-2">
+                    @foreach (var sub in adventurers)
+                    {
+                        <a href="submissions/@sub.Id" class="inset-panel py-1 px-2 d-flex align-items-center gap-2 text-decoration-none small">
+                            <span class="badge assignment-badge">#@sub.CodeLabel</span>
+                            <StatusBadge Status="sub.Kind.Effective(sub.Status)" />
+                            <span class="text-muted">@sub.CreatedAt.ToGameTime().ToString("HH:mm")</span>
+                        </a>
+                    }
+                </div>
+            }
+        </div>
+    }
+
     <!-- Per assignment -->
     <div class="glass-panel p-4">
         <h2 class="panel-title"><i class="bi bi-list-ol text-info"></i> Opdrachten</h2>
@@ -199,6 +234,7 @@ else
     private int assignmentCount;
     private List<AssignmentResult> results = new();
     private List<Submission> unresolved = new();
+    private List<Submission> adventurers = new();
 
     protected override Task OnParametersSetAsync() => ReloadAsync();
 
@@ -224,6 +260,10 @@ else
         var submissions = await submissionRepository.SearchSubmissionsAsync(new SubmissionFilter { GroupId = Id });
 
         results = AssignmentResult.For(submissions, assignments);
+        adventurers = submissions
+            .Where(s => s.Kind.IsAdventurers() && s.AssignmentCode != null)
+            .OrderBy(s => s.Kind).ThenBy(s => s.AssignmentCode, AssignmentCode.Comparer).ThenByDescending(s => s.CreatedAt)
+            .ToList();
 
         unresolved = submissions
             .Where(s => s.AssignmentCode == null)

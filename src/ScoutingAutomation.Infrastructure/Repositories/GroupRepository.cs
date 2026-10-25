@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using ScoutingAutomation.Domain.Entities;
+using ScoutingAutomation.Domain.Enums;
 using ScoutingAutomation.Domain.Exceptions;
 using ScoutingAutomation.Domain.Models;
 using ScoutingAutomation.Domain.Interfaces;
@@ -30,6 +31,16 @@ public class GroupRepository : IGroupRepository
         return await _context.Groups
             .Include(g => g.Submissions)
             .FirstOrDefaultAsync(g => g.SlackChannelId == channelId, ct);
+    }
+
+    public async Task<GroupChannel?> GetByAnyChannelIdAsync(string channelId, CancellationToken ct = default)
+    {
+        var group = await _context.Groups
+            .Include(g => g.Submissions)
+            .FirstOrDefaultAsync(g => g.SlackChannelId == channelId || g.AdventurersSlackChannelId == channelId, ct);
+        if (group == null) return null;
+
+        return new GroupChannel(group, group.SlackChannelId == channelId ? ChannelRole.Toeristen : ChannelRole.Avonturiers);
     }
 
     public async Task<Group?> GetByNameAsync(string name, CancellationToken ct = default)
@@ -166,6 +177,8 @@ public class GroupRepository : IGroupRepository
             existing.Name = group.Name;
             existing.Abbreviation = group.Abbreviation;
             existing.SlackChannelId = group.SlackChannelId;
+            existing.AdventurersSlackChannelId = group.AdventurersSlackChannelId;
+            existing.MapToken = group.MapToken ?? existing.MapToken;
             existing.Description = group.Description;
         }
 

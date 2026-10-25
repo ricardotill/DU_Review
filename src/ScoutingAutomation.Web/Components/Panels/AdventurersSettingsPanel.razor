@@ -1,0 +1,96 @@
+@implements IDisposable
+@inject RuntimeSettingsService Runtime
+@inject IOptions<ScoutingSettings> ScoutingOptions
+
+@* The Avonturiers settings: what comes from appsettings, the unlock pool, and the texts of the bot *@
+<div class="glass-panel p-4">
+    <h2 class="panel-title"><i class="bi bi-compass-fill text-info"></i> Avonturiers</h2>
+    @{
+        var options = Runtime.AdventurersOptions;
+    }
+    <dl class="row small mb-3">
+        <dt class="col-sm-4 text-secondary">Aan</dt>
+        <dd class="col-sm-8">@(options.Enabled ? "ja" : "nee") <span class="text-muted">(<code>Scouting:Adventurers:Enabled</code>)</span></dd>
+        <dt class="col-sm-4 text-secondary">Maximum</dt>
+        <dd class="col-sm-8">thema's @options.ThemeMaxPoints, eindspel @options.FinalMaxPoints (categorie <code>@options.FinalGameCategoryKey</code>)</dd>
+        <dt class="col-sm-4 text-secondary">Adres van de app</dt>
+        <dd class="col-sm-8">@(string.IsNullOrWhiteSpace(ScoutingOptions.Value.PublicUrl) ? "niet ingesteld: de kaartlinks in Slack ontbreken" : ScoutingOptions.Value.PublicUrl) <span class="text-muted">(<code>Scouting:PublicUrl</code>)</span></dd>
+        <dt class="col-sm-4 text-secondary">Kaarttegels</dt>
+        <dd class="col-sm-8"><code>@options.MapTileUrl</code> <span class="text-muted">(<code>MapTileUrl</code>, <code>MapAttribution</code>)</span></dd>
+    </dl>
+
+    <div class="inset-panel py-2 mb-3">
+        <div class="fw-semibold text-white small mb-1">Vrij te spelen opdrachten</div>
+        <p class="text-secondary small mb-2">
+            Leeg: alleen het aantal telt en de Toeristen kiezen zelf (lijst op papier). Met een lijst noemt de bot de volgende opdracht,
+            en krijgt een inzending voor een opdracht die nog niet vrijgespeeld is een 🔒 en telt niet.
+        </p>
+        <div class="small text-white mb-2 unlock-pool">@(Runtime.UnlockPool.Count == 0 ? "Alleen tellen" : string.Join(", ", Runtime.UnlockPool))</div>
+        <AuthorizeView Roles="@KeyAuth.AdminRole">
+            <form class="d-flex gap-2" @onsubmit="SavePool">
+                <input type="text" class="form-control form-control-dark form-control-sm pool-input" placeholder="bijv. 4, 9, 12, A" @bind="poolDraft" />
+                <button type="submit" class="btn btn-sm btn-scout-secondary text-nowrap"><i class="bi bi-check-lg me-1"></i> Opslaan</button>
+            </form>
+        </AuthorizeView>
+        @if (error != null)
+        {
+            <div class="text-danger small mt-1">@error</div>
+        }
+        <Origin Changed="Runtime.IsUnlockPoolChanged" Reset="ResetPool" Configured="@(options.UnlockPool.Count == 0 ? "alleen tellen" : string.Join(", ", options.UnlockPool))" />
+    </div>
+
+    <details>
+        <summary class="text-secondary small">Teksten van de bot</summary>
+        <div class="d-flex flex-column gap-3 mt-2">
+            @foreach (var (kind, label, placeholders) in Texts)
+            {
+                <div class="inset-panel py-2">
+                    <div class="fw-semibold text-white small mb-1">@label</div>
+                    <SlackTextEditor Kind="kind" Label="@label.ToLowerInvariant()" Rows="3" Placeholders="@placeholders" />
+                </div>
+            }
+        </div>
+    </details>
+</div>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private static readonly (SlackText Kind, string Label, string Placeholders)[] Texts =
+    {
+        (SlackText.UnlockNotice, "Opdracht vrijgespeeld (Toeristen-kanaal)", "{count}, {total}, {assignment}"),
+        (SlackText.UnlockCorrection, "Correctie vrijgespeeld (Toeristen-kanaal)", "{count}, {total}"),
+        (SlackText.AdventurersMissingNumber, "Geen locatie- of themanummer", ""),
+        (SlackText.UnknownLocation, "Onbekende locatie", "{number}"),
+        (SlackText.UnknownTheme, "Onbekend thema", "{number}"),
+        (SlackText.ThemeOutsideRound, "Thema buiten zijn ronde", "{number}, {round}"),
+        (SlackText.NoRoundOpen, "Geen ronde bezig", "{number}"),
+        (SlackText.LocationNotUnlocked, "Locatie niet vrijgespeeld (voor de jury)", "{number}"),
+        (SlackText.AssignmentLocked, "Opdracht nog op slot (Toeristen-kanaal)", "{number}")
+    };
+
+    private string poolDraft = "";
+    private string? error;
+
+    protected override void OnInitialized()
+    {
+        poolDraft = string.Join(", ", Runtime.UnlockPool);
+        Runtime.Changed += OnRuntimeChanged;
+    }
+
+    private async Task SavePool()
+    {
+        var codes = poolDraft.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        error = await AdminActions.RunAsync(AuthState, () => Runtime.SetUnlockPool(codes));
+    }
+
+    private async Task ResetPool()
+    {
+        error = await AdminActions.RunAsync(AuthState, Runtime.ResetUnlockPool);
+        poolDraft = string.Join(", ", Runtime.UnlockPool);
+    }
+
+    private void OnRuntimeChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Runtime.Changed -= OnRuntimeChanged;
+}

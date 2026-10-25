@@ -1,0 +1,131 @@
+@page "/avonturiers/kaart"
+@rendermode InteractiveServer
+@inherits LiveComponentBase
+@inject RuntimeSettingsService Runtime
+
+<PageTitle>Kaart Avonturiers - DU Review</PageTitle>
+
+<PageHeader Title="Kaart Avonturiers" Subtitle="Waar elke groep staat. Klik op een locatie voor de check-in en de beoordeling." />
+<AdventurersTabs />
+
+@if (!Runtime.AdventurersEnabled)
+{
+    <AdventurersOff />
+}
+else if (overview == null)
+{
+    <div class="empty-state"><div class="spinner-border text-success" role="status"></div></div>
+}
+else if (overview.Locations.Count == 0)
+{
+    <div class="glass-panel empty-state">
+        <i class="bi bi-geo-alt"></i>
+        Er zijn nog geen locaties. Voeg ze toe op <a href="avonturiers/locaties">Locaties</a>.
+    </div>
+}
+else
+{
+    <div class="d-flex flex-wrap gap-3 align-items-center mb-3">
+        <select class="form-select form-select-dark w-auto" value="@(groupId?.ToString() ?? "")" @onchange="OnGroupChanged" aria-label="Groep">
+            <option value="">Alle groepen</option>
+            @foreach (var group in overview.Groups)
+            {
+                <option value="@group.Id">@group.Name</option>
+            }
+        </select>
+        <div class="d-flex flex-wrap gap-3 small text-secondary">
+            @foreach (var status in Enum.GetValues<LocationStatus>())
+            {
+                <span><span class="du-map-dot me-1" style="background: @status.Color()"></span>@status.Label()</span>
+            }
+        </div>
+    </div>
+    @if (groupId == null)
+    {
+        <p class="small text-secondary">Bij alle groepen: oranje zodra er één wacht op beoordeling, groen als minstens één groep er goedgekeurd is.</p>
+    }
+
+    <div class="row g-4">
+        <div class="col-xl-8">
+            <MapView Markers="markers" FitKey="fitKey" />
+        </div>
+        <div class="col-xl-4">
+            <div class="glass-panel p-3">
+                <ul class="list-unstyled mb-0 d-flex flex-column gap-2 small">
+                    @foreach (var marker in markers)
+                    {
+                        <li class="d-flex justify-content-between gap-2">
+                            <span class="text-white"><span class="du-map-dot me-2" style="background: @marker.Color"></span>@marker.Number. @marker.Name</span>
+                            <span class="text-secondary text-end">@string.Join(" · ", marker.Lines)</span>
+                        </li>
+                    }
+                </ul>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private AdventurersOverview? overview;
+    private IReadOnlyList<MapMarker> markers = Array.Empty<MapMarker>();
+    private Guid? groupId;
+    private int fitKey;
+
+    protected override Task OnInitializedAsync() => ReloadAsync();
+
+    protected override async Task LoadAsync(IServiceProvider services)
+    {
+        if (!Runtime.AdventurersEnabled) return;
+        overview = await services.GetRequiredService<AdventurersScoreService>().GetOverviewAsync();
+        markers = BuildMarkers();
+    }
+
+    private void OnGroupChanged(ChangeEventArgs e)
+    {
+        groupId = Guid.TryParse(e.Value?.ToString(), out var id) ? id : null;
+        markers = BuildMarkers();
+        fitKey++;
+    }
+
+    private IReadOnlyList<MapMarker> BuildMarkers()
+    {
+        if (overview == null) return Array.Empty<MapMarker>();
+
+        var result = new List<MapMarker>();
+        foreach (var location in overview.Locations)
+        {
+            if (groupId is { } id)
+            {
+                var group = overview.Groups.FirstOrDefault(g => g.Id == id);
+                var state = AdventurersMap.StateOf(overview.Submissions, id, location.Number);
+                var lines = new List<string> { MapMarker.StatusLine(state) };
+                if (!overview.UnlocksOf(id).Contains(location.Number)) lines.Add("Niet vrijgespeeld voor deze groep");
+                var photos = state.Submission == null
+                    ? Array.Empty<MapPhoto>()
+                    : new[] { MapMarker.PhotoOf(state.Submission, $"{group?.Name}: {state.Status.Label()}") };
+                result.Add(MapMarker.For(location, state.Status.Color(), lines, photos));
+                continue;
+            }
+
+            // All groups: one line and a photo per group that posted here
+            var states = overview.Groups
+                .Select(g => (Group: g, State: AdventurersMap.StateOf(overview.Submissions, g.Id, location.Number)))
+                .ToList();
+            var posted = states.Where(s => s.State.Status != LocationStatus.Open).ToList();
+            var color = posted.Any(s => s.State.Status == LocationStatus.Waiting) ? LocationStatus.Waiting.Color()
+                : posted.Any(s => s.State.Status == LocationStatus.Approved) ? LocationStatus.Approved.Color()
+                : posted.Count > 0 ? LocationStatus.Rejected.Color()
+                : LocationStatus.Open.Color();
+            var summary = posted.Count == 0
+                ? new List<string> { "Nog door geen groep bezocht" }
+                : posted.Select(s => $"{s.Group.Name}: {s.State.Status.Label()}").ToList();
+            var groupPhotos = posted
+                .Where(s => s.State.Submission != null)
+                .Select(s => MapMarker.PhotoOf(s.State.Submission!, $"{s.Group.Name}: {s.State.Status.Label()}"))
+                .ToList();
+            result.Add(MapMarker.For(location, color, summary, groupPhotos));
+        }
+
+        return result;
+    }
+}

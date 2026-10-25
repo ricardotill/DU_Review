@@ -1,0 +1,139 @@
+@implements IDisposable
+@inject ThemeRoundAnnouncer Announcer
+@inject RuntimeSettingsService Runtime
+@inject IServiceScopeFactory ScopeFactory
+@inject IOptions<ScoutingSettings> ScoutingOptions
+
+@* What each Avonturiers channel got of each round, and posting a message of a round by hand *@
+<div class="glass-panel p-4">
+    <h2 class="panel-title"><i class="bi bi-send-fill text-success"></i> Berichten per ronde</h2>
+    <p class="text-secondary small">
+        De bot plaatst de opening bij de start, de sluiting bij het einde en de uitslag zodra de jury alles van de ronde heeft beoordeeld.
+        Elk kanaal krijgt elk bericht één keer. Hier stuur je een bericht met de hand, bijvoorbeeld met een foto, of opnieuw.
+    </p>
+    @if (!IsConnected)
+    {
+        <div class="small mb-3"><i class="bi bi-plug text-warning me-1"></i><span class="text-white-50">Niet verbonden met Slack: er wordt niets geplaatst.</span></div>
+    }
+
+    @if (Runtime.ThemeRounds.Count == 0 || channels.Count == 0)
+    {
+        <p class="text-muted small mb-0">@(channels.Count == 0 ? "Geen enkele groep heeft een Avonturiers-kanaal." : "Nog geen rondes.")</p>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="custom-table round-posts">
+                <thead><tr><th>Ronde</th><th>Opening</th><th>Sluiting</th><th>Uitslag</th></tr></thead>
+                <tbody>
+                    @foreach (var round in Runtime.ThemeRounds)
+                    {
+                        <tr>
+                            <td class="text-nowrap">@round.Number <span class="text-secondary small">(@round.Start.ToGameTime().ToString("HH:mm"))</span></td>
+                            @foreach (var message in Enum.GetValues<RoundMessage>())
+                            {
+                                var count = channels.Count(c => Announcer.PostedAt(round.Number, message, c) != null);
+                                <td class="text-nowrap">
+                                    <span class="small @(count == channels.Count ? "text-success" : "text-secondary")">@count/@channels.Count</span>
+                                    <AuthorizeView Roles="@KeyAuth.AdminRole">
+                                        <button type="button" class="btn btn-sm btn-link p-0 ms-2" disabled="@(!IsConnected || posting)" title="Sturen naar kanalen die het nog niet kregen"
+                                                @onclick="() => Post(round.Number, message, false)"><i class="bi bi-send"></i></button>
+                                        <button type="button" class="btn btn-sm btn-link text-warning p-0 ms-1" disabled="@(!IsConnected || posting)" title="Opnieuw sturen naar alle kanalen"
+                                                @onclick="() => Ask(round.Number, message)"><i class="bi bi-arrow-repeat"></i></button>
+                                    </AuthorizeView>
+                                </td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <AuthorizeView Roles="@KeyAuth.AdminRole">
+            <div class="mt-3">
+                <PicturePicker @bind-Picture="picture" Disabled="posting" />
+                <div class="stat-caption mt-1">Een gekozen foto gaat mee met het volgende bericht dat je hier stuurt.</div>
+            </div>
+            @if (resend is { } ask)
+            {
+                <div class="inset-panel mt-3 p-3">
+                    <div class="small text-white mb-2">@Describe(ask.Round, ask.Message) opnieuw naar <strong>alle</strong> Avonturiers-kanalen sturen?</div>
+                    <button type="button" class="btn btn-sm btn-outline-warning me-2" disabled="@posting" @onclick="() => Post(ask.Round, ask.Message, true)">Ja, opnieuw sturen</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => resend = null">Annuleren</button>
+                </div>
+            }
+        </AuthorizeView>
+
+        @if (status != null)
+        {
+            <div class="small mt-2 @(failed ? "text-danger" : "text-success")">@status</div>
+        }
+    }
+</div>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private List<string> channels = new();
+    private MessagePicture? picture;
+    private (int Round, RoundMessage Message)? resend;
+    private bool posting;
+    private string? status;
+    private bool failed;
+
+    private bool IsConnected =>
+        !ScoutingOptions.Value.Slack.SimulationMode && !string.IsNullOrWhiteSpace(ScoutingOptions.Value.Slack.BotToken);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using (var scope = ScopeFactory.CreateAsyncScope())
+        {
+            channels = (await scope.ServiceProvider.GetRequiredService<IGroupRepository>().GetAllAsync())
+                .Select(g => g.AdventurersSlackChannelId)
+                .Where(c => !string.IsNullOrWhiteSpace(c))
+                .Select(c => c!)
+                .ToList();
+        }
+
+        Runtime.Changed += OnRuntimeChanged;
+    }
+
+    private static string Describe(int round, RoundMessage message) => message switch
+    {
+        RoundMessage.Open => $"De opening van ronde {round}",
+        RoundMessage.Close => $"De sluiting van ronde {round}",
+        _ => $"De uitslag van ronde {round}"
+    };
+
+    private void Ask(int round, RoundMessage message) => resend = (round, message);
+
+    private async Task Post(int round, RoundMessage message, bool again)
+    {
+        if (posting) return;
+        posting = true;
+        resend = null;
+        try
+        {
+            IReadOnlyList<AnnouncementPostResult> results = Array.Empty<AnnouncementPostResult>();
+            var error = await AdminActions.RunTaskAsync(AuthState, async () =>
+            {
+                results = await Announcer.PostAsync(round, message, again, picture: picture);
+                return (string?)null;
+            });
+            var errors = results.Where(r => r.Error != null).ToList();
+            failed = error != null || errors.Count > 0;
+            status = error ?? (errors.Count > 0
+                ? $"Mislukt in: {string.Join(", ", errors.Select(r => $"{r.GroupName} ({r.Error})"))}"
+                : $"{Describe(round, message)}: geplaatst in {results.Count(r => r.Posted)} kanaal/kanalen.");
+            if (!failed) picture = null;
+        }
+        finally
+        {
+            posting = false;
+        }
+    }
+
+    private void OnRuntimeChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Runtime.Changed -= OnRuntimeChanged;
+}

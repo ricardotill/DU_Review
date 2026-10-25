@@ -56,6 +56,23 @@ Nog niet beoordeeld heet **Open** en geeft 0 punten.
 - Wil je één opdracht voor alle groepen in één keer beoordelen, voor eerlijke Awesomes? Open de opdracht en zet **Alleen open inzendingen** aan. Met ← en → ga je naar de vorige en volgende opdracht, met **N** naar de volgende opdracht met open inzendingen.
 - Twijfel je over een Awesome? Gebruik de ster ☆ op het dashboard om favorieten te markeren; die zijn alleen voor jou zichtbaar.
 
+## De Avonturiers beoordelen
+
+Speelt het spel met Avonturiers, dan heeft elke groep een tweede Slack-kanaal voor hen. Daarin komen twee soorten inzendingen, die je met dezelfde emoji beoordeelt als opdrachten:
+
+- **Check-in** (`Locatie 7`, `L7`, `#7`): een foto van de groep op een locatie. Kijk of de groep echt op die locatie is. Een goedgekeurde check-in speelt een opdracht vrij voor de Toeristen van die groep. Zie je een 🚧 van de bot, dan is die locatie voor deze groep nog niet vrijgespeeld; beslis zelf of je hem goedkeurt.
+- **Thema** (`Thema 3`, `T3`): een foto bij het thema van de ronde. Of hij op tijd is, regelt de app: hij kijkt naar de tijd van het Slack-bericht. Je hoeft alleen te beoordelen of de foto bij het thema past.
+
+Awesome telt bij de Avonturiers als goedgekeurd. Een check-in of thema geeft zelf geen punten; punten komen uit de rondes en het eindspel.
+
+### Wat de jury moet weten over rondes
+
+- Per ronde krijgt de groep met de meeste goedgekeurde thema's 2 punten, de tweede 1. Gelijke groepen delen de plaats.
+- De uitslag van een ronde gaat pas naar de groepen als **alle** inzendingen van die ronde beoordeeld zijn. Beoordeel thema's van een afgelopen ronde dus snel.
+- Op **Te beoordelen** staan de thema's van de ronde die nu loopt bovenaan, met een badge. Met het filter **Soort** kies je Toeristen, check-ins of thema's.
+- Op **Avonturiers → Rondes** zie je per ronde of hij **Voorlopig** is (nog open inzendingen) of **Definitief**, en de stand per groep.
+- Op **Avonturiers → Kaart** zie je alle groepen op één kaart. Klik op een locatie voor de check-in en de beoordeling.
+
 ## Het dashboard
 
 Het dashboard toont live de stand, alle inzendingen en de bestanden zelf. Je hoeft de pagina nooit te verversen: nieuwe inzendingen en beoordelingen verschijnen vanzelf.
@@ -76,10 +93,11 @@ Groepen loggen in met hun eigen groepssleutel en zien alleen hun eigen groep; zi
 | --- | --- |
 | **Dashboard** | Totalen, het scorebord met per groep wanneer ze voor het laatst iets instuurden, de punten in de loop van het spel en de voortgang per opdracht. In beheermodus ook **Exporteren**. |
 | **Te beoordelen** | De open inzendingen, de langst wachtende eerst, met hoe lang ze al wachten. Klik om het bericht in Slack te openen. Inzendingen die geen punten meer kunnen opleveren staan apart onder **telt niet meer**. |
-| **Inzendingen** | Alle inzendingen. Zoek en filter op groep, opdracht, status en jurylid, of toon alleen je favorieten. |
+| **Inzendingen** | Alle inzendingen. Zoek en filter op groep, opdracht, status en jurylid, of toon alleen je favorieten. Met de Avonturiers ook op soort. |
 | **Opdrachten** | Alle opdrachten. Per opdracht zie je de inzendingen van alle groepen naast elkaar, desgewenst alleen de open inzendingen. Daar start je ook een diavoorstelling van die opdracht. |
 | **Groepen** | Alle groepen. Per groep zie je score, plaats, de punten in de loop van het spel naast die van de andere groepen, en alle opdrachten. |
 | **Bericht sturen** | Een bericht van de bot in de Slack-kanalen van de groepen. Zie [Bericht sturen](#bericht-sturen). |
+| **Avonturiers** | Alleen als het spel met Avonturiers speelt: het **Overzicht** per groep, de **Kaart** met alle groepen, de **Rondes** en de **Locaties**. Zie [De Avonturiers beoordelen](#de-avonturiers-beoordelen). |
 | **Stand voor groepen** | De stand verbergen voor groepen, periodes plannen en een tussenstand publiceren. Zie [Stand verbergen](#stand-verbergen). |
 | **Scorebord** | De totalen van de inzendingen en het scorebord in grote letters, met de punten in de loop van het spel, voor een beamer. Werkt zichzelf bij. |
 | **Diavoorstelling** | Alle foto's, video's en geluidsopnames achter elkaar, bijvoorbeeld op een beamer. Afgekeurde inzendingen worden overgeslagen. Kies een groep, een opdracht, alleen awesome of alleen favorieten, herhalen, door elkaar, het aantal seconden per foto, en of het scorebord tussendoor komt. |
@@ -105,7 +123,7 @@ Jouw eigen dashboard blijft altijd de actuele stand tonen.
 
 - Goedgekeurd geeft de standaardpunten van de opdracht, Awesome de awesome-punten. Open en Afgekeurd geven 0.
 - Elke opdracht telt één keer per groep: de beste beoordeling van al haar inzendingen voor die opdracht. Twee foto's in één bericht leveren dus niet dubbel punten op.
-- Daarbij komen de extra punten uit de puntencategorieën die in gebruik zijn, zoals Avonturiers en Reisbureau.
+- Daarbij komen de extra punten uit de puntencategorieën die in gebruik zijn, zoals Avonturiers en Reisbureau. De Avonturiers-punten zijn de rondepunten plus het eindspel.
 - Groepen met evenveel punten delen een plaats.
 
 ### Gebeurtenissen
@@ -135,8 +153,9 @@ Op **Bericht sturen** plaats je een bericht in de Slack-kanalen van de groepen, 
 1. Typ je bericht. Met de knoppen erboven maak je tekst **vet**, *schuin*, ~~doorgehaald~~ of `code`, voeg je een link toe, of maak je een opsomming. Ctrl+B en Ctrl+I werken ook. Wat je ziet is hoe het in Slack komt.
 2. Met 🙂 kies je een emoji; zoeken kan in het Nederlands.
 3. Met **Foto toevoegen** stuur je één foto mee (maximaal 20 MB). De tekst komt dan boven de foto; alleen een foto zonder tekst kan ook. Met het kruisje haal je de foto weer weg.
-4. Rechts kies je de groepen. Standaard staan alle groepen aan; met **Niets** zet je ze allemaal uit, met **Alles** weer aan. Op de pagina van een groep brengt **Bericht sturen** je hier met alleen die groep aangevinkt.
-5. Klik op **Sturen naar … kanalen** en daarna op **Zeker?** om te bevestigen. Per groep zie je of het bericht geplaatst is.
+4. Speelt het spel met Avonturiers, kies dan het kanaal: **Toeristen**, **Avonturiers** of **Beide**. **Alle Avonturiers** zet in één klik alle groepen en het Avonturiers-kanaal aan.
+5. Rechts kies je de groepen. Standaard staan alle groepen aan; met **Niets** zet je ze allemaal uit, met **Alles** weer aan. Op de pagina van een groep brengt **Bericht sturen** je hier met alleen die groep aangevinkt.
+6. Klik op **Sturen naar … kanalen** en daarna op **Zeker?** om te bevestigen. Per groep zie je of het bericht geplaatst is.
 
 De bot moet lid zijn van het kanaal. Is hij dat niet, dan zie je bij die groep **Mislukt: `not_in_channel`**. Een bericht of foto van de bot telt nooit als inzending. Voor foto's heeft de bot het recht `files:write` nodig (zie [Slack koppelen](slack-koppelen.md)).
 

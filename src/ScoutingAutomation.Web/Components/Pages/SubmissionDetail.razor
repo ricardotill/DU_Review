@@ -33,6 +33,14 @@ else
                 {
                     <span class="badge bg-danger">Onopgelost</span>
                 }
+                else if (submission.Kind == SubmissionKind.CheckIn)
+                {
+                    <span class="badge assignment-badge">Check-in locatie @submission.AssignmentCode</span>
+                }
+                else if (submission.Kind == SubmissionKind.Theme)
+                {
+                    <span class="badge assignment-badge">Thema @submission.AssignmentCode</span>
+                }
                 else if (IsGroup)
                 {
                     <span class="badge assignment-badge">Opdracht @submission.AssignmentCode</span>

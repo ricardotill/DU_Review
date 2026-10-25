@@ -5,6 +5,7 @@ using ScoutingAutomation.Domain.Exceptions;
 using ScoutingAutomation.Domain.Interfaces;
 using ScoutingAutomation.Domain.Models;
 using ScoutingAutomation.Contracts.Configuration;
+using ScoutingAutomation.Infrastructure.Adventurers;
 using ScoutingAutomation.Infrastructure.Data;
 using ScoutingAutomation.Infrastructure.Settings;
 
@@ -14,12 +15,17 @@ public class SubmissionRepository : ISubmissionRepository
 {
     private readonly ScoutingDbContext _context;
     private readonly RuntimeSettingsService? _runtime;
+    private readonly TimeProvider _time;
 
-    /// <param name="runtime">Gives the bonus categories in use; without it the default categories count.</param>
-    public SubmissionRepository(ScoutingDbContext context, RuntimeSettingsService? runtime = null)
+    /// <param name="runtime">
+    /// Gives the bonus categories in use and the Avonturiers settings; without it the default categories count
+    /// and the Avonturiers points are not computed.
+    /// </param>
+    public SubmissionRepository(ScoutingDbContext context, RuntimeSettingsService? runtime = null, TimeProvider? time = null)
     {
         _context = context;
         _runtime = runtime;
+        _time = time ?? TimeProvider.System;
     }
 
     public async Task<Submission?> GetByIdAsync(Guid id, CancellationToken ct = default)
@@ -69,6 +75,11 @@ public class SubmissionRepository : ISubmissionRepository
         if (filter.AssignmentCode != null)
         {
             query = query.Where(s => s.AssignmentCode == filter.AssignmentCode);
+        }
+
+        if (filter.Kind.HasValue)
+        {
+            query = query.Where(s => s.Kind == filter.Kind.Value);
         }
 
         if (filter.Status.HasValue)
@@ -209,10 +220,12 @@ public class SubmissionRepository : ISubmissionRepository
 
     public async Task<SubmissionStatistics> GetStatisticsAsync(CancellationToken ct = default)
     {
-        var submissions = await _context.Submissions
+        var everything = await _context.Submissions
             .Include(s => s.Group)
             .AsNoTracking()
             .ToListAsync(ct);
+        // Only Toeristen assignments score through the points file; check-ins and themes count in the Avonturiers points
+        var submissions = everything.Where(s => s.Kind == SubmissionKind.Assignment).ToList();
 
         var assignments = await _context.Assignments
             .AsNoTracking()
@@ -240,22 +253,33 @@ public class SubmissionRepository : ISubmissionRepository
         var categories = _runtime?.BonusCategories ?? BonusCategoryConfig.Defaults;
         var bonusPoints = (await _context.GroupBonusPoints.AsNoTracking().ToListAsync(ct))
             .ToDictionary(p => (p.GroupId, p.CategoryKey));
+
+        // The Avonturiers points are computed: theme rounds (capped) plus the hand-entered final game (capped).
+        // They replace the hand-entered value of the final game's category wherever the points show.
+        var adventurers = AdventurersFor(groups, everything, bonusPoints);
+        var finalKey = _runtime?.AdventurersOptions.FinalGameCategoryKey;
+        var finalCategoryInUse = adventurers != null && categories.Any(c => c.Key == finalKey);
         foreach (var group in groups)
         {
             var groupOutcomes = outcomes.Where(o => o.GroupId == group.Id).ToList();
             var groupBonus = categories.ToDictionary(c => c.Key, c => bonusPoints.GetValueOrDefault((group.Id, c.Key))?.Points ?? 0);
+            var adventurer = adventurers?.For(group.Id);
+            if (adventurer != null && finalCategoryInUse) groupBonus[finalKey!] = adventurer.Total;
             stats.GroupStatistics.Add(new GroupStatistic
             {
                 GroupId = group.Id,
                 GroupName = group.Name,
-                Score = CalculateScore(groupOutcomes, assignmentsByCode) + groupBonus.Values.Sum(),
+                // Without the final game's category in use the round points still count
+                Score = CalculateScore(groupOutcomes, assignmentsByCode) + groupBonus.Values.Sum()
+                        + (adventurer != null && !finalCategoryInUse ? adventurer.ThemePoints : 0),
                 BonusPoints = groupBonus,
+                AdventurersPoints = adventurer?.Total,
                 TotalSubmissions = groupOutcomes.Count,
                 PendingCount = CountStatus(groupOutcomes, SubmissionStatus.Pending),
                 ApprovedCount = CountStatus(groupOutcomes, SubmissionStatus.Approved),
                 RejectedCount = CountStatus(groupOutcomes, SubmissionStatus.Rejected),
                 AwesomeCount = CountStatus(groupOutcomes, SubmissionStatus.Awesome),
-                LastSubmissionAt = submissions.Where(s => s.GroupId == group.Id).Select(s => (DateTimeOffset?)s.CreatedAt).Max()
+                LastSubmissionAt = everything.Where(s => s.GroupId == group.Id).Select(s => (DateTimeOffset?)s.CreatedAt).Max()
             });
         }
 
@@ -266,7 +290,9 @@ public class SubmissionRepository : ISubmissionRepository
                 o.AchievedAt,
                 assignmentsByCode.TryGetValue(o.AssignmentCode, out var assignment) ? assignment.PointsFor(o.Status) : 0))
             .Where(e => e.Points > 0)
-            .Concat(BonusEvents(groups, categories, bonusPoints, bonusHistory))
+            .Concat(BonusEvents(groups, categories, CappedFinal(bonusPoints, finalKey, adventurers != null), bonusHistory))
+            .Concat(adventurers == null ? Enumerable.Empty<ScoreEvent>() : AdventurersScoring.RoundEvents(adventurers, ThemeMax,
+                categories.FirstOrDefault(c => c.Key == finalKey)?.Name ?? "Avonturiers"))
             .OrderBy(e => e.At)
             .ToList();
 
@@ -310,6 +336,32 @@ public class SubmissionRepository : ISubmissionRepository
         }
 
         return stats;
+    }
+
+    private int ThemeMax => _runtime?.AdventurersOptions.ThemeMaxPoints ?? 14;
+
+    private int FinalMax => _runtime?.AdventurersOptions.FinalMaxPoints ?? 14;
+
+    /// <summary>The Avonturiers standing now; null while the Avonturiers part is off.</summary>
+    private AdventurersStanding? AdventurersFor(IReadOnlyList<Group> groups, IReadOnlyList<Submission> submissions,
+        IReadOnlyDictionary<(Guid, string), GroupBonusPoints> bonusPoints)
+    {
+        if (_runtime is not { AdventurersEnabled: true }) return null;
+
+        var finalKey = _runtime.AdventurersOptions.FinalGameCategoryKey;
+        var final = groups.ToDictionary(g => g.Id, g => bonusPoints.GetValueOrDefault((g.Id, finalKey))?.Points ?? 0);
+        return AdventurersScoring.Compute(groups.Select(g => g.Id), submissions, _runtime.ThemeRounds, final, ThemeMax, FinalMax, _time.GetUtcNow());
+    }
+
+    /// <summary>The bonus points with the final game capped, so the chart ends where the scoreboard does.</summary>
+    private IReadOnlyDictionary<(Guid, string), GroupBonusPoints> CappedFinal(
+        Dictionary<(Guid, string), GroupBonusPoints> bonusPoints, string? finalKey, bool enabled)
+    {
+        if (!enabled || finalKey == null) return bonusPoints;
+
+        return bonusPoints.ToDictionary(p => p.Key, p => p.Key.Item2 == finalKey && p.Value.Points > FinalMax
+            ? new GroupBonusPoints { GroupId = p.Value.GroupId, CategoryKey = p.Value.CategoryKey, Points = FinalMax, UpdatedAt = p.Value.UpdatedAt }
+            : p.Value);
     }
 
     public async Task AddAsync(Submission submission, CancellationToken ct = default)
