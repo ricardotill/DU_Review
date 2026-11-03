@@ -379,7 +379,7 @@ Wat je zelf moet regelen:
 - **Sticky sessions.** Een pagina houdt een vaste verbinding open met één instantie. Laat de load balancer een bezoeker daarom steeds naar dezelfde instantie sturen (sticky sessions of session affinity, bijvoorbeeld op een cookie). Zonder dat vallen pagina's steeds weg.
 - **Gedeelde opslag.** Alle instanties moeten dezelfde map voor `StorageRoot` zien, bijvoorbeeld een netwerkschijf. Anders staat een bestand alleen op de instantie die het downloadde.
 
-`docker-compose.yml` regelt dit al: twee instanties (`APP_REPLICAS`) met één gedeeld volume, achter een Caddy-proxy met sticky sessions (`docker/Caddyfile`).
+`docker-compose.yml` regelt dit al: twee instanties (`APP_REPLICAS`) met één gedeeld volume, achter een Caddy-proxy met sticky sessions (de instellingen staan in `docker-compose.yml`). Uitrollen met Portainer staat in de [handleiding voor beheer](docs/handleiding-beheer.md#met-portainer).
 - **Webhook.** Gebruik je de Events API in plaats van Socket Mode, dan verwerkt elke instantie wat bij haar binnenkomt. Dat is veilig, maar alleen de leider haalt in en stuurt geplande berichten.
 
 Met SQLite draait de app altijd als één instantie. Per instantie zijn alleen het logboek op **Gebeurtenissen** en de rem op te veel mislukte inlogpogingen per adres; de blokkade van een account na te veel pogingen geldt overal.

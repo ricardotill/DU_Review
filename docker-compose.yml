@@ -1,13 +1,14 @@
 # DU Review in production: two app replicas behind a proxy, on an existing PostgreSQL server
 # (not in this file). Fill in .env first (copy .env.example), then: docker compose pull && docker compose up -d
-# See docs/handleiding-beheer.md, "Met Docker Compose".
+# See docs/handleiding-beheer.md, "Met Docker Compose" and "Met Portainer".
+# This file mounts nothing from the repository, so it also works as a Portainer stack;
+# docker-compose.override.yml adds the repository's points file and a local build for the command line.
 
 services:
   app:
     # The image CI builds and pushes (see .github/workflows/ci.yml); APP_VERSION in .env pins a release.
     # `docker compose up -d --build` builds it from this repository instead.
     image: ghcr.io/ricardotill/du_review:${APP_VERSION:-latest}
-    build: .
     restart: unless-stopped
     # Two instances on the same database: one talks to Slack, both serve pages (README, "Meerdere instanties")
     deploy:
@@ -39,17 +40,16 @@ services:
     # The replicas share the files, so every replica sees every upload
     volumes:
       - app-data:/data
-      # Edits to the points file count after `docker compose restart app`, without a rebuild
-      - ./src/ScoutingAutomation.Web/opdrachtenpunten.csv:/app/opdrachtenpunten.csv:ro
 
-  # The entrance: keeps each visitor on one replica (sticky sessions, see docker/Caddyfile)
+  # The entrance: keeps each visitor on one replica (sticky sessions, see configs below)
   proxy:
     image: caddy:2.10
     restart: unless-stopped
     ports:
       - "${PORT:-5231}:8080"
-    volumes:
-      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+    configs:
+      - source: caddyfile
+        target: /etc/caddy/Caddyfile
     depends_on:
       - app
     networks:
@@ -81,3 +81,30 @@ networks:
 
 volumes:
   app-data:
+
+configs:
+  # The proxy's configuration, in this file so a stack needs nothing else from the repository.
+  # Blazor Server keeps a live connection to one replica, so a visitor must stay on the same one: the cookie
+  # policy sends every request of a browser to the replica it started on. When that replica goes away, the
+  # browser is moved to another one and the page reconnects. Only cloudflared (fixed address above) may pass
+  # on the visitor's address.
+  caddyfile:
+    content: |
+      {
+        admin off
+        auto_https off
+        servers {
+          trusted_proxies static 172.29.53.10/32
+        }
+      }
+
+      :8080 {
+        reverse_proxy {
+          dynamic a app 8080 {
+            refresh 5s
+          }
+          lb_policy cookie du_instance
+          lb_try_duration 10s
+          fail_duration 30s
+        }
+      }

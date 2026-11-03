@@ -195,6 +195,7 @@ Er zijn drie manieren om de app te starten:
 |---|---|---|
 | `run-gameday.sh` | Speeldag op een Mac | SQLite |
 | Docker Compose | Speeldag op een server met Docker en een eigen PostgreSQL-server | PostgreSQL (eigen server) |
+| Portainer | Hetzelfde, maar beheerd vanuit [Portainer](#met-portainer) | PostgreSQL (eigen server) |
 | .NET Aspire | Ontwikkelen en testen | PostgreSQL |
 
 Moeten groepen of jury via internet bij de app, zonder in hetzelfde netwerk te zitten? Zet er dan een [Cloudflare Tunnel](#via-internet-cloudflare-tunnel) voor; dat kan bij `run-gameday.sh` en bij Docker Compose.
@@ -331,7 +332,7 @@ Haalt de server nieuwe images automatisch op (bijvoorbeeld met Watchtower), zet 
 - De accounts, de instellingen uit de app en de sleutels voor de inlogcookies en wachtwoordlinks staan in de database. Daardoor blijft iedereen ingelogd na een herstart.
 - De bestanden staan in het volume `app-data`, in de container onder `/data`. Alle instanties gebruiken dat ene volume. De bestanden van de groepen staan in `/data/storage`.
 - Na de overstap naar deze versie moet iedereen één keer opnieuw inloggen, omdat de sleutels voor de inlogcookies van het volume `app-keys` naar de database gaan. Dat volume is daarna niet meer nodig.
-- Het puntenbestand komt direct uit de repository: `src/ScoutingAutomation.Web/opdrachtenpunten.csv`.
+- Het puntenbestand komt direct uit de repository: `src/ScoutingAutomation.Web/opdrachtenpunten.csv` (via `docker-compose.override.yml`, dat `docker compose` vanzelf meeleest).
 - Andere instellingen, zoals de start- en eindtijd, pas je aan in de app (als beheerder). Of je zet ze in `docker-compose.yml` onder `environment`, met `__` in plaats van `:`, bijvoorbeeld `Scouting__EventStart: "2026-10-03T09:00"`. Een waarde die je in de app hebt aangepast, gaat altijd voor.
 
 Volumes blijven bewaard bij `docker compose down`, maar `docker compose down -v` wist ze, met alle bestanden. Gebruik `-v` dus nooit op de speeldag.
@@ -343,6 +344,51 @@ docker compose cp app:/data/storage ./du-bestanden
 ```
 
 Let op: de app draait zonder HTTPS. In een eigen netwerk is dat goed. Moet de app via internet bereikbaar zijn, gebruik dan een [Cloudflare Tunnel](#via-internet-cloudflare-tunnel).
+
+### Met Portainer
+
+Draai je containers met [Portainer](https://www.portainer.io), dan zet je dezelfde `docker-compose.yml` neer als een **stack**. Het bestand haalt niets uit de repository: de instellingen van de proxy staan erin, en het puntenbestand zit in het image. Daardoor werkt het als stack uit Git én als stack die je in de editor plakt. Gebruik een recente Portainer (2.21 of nieuwer).
+
+**Vooraf**
+
+1. Een PostgreSQL-server met een lege database en een gebruiker, zoals bij [Met Docker Compose](#met-docker-compose-productie) stap 1. Staat PostgreSQL op dezelfde machine als Docker, gebruik dan `host.docker.internal` als host. Laat PostgreSQL dan luisteren op het adres van Docker en sta de Docker-netwerken toe in `pg_hba.conf`. Staat hij op een andere machine, zet dan `;SSL Mode=VerifyFull` achter de verbinding.
+2. Laat Portainer het image ophalen. Het image is privé: ga in Portainer naar **Registries** > **Add registry** > **Custom registry**, met als URL `ghcr.io`, je GitHub-gebruikersnaam en als wachtwoord een GitHub-token (classic) met alleen `read:packages`.
+
+**De stack aanmaken**
+
+1. Ga naar **Stacks** > **Add stack** en geef hem een naam, bijvoorbeeld `du-review`.
+2. Kies **Repository**:
+   - **Repository URL**: `https://github.com/ricardotill/DU_Review`. De repository is privé: zet **Authentication** aan, met je gebruikersnaam en een token met leesrecht op de repository.
+   - **Repository reference**: `refs/heads/main`.
+   - **Compose path**: `docker-compose.yml`.
+
+   Liever zonder Git? Kies dan **Web editor** en plak de inhoud van `docker-compose.yml`. Een wijziging in de repository moet je dan zelf opnieuw plakken.
+3. Zet onder **Environment variables** dezelfde waarden als in `.env.example` (met **Advanced mode** kun je ze in één keer plakken):
+
+   | Variabele | Waarde |
+   |---|---|
+   | `DATABASE_CONNECTION_STRING` | bijvoorbeeld `Host=host.docker.internal;Database=scoutingdb;Username=du;Password=…` |
+   | `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN` | de tokens uit [Slack koppelen](slack-koppelen.md) |
+   | `BOOTSTRAP_ADMIN_EMAIL` | jouw e-mailadres, voor het eerste beheerdersaccount |
+   | `PUBLIC_URL` en `SMTP_…` | voor mails over accounts (zie [Mail](#mail)) |
+   | `PORT` | optioneel, de poort op de server (standaard `5231`) |
+   | `APP_REPLICAS` | optioneel, het aantal instanties (standaard `2`) |
+   | `APP_VERSION` | optioneel, een vaste versie, bijvoorbeeld `1.4.0` |
+   | `CLOUDFLARE_TUNNEL_TOKEN` en `COMPOSE_PROFILES=tunnel` | optioneel, voor de [Cloudflare Tunnel](#via-internet-cloudflare-tunnel): `COMPOSE_PROFILES` start de container `cloudflared` mee. Verschijnt die niet onder de stack, draai `cloudflared` dan als eigen container in het netwerk `<stacknaam>_web` met adres `172.29.53.10` |
+
+4. Klik op **Deploy the stack**. Kies je wachtwoord via de mail, of zoek de link in het logboek van een `app`-container (**Containers** > container > **Logs**, zoek op `wachtwoord-instellen`).
+
+**Bijwerken**
+
+- Met een stack uit Git kan Portainer zelf bijwerken: zet **GitOps updates** aan (bijvoorbeeld elke 5 minuten) en ook **Re-pull image**. Dan haalt Portainer een gewijzigde `docker-compose.yml` op, en bij elke controle ook een nieuw `latest`-image.
+- Met de hand: open de stack en klik op **Pull and redeploy** (bij Git) of **Update the stack** met **Re-pull image and redeploy** aan (bij de editor).
+- Zet voor de speeldag `APP_VERSION` op de huidige versie, zodat de app niet midden in het spel herstart. Haal hem daarna weer weg (zie [Updates en versies](#updates-en-versies)).
+
+**Goed om te weten**
+
+- De bestanden staan in het volume `<stacknaam>_app-data`, onder **Volumes**. Alle instanties gebruiken dat ene volume.
+- Het puntenbestand komt in Portainer uit het image. Een aanpassing in `opdrachtenpunten.csv` geldt dus vanaf de volgende versie van het image.
+- De stack gebruikt een eigen netwerk `172.29.53.0/24`. Is dat bij jou al in gebruik, pas dan het subnet en de adressen van `proxy`, `cloudflared` en `trusted_proxies` samen aan.
 
 ### Via internet: Cloudflare Tunnel
 
@@ -423,7 +469,7 @@ Gebruik `--profile tunnel` ook bij `docker compose down` en `docker compose up -
 De tunnel geeft het echte adres van de bezoeker door, en dat het verzoek via HTTPS binnenkwam. De app gebruikt dat voor de grens op mislukte logins en om het login-cookie alleen via HTTPS te versturen. Dat doorgeven vertrouwt de app alleen van een proxy die hij kent:
 
 - `cloudflared` op dezelfde computer als de app (`run-gameday.sh`): vertrouwd, er hoeft niets ingesteld.
-- `cloudflared` in Docker Compose: de container heeft een vast adres (`172.29.53.10`). De proxy vertrouwt alleen dat adres (in `docker/Caddyfile`), en de app vertrouwt het eigen netwerk van de proxy en de tunnel via `ForwardedHeaders__KnownNetworks__0` in `docker-compose.yml`. Ook hier hoef je niets in te stellen.
+- `cloudflared` in Docker Compose: de container heeft een vast adres (`172.29.53.10`). De proxy vertrouwt alleen dat adres (`trusted_proxies` in `docker-compose.yml`), en de app vertrouwt het eigen netwerk van de proxy en de tunnel via `ForwardedHeaders__KnownNetworks__0` in `docker-compose.yml`. Ook hier hoef je niets in te stellen.
 - `cloudflared` of een andere proxy op een andere machine: zet het adres van die machine in `ForwardedHeaders:KnownNetworks`, als lijst van netwerken in CIDR-vorm (`"192.168.1.5/32"`).
 
 Klopt dit niet, dan werkt de app nog steeds, maar ziet hij voor iedereen het adres van de proxy en staat bij elke inlog van een groep een waarschuwing over gewone HTTP in het logboek.

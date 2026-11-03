@@ -1,0 +1,8 @@
+# Read by `docker compose` on the command line next to docker-compose.yml (not by a Portainer stack):
+# builds the image from this repository with `docker compose up -d --build`, and uses the repository's
+# points file, so an edit counts after `docker compose restart app` without a new image.
+services:
+  app:
+    build: .
+    volumes:
+      - ./src/ScoutingAutomation.Web/opdrachtenpunten.csv:/app/opdrachtenpunten.csv:ro
