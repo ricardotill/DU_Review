@@ -92,7 +92,10 @@ public class AccountService
     }
 
     /// <returns>Null when done, otherwise the reason it was not changed.</returns>
-    public async Task<string?> UpdateAsync(Guid id, Guid actingUserId, string? displayName, AccountKind kind, Guid? groupId)
+    public Task<string?> UpdateAsync(Guid id, Guid actingUserId, string? displayName, AccountKind kind, Guid? groupId) =>
+        OneAtATimeAsync(() => UpdateCoreAsync(id, actingUserId, displayName, kind, groupId));
+
+    private async Task<string?> UpdateCoreAsync(Guid id, Guid actingUserId, string? displayName, AccountKind kind, Guid? groupId)
     {
         var user = await _users.FindByIdAsync(id.ToString());
         if (user == null) return "Dit account bestaat niet meer.";
@@ -130,7 +133,10 @@ public class AccountService
     }
 
     /// <returns>Null when done, otherwise the reason it was not changed.</returns>
-    public async Task<string?> SetDisabledAsync(Guid id, Guid actingUserId, bool disabled)
+    public Task<string?> SetDisabledAsync(Guid id, Guid actingUserId, bool disabled) =>
+        OneAtATimeAsync(() => SetDisabledCoreAsync(id, actingUserId, disabled));
+
+    private async Task<string?> SetDisabledCoreAsync(Guid id, Guid actingUserId, bool disabled)
     {
         var user = await _users.FindByIdAsync(id.ToString());
         if (user == null) return "Dit account bestaat niet meer.";
@@ -152,7 +158,10 @@ public class AccountService
     }
 
     /// <returns>Null when done, otherwise the reason it was not removed.</returns>
-    public async Task<string?> DeleteAsync(Guid id, Guid actingUserId)
+    public Task<string?> DeleteAsync(Guid id, Guid actingUserId) =>
+        OneAtATimeAsync(() => DeleteCoreAsync(id, actingUserId));
+
+    private async Task<string?> DeleteCoreAsync(Guid id, Guid actingUserId)
     {
         var user = await _users.FindByIdAsync(id.ToString());
         if (user == null) return null;
@@ -262,6 +271,25 @@ public class AccountService
     public Task SendTestMailAsync(string to) => _mailer.SendAsync(AccountMails.Test(to));
 
     public static string Describe(IdentityResult result) => string.Join(" ", result.Errors.Select(e => e.Description));
+
+    /// <summary>
+    /// Changes that can take away an admin run one at a time, so two admins who demote, block or delete each other at the same
+    /// moment cannot both pass the last-admin check. The app runs as one server, so a lock in the process is enough.
+    /// </summary>
+    private static readonly SemaphoreSlim AdminChanges = new(1, 1);
+
+    private static async Task<string?> OneAtATimeAsync(Func<Task<string?>> change)
+    {
+        await AdminChanges.WaitAsync();
+        try
+        {
+            return await change();
+        }
+        finally
+        {
+            AdminChanges.Release();
+        }
+    }
 
     private async Task<bool> IsLastActiveAdminAsync(AppUser user)
     {

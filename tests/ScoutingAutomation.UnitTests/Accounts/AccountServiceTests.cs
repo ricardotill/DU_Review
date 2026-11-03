@@ -150,6 +150,19 @@ public sealed class AccountServiceTests : IAsyncLifetime, IAsyncDisposable
     }
 
     [Fact]
+    public async Task TwoAdmins_BlockingEachOtherAtOnce_ShouldLeaveOneAdmin()
+    {
+        var first = await AdminAsync();
+        var (second, _) = await With((s, _) => s.CreateAsync("tweede@du.test", "Tweede", AccountKind.Admin, null));
+
+        var results = await Task.WhenAll(
+            Task.Run(() => With((s, _) => s.SetDisabledAsync(second!.Id, first.Id, true))),
+            Task.Run(() => With((s, _) => s.SetDisabledAsync(first.Id, second!.Id, true))));
+
+        results.Should().ContainSingle(r => r == null).And.ContainSingle(r => r == "Dit is de laatste beheerder.");
+    }
+
+    [Fact]
     public async Task Admin_ShouldNotDemoteBlockOrRemoveThemselves()
     {
         var admin = await AdminAsync();
