@@ -4,7 +4,7 @@
 
 <PageTitle>Rondes Avonturiers - DU Review</PageTitle>
 
-<PageHeader Title="Rondes en berichten" Subtitle="De themarondes en wat de bot in de Avonturiers-kanalen plaatst. Aanpassen kan in beheermodus." />
+<PageHeader Title="Rondes en berichten" Subtitle="De rondes van de half-uur opdrachten en wat de bot in de Avonturiers-kanalen plaatst. Aanpassen kan in beheermodus." />
 <AdventurersTabs />
 
 @if (!Runtime.AdventurersEnabled)
@@ -16,19 +16,26 @@ else
     <div class="row g-4">
         <div class="col-12"><RoundsPanel /></div>
         <div class="col-12"><RoundPostsPanel /></div>
-        <div class="col-lg-4">
+        <div class="col-lg-6">
             <div class="glass-panel p-4 h-100">
                 <h2 class="panel-title">Opening van een ronde</h2>
                 <SlackTextEditor Kind="SlackText.RoundOpen" Label="de opening" Rows="5" Placeholders="{round}, {themes}, {start}, {end}, {message}" />
             </div>
         </div>
-        <div class="col-lg-4">
+        <div class="col-lg-6">
             <div class="glass-panel p-4 h-100">
                 <h2 class="panel-title">Sluiting van een ronde</h2>
                 <SlackTextEditor Kind="SlackText.RoundClose" Label="de sluiting" Rows="5" Placeholders="{round}, {themes}, {end}" />
             </div>
         </div>
-        <div class="col-lg-4">
+        <div class="col-lg-6">
+            <div class="glass-panel p-4 h-100">
+                <h2 class="panel-title">Overgang naar de volgende ronde</h2>
+                <p class="text-secondary small">Begint een ronde op het moment dat de vorige eindigt, dan gaat dit ene bericht in plaats van de sluiting en de opening. Leeg: die twee gaan los.</p>
+                <SlackTextEditor Kind="SlackText.RoundHandover" Label="de overgang" Rows="6" Placeholders="{previousRound}, {previousThemes}, {round}, {themes}, {start}, {end}, {message}" />
+            </div>
+        </div>
+        <div class="col-lg-6">
             <div class="glass-panel p-4 h-100">
                 <h2 class="panel-title">Uitslag van een ronde</h2>
                 <SlackTextEditor Kind="SlackText.RoundResult" Label="de uitslag" Rows="5" Placeholders="{round}, {ranking}" />

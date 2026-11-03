@@ -39,7 +39,7 @@ else
                 }
                 else if (submission.Kind == SubmissionKind.Theme)
                 {
-                    <span class="badge assignment-badge">Thema @submission.AssignmentCode</span>
+                    <span class="badge assignment-badge">Half-uur opdracht @submission.AssignmentCode</span>
                 }
                 else if (IsGroup)
                 {
@@ -56,10 +56,14 @@ else
             {
                 <span class="align-self-center fs-5"><FavoriteStar Submission="submission" /></span>
             }
-            <a href="@fileUrl" download="@submission.FileName" class="btn btn-scout-secondary d-flex align-items-center gap-2">
-                <i class="bi bi-download"></i>
-                <span>Download</span>
-            </a>
+            @* Groups see their file in Slack: downloading it from the app would use the location's bandwidth *@
+            @if (!IsGroup)
+            {
+                <a href="@fileUrl" download="@submission.FileName" class="btn btn-scout-secondary d-flex align-items-center gap-2 download-file">
+                    <i class="bi bi-download"></i>
+                    <span>Download</span>
+                </a>
+            }
         </Actions>
     </PageHeader>
 
@@ -75,6 +79,15 @@ else
         <div class="col-lg-7 d-flex flex-column gap-4">
             <!-- Preview -->
             <div class="glass-panel p-3">
+                @if (IsGroup)
+                {
+                    <div class="text-center py-4 group-preview">
+                        <div class="fs-1 mb-2"><FileIcon ContentType="@submission.ContentType" /></div>
+                        <OpenInSlack ChannelId="@submission.SlackChannelId" MessageTs="@submission.SlackMessageId" PostedAt="submission.CreatedAt" />
+                    </div>
+                }
+                else
+                {
                 <div class="preview">
                     @if (submission.ContentType.StartsWith("image/"))
                     {
@@ -99,6 +112,7 @@ else
                         </div>
                     }
                 </div>
+                }
             </div>
 
             <!-- Slack message -->

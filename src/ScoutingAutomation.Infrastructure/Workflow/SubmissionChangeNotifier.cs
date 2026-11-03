@@ -12,6 +12,12 @@ public sealed record SubmissionCreatedNotification(
     IReadOnlyList<Guid> SubmissionIds,
     DateTimeOffset PostedAt);
 
+/// <summary>The Avonturiers of a group opened new Toeristen assignments, for the live notification on the group's pages.</summary>
+/// <param name="NewCodes">The assignments that just opened, lowest first.</param>
+/// <param name="OpenCount">Numbered assignments open now.</param>
+/// <param name="Total">All numbered assignments.</param>
+public sealed record AssignmentsUnlockedNotification(Guid GroupId, IReadOnlyList<string> NewCodes, int OpenCount, int Total);
+
 /// <summary>
 /// In-process signal that submission data changed, so open pages can reload.
 /// Registered as a singleton; only reaches pages served by this app instance.
@@ -23,8 +29,12 @@ public interface ISubmissionChangeNotifier
     /// <summary>Raised for new submissions from live Slack messages; not for a rebuild from history.</summary>
     event Action<SubmissionCreatedNotification>? Created;
 
+    /// <summary>Raised when a group's Avonturiers opened new assignments live; not for a catch-up or rebuild.</summary>
+    event Action<AssignmentsUnlockedNotification>? Unlocked;
+
     void NotifyChanged();
     void NotifyCreated(SubmissionCreatedNotification notification);
+    void NotifyUnlocked(AssignmentsUnlockedNotification notification);
 }
 
 public class SubmissionChangeNotifier : ISubmissionChangeNotifier
@@ -40,6 +50,8 @@ public class SubmissionChangeNotifier : ISubmissionChangeNotifier
 
     public event Action<SubmissionCreatedNotification>? Created;
 
+    public event Action<AssignmentsUnlockedNotification>? Unlocked;
+
     public void NotifyChanged()
     {
         foreach (var handler in Handlers(Changed).Cast<Action>())
@@ -51,6 +63,14 @@ public class SubmissionChangeNotifier : ISubmissionChangeNotifier
     public void NotifyCreated(SubmissionCreatedNotification notification)
     {
         foreach (var handler in Handlers(Created).Cast<Action<SubmissionCreatedNotification>>())
+        {
+            Invoke(() => handler(notification));
+        }
+    }
+
+    public void NotifyUnlocked(AssignmentsUnlockedNotification notification)
+    {
+        foreach (var handler in Handlers(Unlocked).Cast<Action<AssignmentsUnlockedNotification>>())
         {
             Invoke(() => handler(notification));
         }

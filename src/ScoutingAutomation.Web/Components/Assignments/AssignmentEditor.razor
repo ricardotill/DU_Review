@@ -1,0 +1,206 @@
+@inject IServiceScopeFactory ScopeFactory
+
+@* Lets the jury change an assignment's title, description and points, and add, order and remove its pictures.
+   Every action checks on the server that the tab belongs to the jury. *@
+<div class="glass-panel p-4 mb-4 assignment-editor">
+    <div class="d-flex justify-content-between align-items-center mb-3 gap-2">
+        <h2 class="panel-title mb-0"><i class="bi bi-pencil-square text-info"></i> Opdracht @Assignment.Code bewerken</h2>
+        @if (Assignment.EditedAt is { } edited)
+        {
+            <span class="badge bg-info text-dark" title="Wint van het puntenbestand, ook na een herstart">Aangepast in de app · @edited.ToGameTime().ToString("dd-MM HH:mm")</span>
+        }
+    </div>
+    <form @onsubmit="SaveAsync">
+        <div class="row g-2">
+            <div class="col-md-8">
+                <label class="form-label small text-secondary" for="edit-title">Titel</label>
+                <input id="edit-title" type="text" class="form-control form-control-dark edit-title" maxlength="@ScoutingDbContext.MaxAssignmentTitleLength" @bind="title" />
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label small text-secondary" for="edit-standard">Goedgekeurd</label>
+                <input id="edit-standard" type="number" min="0" max="@AssignmentEditService.MaxPoints" class="form-control form-control-dark edit-standard" @bind="standard" />
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label small text-secondary" for="edit-awesome">Awesome</label>
+                <input id="edit-awesome" type="number" min="0" max="@AssignmentEditService.MaxPoints" class="form-control form-control-dark edit-awesome" @bind="awesome" />
+            </div>
+            <div class="col-12">
+                <label class="form-label small text-secondary" for="edit-description">Beschrijving (zien de groepen)</label>
+                <textarea id="edit-description" rows="4" class="form-control form-control-dark edit-description" maxlength="@ScoutingDbContext.MaxAssignmentDescriptionLength" @bind="description"></textarea>
+            </div>
+        </div>
+        <div class="d-flex gap-2 mt-3 flex-wrap">
+            <button type="submit" class="btn btn-scout-primary edit-save" disabled="@busy"><i class="bi bi-check-lg me-1"></i> Opslaan</button>
+            <button type="button" class="btn btn-scout-secondary" @onclick="Close" disabled="@busy">Sluiten</button>
+            @if (Assignment.EditedAt != null)
+            {
+                <button type="button" class="btn btn-outline-warning ms-auto edit-reset" @onclick="ResetAsync" disabled="@busy"
+                        title="Titel, beschrijving en punten weer uit het puntenbestand halen">
+                    <i class="bi bi-arrow-counterclockwise me-1"></i> Terug naar puntenbestand
+                </button>
+            }
+        </div>
+    </form>
+
+    <hr class="border-secondary my-4" />
+
+    <div class="fw-semibold text-white small mb-2">Afbeeldingen (zien de groepen zodra de opdracht open is)</div>
+    @if (images.Count == 0)
+    {
+        <p class="text-secondary small">Nog geen afbeeldingen.</p>
+    }
+    else
+    {
+        <div class="d-flex flex-wrap gap-3 mb-3">
+            @foreach (var (image, index) in images.Select((im, i) => (im, i)))
+            {
+                var id = image.Id;
+                <div class="assignment-image-edit text-center">
+                    <img src="@AssignmentImages.Url(image)" alt="@image.FileName" loading="lazy" />
+                    <div class="small text-secondary text-truncate" style="max-width: 8rem" title="@image.FileName">@image.FileName</div>
+                    <div class="btn-group btn-group-sm mt-1">
+                        <button type="button" class="btn btn-scout-secondary" aria-label="Eerder" disabled="@(busy || index == 0)" @onclick="() => MoveAsync(id, -1)"><i class="bi bi-chevron-left"></i></button>
+                        <button type="button" class="btn btn-outline-danger image-delete" aria-label="Verwijderen @image.FileName" disabled="@busy" @onclick="() => DeleteAsync(id)"><i class="bi bi-trash"></i></button>
+                        <button type="button" class="btn btn-scout-secondary" aria-label="Later" disabled="@(busy || index == images.Count - 1)" @onclick="() => MoveAsync(id, 1)"><i class="bi bi-chevron-right"></i></button>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+    <label class="btn btn-scout-secondary btn-sm @(busy ? "disabled" : "")">
+        <i class="bi bi-image me-1"></i> Afbeeldingen toevoegen
+        <InputFile class="d-none image-upload" accept="@AssignmentEditService.AcceptedImageTypes" multiple OnChange="UploadAsync" disabled="@busy" />
+    </label>
+    <span class="text-secondary small ms-2">JPG, PNG, GIF of WebP, maximaal @(AssignmentEditService.MaxImageBytes / 1024 / 1024) MB per stuk.</span>
+
+    @if (message != null)
+    {
+        <div class="@(failed ? "text-danger" : "text-success") small mt-2 edit-message">@message</div>
+    }
+</div>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    [Parameter, EditorRequired] public Assignment Assignment { get; set; } = default!;
+
+    /// <summary>The editor was closed.</summary>
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private string? title;
+    private string? description;
+    private int standard;
+    private int awesome;
+    private IReadOnlyList<AssignmentImage> images = Array.Empty<AssignmentImage>();
+    private string? loadedCode;
+    private bool busy;
+    private string? message;
+    private bool failed;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Only fill the form for a new assignment: a live reload must not wipe what is being typed
+        if (loadedCode == Assignment.Code) return;
+
+        loadedCode = Assignment.Code;
+        FillForm();
+        message = null;
+        await LoadImagesAsync();
+    }
+
+    private void FillForm()
+    {
+        title = Assignment.Title;
+        description = Assignment.Description;
+        standard = Assignment.StandardPoints;
+        awesome = Assignment.AwesomePoints;
+    }
+
+    private async Task LoadImagesAsync()
+    {
+        await using var scope = ScopeFactory.CreateAsyncScope();
+        images = await scope.ServiceProvider.GetRequiredService<AssignmentEditService>().GetImagesAsync(Assignment.Code);
+    }
+
+    private Task SaveAsync() => RunAsync(async service =>
+    {
+        var user = AuthState == null ? null : (await AuthState).User.Identity?.Name;
+        return (await service.SaveAsync(Assignment.Code, new AssignmentEdit(title, description, standard, awesome), user), "Opgeslagen.");
+    });
+
+    private Task ResetAsync() => RunAsync(async service =>
+    {
+        var problem = await service.ResetAsync(Assignment.Code);
+        // The page reloads the assignment: fill the form again with its values from the points file
+        if (problem == null) loadedCode = null;
+        return (problem, "Teruggezet naar het puntenbestand.");
+    });
+
+    private Task MoveAsync(Guid id, int offset) => RunAsync(async service =>
+    {
+        await service.MoveImageAsync(id, offset);
+        return (null, null);
+    });
+
+    private Task DeleteAsync(Guid id) => RunAsync(async service =>
+    {
+        await service.DeleteImageAsync(id);
+        return (null, "Afbeelding verwijderd.");
+    });
+
+    private Task UploadAsync(InputFileChangeEventArgs e) => RunAsync(async service =>
+    {
+        // Checked before anything is read: picking too many would otherwise end in the framework's English error
+        var room = AssignmentEditService.MaxImagesPerAssignment - (await service.GetImagesAsync(Assignment.Code)).Count;
+        if (e.FileCount > room)
+        {
+            return (room <= 0
+                ? $"Deze opdracht heeft al {AssignmentEditService.MaxImagesPerAssignment} afbeeldingen; verwijder er eerst een."
+                : $"Kies hoogstens {room} {(room == 1 ? "afbeelding" : "afbeeldingen")}: een opdracht heeft er maximaal {AssignmentEditService.MaxImagesPerAssignment}.", null);
+        }
+
+        var problems = new List<string>();
+        var added = 0;
+        foreach (var file in e.GetMultipleFiles(e.FileCount))
+        {
+            if (file.Size > AssignmentEditService.MaxImageBytes)
+            {
+                problems.Add($"{file.Name} is te groot: maximaal {AssignmentEditService.MaxImageBytes / 1024 / 1024} MB.");
+                continue;
+            }
+
+            await using var stream = file.OpenReadStream(AssignmentEditService.MaxImageBytes);
+            if (await service.AddImageAsync(Assignment.Code, file.Name, stream) is { } problem) problems.Add(problem);
+            else added++;
+        }
+
+        var done = added == 0 ? null : added == 1 ? "Afbeelding toegevoegd." : $"{added} afbeeldingen toegevoegd.";
+        return (problems.Count > 0 ? string.Join(" ", problems) : null, done);
+    });
+
+    /// <param name="action">Returns why it failed (null when it worked) and what to say when it worked.</param>
+    private async Task RunAsync(Func<AssignmentEditService, Task<(string? Problem, string? Done)>> action)
+    {
+        busy = true;
+        try
+        {
+            string? done = null;
+            var problem = await StaffActions.RunTaskAsync(AuthState, async () =>
+            {
+                await using var scope = ScopeFactory.CreateAsyncScope();
+                var result = await action(scope.ServiceProvider.GetRequiredService<AssignmentEditService>());
+                done = result.Done;
+                return result.Problem;
+            });
+            failed = problem != null;
+            message = problem ?? done;
+            await LoadImagesAsync();
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private Task Close() => OnClose.InvokeAsync();
+}

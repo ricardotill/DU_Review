@@ -1,0 +1,36 @@
+@inject SlackLinks Links
+
+@* For groups, who never load their files from the app (that would take the bandwidth of the location's connection):
+   their submission is in Slack already, so this sends them there. In the Slack app, or in the browser as a fallback. *@
+<div class="open-in-slack @Class">
+    @if (Links.AppLink(ChannelId, MessageTs) is { } appLink)
+    {
+        <div class="d-flex flex-wrap gap-2 justify-content-center">
+            <a href="@appLink" class="btn btn-scout-primary d-inline-flex align-items-center gap-2 slack-app-link">
+                <i class="bi bi-slack"></i> Bekijk in Slack
+            </a>
+            <a href="@Links.WebLink(ChannelId, MessageTs)" target="_blank" rel="noopener" class="btn btn-scout-secondary d-inline-flex align-items-center gap-2 slack-web-link"
+               title="Als de Slack-app niet naar het bericht springt">
+                <i class="bi bi-box-arrow-up-right"></i> In de browser
+            </a>
+        </div>
+    }
+    else
+    {
+        <p class="text-secondary small mb-0 no-slack-link">Je foto of video staat in jullie Slack-kanaal, bij het bericht van @Posted.</p>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string? ChannelId { get; set; }
+    [Parameter, EditorRequired] public string? MessageTs { get; set; }
+
+    /// <summary>When the message was posted, to find it in the channel when there is no link.</summary>
+    [Parameter] public DateTimeOffset? PostedAt { get; set; }
+
+    [Parameter] public string? Class { get; set; }
+
+    private string Posted => PostedAt?.ToGameTime().ToString("HH:mm") ?? "toen";
+
+    protected override Task OnInitializedAsync() => Links.EnsureLoadedAsync();
+}

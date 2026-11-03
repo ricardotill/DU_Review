@@ -13,6 +13,10 @@
                 <span class="badge badge-approved">@assignment.StandardPoints pnt goedgekeurd</span>
                 <span class="badge badge-awesome">@assignment.AwesomePoints pnt awesome</span>
                 <span class="badge bg-secondary">@submittedGroups.Count / @groupResults.Count groepen ingezonden</span>
+                @if (assignment.EditedAt != null)
+                {
+                    <span class="badge bg-info text-dark" title="Titel, beschrijving of punten aangepast in de app">aangepast</span>
+                }
             }
             else if (loaded)
             {
@@ -23,8 +27,17 @@
         {
             <p class="assignment-description text-white-50 mt-2 mb-0">@assignment.Description</p>
         }
+        <AssignmentImages Images="images" Class="mt-2" />
     </Details>
     <Actions>
+        @if (assignment != null)
+        {
+            <button type="button" class="btn btn-scout-secondary d-flex align-items-center gap-1 edit-assignment" title="Titel, beschrijving, punten en afbeeldingen aanpassen"
+                    @onclick="() => editing = !editing">
+                <i class="bi bi-pencil-square"></i>
+                <span class="d-none d-md-inline">Bewerken</span>
+            </button>
+        }
         <a href="slideshow?assignment=@Current" class="btn btn-scout-secondary d-flex align-items-center gap-1" title="Diavoorstelling van deze opdracht">
             <i class="bi bi-play-btn"></i>
             <span class="d-none d-md-inline">Diavoorstelling</span>
@@ -51,6 +64,11 @@
 }
 else
 {
+    @if (editing && assignment != null)
+    {
+        <AssignmentEditor Assignment="assignment" OnClose="() => editing = false" />
+    }
+
     <div class="form-check form-switch mb-3">
         <input class="form-check-input" type="checkbox" role="switch" id="openOnly" checked="@OpenOnly" @onchange="OnOpenOnlyChanged" />
         <label class="form-check-label text-white-50" for="openOnly">Alleen open inzendingen</label>
@@ -154,6 +172,8 @@ else
 
     private bool loaded;
     private Assignment? assignment;
+    private IReadOnlyList<AssignmentImage> images = Array.Empty<AssignmentImage>();
+    private bool editing;
     private List<GroupResult> groupResults = new();
     private List<GroupResult> submittedGroups = new();
     private List<GroupResult> missingGroups = new();
@@ -169,6 +189,7 @@ else
         if (loadedCode != Current)
         {
             loaded = false;
+            editing = false;
         }
 
         await ReloadAsync();
@@ -180,6 +201,7 @@ else
         var assignments = await services.GetRequiredService<IAssignmentRepository>().GetAllAsync();
         // Sorted numbers first, then letters: ← and → step through them in that order
         assignment = assignments.FirstOrDefault(a => a.Code == Current);
+        images = await services.GetRequiredService<IAssignmentImageRepository>().GetForAssignmentAsync(Current);
         previousCode = assignments.Where(a => AssignmentCode.Compare(a.Code, Current) < 0).Select(a => a.Code).LastOrDefault();
         nextCode = assignments.Where(a => AssignmentCode.Compare(a.Code, Current) > 0).Select(a => a.Code).FirstOrDefault();
 

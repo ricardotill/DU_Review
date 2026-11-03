@@ -6,6 +6,8 @@ using ScoutingAutomation.Contracts.Configuration;
 using ScoutingAutomation.Contracts.Slack;
 using ScoutingAutomation.Domain.Interfaces;
 using ScoutingAutomation.Infrastructure.Data;
+using ScoutingAutomation.Infrastructure.Adventurers;
+using ScoutingAutomation.Infrastructure.Assignments;
 using ScoutingAutomation.Infrastructure.Extensions;
 using ScoutingAutomation.Infrastructure.Settings;
 using ScoutingAutomation.Infrastructure.Slack.Events;
@@ -81,6 +83,7 @@ else
 builder.Services.AddScoutingInfrastructure(builder.Configuration);
 builder.Services.AddScoped<ScoutingAutomation.Web.Favorites.FavoritesService>();
 builder.Services.AddScoped<ScoutingAutomation.Web.Notifications.NotificationPreferences>();
+builder.Services.AddScoped<ScoutingAutomation.Web.Notifications.GroupNotificationPreferences>();
 
 // Behind a reverse proxy that handles HTTPS: the login cookie is still marked Secure, and the login limiter sees
 // the visitor's address instead of the proxy's. Proxies on this machine are trusted (the default); a proxy elsewhere,
@@ -286,13 +289,25 @@ api.MapGet("/files/{id:guid}", async (
     HttpRequest request,
     Guid id,
     ISubmissionRepository repository,
-    IFileStorageService fileStorage) =>
+    IFileStorageService fileStorage,
+    ScoutingAutomation.Infrastructure.Slack.SlackLinks links) =>
 {
     var submission = await repository.GetByIdAsync(id);
     // A group only gets its own files; another group's file looks the same as one that does not exist
-    if (submission == null || (KeyAuth.GroupId(request.HttpContext.User) is { } ownGroup && submission.GroupId != ownGroup))
+    var ownGroup = KeyAuth.GroupId(request.HttpContext.User);
+    if (submission == null || (ownGroup != null && submission.GroupId != ownGroup))
     {
         return Results.NotFound();
+    }
+
+    // Groups never download from the app, to save the bandwidth of the location's connection: they see their
+    // submission in Slack, which has it already. Without a known workspace there is no link to send them to.
+    if (ownGroup != null)
+    {
+        await links.EnsureLoadedAsync(request.HttpContext.RequestAborted);
+        return links.WebLink(submission.SlackChannelId, submission.SlackMessageId) is { } slack
+            ? Results.Redirect(slack)
+            : Results.NotFound();
     }
 
     var stream = await fileStorage.OpenReadStreamAsync(submission.StoragePath);
@@ -306,6 +321,32 @@ api.MapGet("/files/{id:guid}", async (
     var http = request.HttpContext;
     http.Response.Headers.ContentSecurityPolicy = "sandbox; default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'";
     return Results.File(stream, SafeContentType.For(submission.FileName), submission.FileName, enableRangeProcessing: true);
+}).RequireAuthorization().WithMetadata(new GroupAccessAttribute());
+
+// Pictures of the assignments: the jury gets all of them, a group only those of the assignments open to it.
+// A locked one looks the same as one that does not exist.
+api.MapGet("/assignment-images/{id:guid}", async (
+    HttpRequest request,
+    Guid id,
+    IAssignmentImageRepository images,
+    AssignmentUnlockService unlocks,
+    IFileStorageService fileStorage) =>
+{
+    var image = await images.GetAsync(id);
+    if (image == null) return Results.NotFound();
+    if (KeyAuth.GroupId(request.HttpContext.User) is { } ownGroup)
+    {
+        var state = await unlocks.ForGroupAsync(ownGroup);
+        if (state == null || !state.IsOpen(image.AssignmentCode)) return Results.NotFound();
+    }
+
+    var contentType = AssignmentEditService.ContentTypeOf(image.StoragePath);
+    var stream = contentType == null ? null : await fileStorage.OpenReadStreamAsync(image.StoragePath);
+    if (stream == null) return Results.NotFound();
+
+    request.HttpContext.Response.Headers.ContentSecurityPolicy = "sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'";
+    request.HttpContext.Response.Headers.CacheControl = "private, max-age=300";
+    return Results.File(stream, contentType!);
 }).RequireAuthorization().WithMetadata(new GroupAccessAttribute());
 
 api.MapExportEndpoints();

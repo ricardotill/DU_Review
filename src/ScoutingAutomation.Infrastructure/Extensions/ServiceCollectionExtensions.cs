@@ -6,6 +6,7 @@ using ScoutingAutomation.Domain.Interfaces;
 using ScoutingAutomation.Infrastructure.Repositories;
 using ScoutingAutomation.Infrastructure.Access;
 using ScoutingAutomation.Infrastructure.Adventurers;
+using ScoutingAutomation.Infrastructure.Assignments;
 using ScoutingAutomation.Infrastructure.Announcements;
 using ScoutingAutomation.Infrastructure.Data;
 using ScoutingAutomation.Infrastructure.Settings;
@@ -33,6 +34,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISubmissionRepository, SubmissionRepository>();
         services.AddScoped<IGroupRepository, GroupRepository>();
         services.AddScoped<IAssignmentRepository, AssignmentRepository>();
+        services.AddScoped<IAssignmentImageRepository, AssignmentImageRepository>();
+        services.AddScoped<AssignmentEditService>();
         services.AddScoped<IFailedSlackEventRepository, FailedSlackEventRepository>();
         services.AddScoped<SlackEventRetryService>();
         services.AddSingleton<SlackRetryLock>();
@@ -62,6 +65,7 @@ public static class ServiceCollectionExtensions
         // Avonturiers: check-ins, theme rounds, broadcasts and the maps
         services.AddScoped<ILocationRepository, LocationRepository>();
         services.AddScoped<LocationService>();
+        services.AddScoped<AssignmentUnlockService>();
         services.AddScoped<AdventurersScoreService>();
         services.AddSingleton<UnlockNotifier>();
         services.AddHostedService(sp => sp.GetRequiredService<UnlockNotifier>());

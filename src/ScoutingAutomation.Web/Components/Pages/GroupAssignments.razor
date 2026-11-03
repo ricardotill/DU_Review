@@ -1,0 +1,287 @@
+@page "/mijn-opdrachten"
+@rendermode InteractiveServer
+@inherits LiveComponentBase
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@inject GroupNotificationPreferences NotificationPreferences
+@inject RuntimeSettingsService Runtime
+@inject TimeProvider Time
+@attribute [GroupAccess]
+
+<PageTitle>Opdrachten - DU Review</PageTitle>
+
+@* Every assignment a group can do now, with its pictures. A group only ever loads its own data; locked assignments
+   show only how many there are, never their text or pictures. The jury picks a group to see what it sees. *@
+<PageHeader Title="@(ownGroup != null ? "Onze opdrachten" : "Opdrachten van een groep")" Subtitle="@Subtitle">
+    <Actions>
+        @* A shortcut to the bell menu's last switch, while it is still off and the browser can still be asked *@
+        @if (ownGroup != null && NotificationPreferences.IsLoaded && !NotificationPreferences.SystemEnabled && notifyPermission is "default" or "granted")
+        {
+            <button type="button" class="btn btn-scout-secondary btn-sm enable-notifications" @onclick="EnableNotificationsAsync"
+                    title="Krijg een melding als er nieuwe opdrachten open gaan, ook als dit tabblad op de achtergrond staat">
+                <i class="bi bi-bell me-1"></i> Meldingen aanzetten
+            </button>
+        }
+    </Actions>
+</PageHeader>
+
+@if (!loaded)
+{
+    <div class="empty-state">
+        <div class="spinner-border text-success" role="status"></div>
+    </div>
+}
+else
+{
+    @if (isStaff)
+    {
+        <div class="mb-3" style="max-width: 20rem">
+            <select class="form-select form-select-dark group-picker" aria-label="Groep" value="@GroupFromQuery" @onchange="PickGroup">
+                <option value="">Kies een groep…</option>
+                @foreach (var group in groups)
+                {
+                    <option value="@group.Id">@group.Name</option>
+                }
+            </select>
+        </div>
+    }
+
+    @if (ownGroup != null && start?.Upcoming is { } startsAt)
+    {
+        @* Before the game a group sees nothing of the assignments yet *@
+        <div class="glass-panel empty-state not-started">
+            <i class="bi bi-hourglass-split"></i>
+            De opdrachten verschijnen hier zodra het spel begint, om @startsAt.ToGameTime().ToString("HH:mm").
+        </div>
+    }
+    else if (state == null)
+    {
+        @if (isStaff)
+        {
+            <div class="glass-panel empty-state">Kies een groep om te zien welke opdrachten die kan doen.</div>
+        }
+    }
+    else
+    {
+        @if (start?.Upcoming is { } groupsFrom)
+        {
+            <div class="text-secondary small mb-3 hidden-until-start">
+                <i class="bi bi-eye-slash me-1"></i>Groepen zien de opdrachten pas vanaf de start van het spel, om @groupsFrom.ToGameTime().ToString("HH:mm").
+            </div>
+        }
+        <div class="glass-panel p-4 mb-4 unlock-summary">
+            <div class="d-flex flex-wrap gap-4 align-items-center">
+                <div>
+                    <div class="display-6 fw-bold text-white open-count">@state.OpenCount <span class="fs-5 text-secondary">van @state.Total</span></div>
+                    <div class="text-secondary small">opdrachten open</div>
+                </div>
+                @if (adventurersEnabled && state.OpenCount < state.Total)
+                {
+                    <div class="text-secondary small">
+                        <div><i class="bi bi-geo-alt-fill text-success me-1"></i> @state.CountedLocations.Count @(state.CountedLocations.Count == 1 ? "locatie" : "locaties") van de Avonturiers goedgekeurd</div>
+                        @if (state.WaitingLocations.Count > 0)
+                        {
+                            <div class="waiting-locations"><i class="bi bi-hourglass-split me-1"></i> @state.WaitingLocations.Count @(state.WaitingLocations.Count == 1 ? "locatie telt" : "locaties tellen") mee na het einde van de ronde@(state.NextReleaseAt is { } release ? $" om {release.ToGameTime():HH:mm}" : "")</div>
+                        }
+                        @if (state.NextLocationOpens > 0)
+                        {
+                            <div><i class="bi bi-unlock me-1"></i> De volgende goedgekeurde locatie opent er nog @state.NextLocationOpens</div>
+                        }
+                        @if (state.NextSuperLocationOpens > 0)
+                        {
+                            <div class="next-super"><i class="bi bi-star-fill text-warning me-1"></i> Een supercoördinaat opent er @state.NextSuperLocationOpens</div>
+                        }
+                        <div><i class="bi bi-lock me-1"></i> @(state.Total - state.OpenCount) nog op slot</div>
+                    </div>
+                }
+            </div>
+            <div class="progress mt-3" style="height: 0.5rem" role="progressbar" aria-label="Opdrachten open" aria-valuenow="@state.OpenCount" aria-valuemin="0" aria-valuemax="@state.Total">
+                <div class="progress-bar bg-success" style="width: @Percent(state.OpenCount, state.Total)%"></div>
+            </div>
+        </div>
+
+        <div class="d-flex flex-wrap gap-3 align-items-center mb-3">
+            <div class="form-check form-switch mb-0">
+                <input class="form-check-input todo-only" type="checkbox" role="switch" id="todoOnly" checked="@todoOnly" @onchange="e => todoOnly = e.Value is true" />
+                <label class="form-check-label text-white-50" for="todoOnly">Alleen nog te doen</label>
+            </div>
+            <input type="search" class="form-control form-control-dark form-control-sm" style="max-width: 16rem" placeholder="Zoek op nummer of tekst"
+                   aria-label="Zoeken" @bind="search" @bind:event="oninput" />
+        </div>
+
+        var shown = Shown().ToList();
+        @if (shown.Count == 0)
+        {
+            <div class="glass-panel empty-state">@(todoOnly ? "Alle open opdrachten zijn gedaan of wachten op de jury." : "Geen opdrachten gevonden.")</div>
+        }
+        <div class="row g-3">
+            @foreach (var assignment in shown)
+            {
+                var status = StatusOf(assignment.Code);
+                <div class="col-lg-6">
+                    <div class="glass-panel p-3 h-100 open-assignment @(newCodes.Contains(assignment.Code) ? "just-opened" : "")" data-code="@assignment.Code">
+                        <div class="d-flex justify-content-between align-items-start gap-2 mb-1">
+                            <h2 class="h6 fw-bold text-white mb-0">
+                                <span class="badge bg-secondary font-monospace me-1">@assignment.Code</span>
+                                @(assignment.Title ?? $"Opdracht {assignment.Code}")
+                                @if (newCodes.Contains(assignment.Code))
+                                {
+                                    <span class="badge bg-success ms-1">nieuw</span>
+                                }
+                            </h2>
+                            <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                                @if (status is { } s)
+                                {
+                                    <StatusBadge Status="s" />
+                                }
+                                <span class="text-secondary small text-nowrap" title="Goedgekeurd / awesome">@assignment.StandardPoints / @assignment.AwesomePoints pnt</span>
+                            </div>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(assignment.Description))
+                        {
+                            <p class="text-white-50 small mb-2 assignment-description">@assignment.Description</p>
+                        }
+                        <AssignmentImages Images="@(images.GetValueOrDefault(assignment.Code) ?? Array.Empty<AssignmentImage>())" />
+                    </div>
+                </div>
+            }
+        </div>
+    }
+}
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    /// <summary>For the jury: the group to show.</summary>
+    [SupplyParameterFromQuery(Name = "group")]
+    public Guid? GroupFromQuery { get; set; }
+
+    private bool loaded;
+    private Guid? ownGroup;
+    private bool isStaff;
+    private bool adventurersEnabled;
+    private bool todoOnly;
+    private string? search;
+    private string? notifyPermission;
+    private IReadOnlyList<Group> groups = Array.Empty<Group>();
+    private UnlockState? state;
+    private IReadOnlyList<Assignment> open = Array.Empty<Assignment>();
+    private IReadOnlyDictionary<string, IReadOnlyList<AssignmentImage>> images = new Dictionary<string, IReadOnlyList<AssignmentImage>>();
+    private Dictionary<string, SubmissionStatus> statuses = new();
+    private HashSet<string> newCodes = new();
+    private int? lastOpenCount;
+    private StartClock? start;
+
+    private string Subtitle => state == null
+        ? "Alle opdrachten die een groep nu kan doen."
+        : "Alle opdrachten die jullie nu kunnen doen. Jullie Avonturiers spelen er meer vrij met elke goedgekeurde locatie.";
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        start = new StartClock(Runtime, Time, () => Runtime.EventStart, () => InvokeAsync(StateHasChanged));
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var user = AuthState == null ? null : (await AuthState).User;
+        ownGroup = user == null ? null : KeyAuth.GroupId(user);
+        isStaff = await StaffActions.IsStaffAsync(AuthState);
+        await ReloadAsync();
+        loaded = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || ownGroup == null) return;
+
+        try
+        {
+            await NotificationPreferences.EnsureLoadedAsync();
+            notifyPermission = await NotificationPreferences.SystemPermissionAsync();
+            StateHasChanged();
+        }
+        catch (JSDisconnectedException)
+        {
+            // Tab closed during start-up
+        }
+    }
+
+    protected override async Task LoadAsync(IServiceProvider services)
+    {
+        adventurersEnabled = services.GetRequiredService<RuntimeSettingsService>().AdventurersEnabled;
+        // A group sees only itself, whatever the address says
+        var groupId = ownGroup ?? (isStaff ? GroupFromQuery : null);
+        if (isStaff) groups = await services.GetRequiredService<IGroupRepository>().GetAllAsync();
+        if (groupId is not { } id)
+        {
+            state = null;
+            return;
+        }
+
+        state = await services.GetRequiredService<AssignmentUnlockService>().ForGroupAsync(id);
+        if (state == null) return;
+
+        // Mark what opened since this page was last loaded, so a group sees at a glance what is new
+        if (lastOpenCount is { } before && state.OpenCount > before)
+        {
+            newCodes.UnionWith(AssignmentUnlocks.NewlyOpened(before, state.OpenCount, state.OpenCodes));
+        }
+
+        lastOpenCount = state.OpenCount;
+
+        var all = await services.GetRequiredService<IAssignmentRepository>().GetAllAsync();
+        open = all.Where(a => state.IsOpen(a.Code)).ToList();
+        var openCodes = open.Select(a => a.Code).ToHashSet();
+        images = (await services.GetRequiredService<IAssignmentImageRepository>().GetAllAsync())
+            .Where(kv => openCodes.Contains(kv.Key))
+            .ToDictionary(kv => kv.Key, kv => kv.Value);
+        statuses = (await services.GetRequiredService<ISubmissionRepository>()
+                .SearchSubmissionsAsync(new SubmissionFilter { GroupId = id, Kind = SubmissionKind.Assignment }))
+            .Where(s => s.AssignmentCode != null)
+            .GroupBy(s => s.AssignmentCode!)
+            .ToDictionary(g => g.Key, g => g.Select(s => s.Status).Best());
+    }
+
+    /// <summary>The open assignments to show, newest opened first when something just opened.</summary>
+    private IEnumerable<Assignment> Shown()
+    {
+        var query = search?.Trim();
+        return open
+            .Where(a => !todoOnly || StatusOf(a.Code) is not (SubmissionStatus.Approved or SubmissionStatus.Awesome or SubmissionStatus.Pending or SubmissionStatus.Received))
+            .Where(a => string.IsNullOrEmpty(query)
+                || a.Code.Equals(AssignmentCode.Normalize(query) ?? query, StringComparison.OrdinalIgnoreCase)
+                || (a.Title?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (a.Description?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false))
+            .OrderByDescending(a => newCodes.Contains(a.Code))
+            .ThenBy(a => a.Code, AssignmentCode.Comparer);
+    }
+
+    /// <summary>The group's best status for the assignment; null when it sent nothing in (not 0, which is "Ontvangen").</summary>
+    private SubmissionStatus? StatusOf(string code) => statuses.TryGetValue(code, out var status) ? status : null;
+
+    private void PickGroup(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString();
+        Navigation.NavigateTo(Guid.TryParse(value, out var id) ? $"mijn-opdrachten?group={id}" : "mijn-opdrachten");
+    }
+
+    private async Task EnableNotificationsAsync()
+    {
+        try
+        {
+            notifyPermission = await NotificationPreferences.SetSystemEnabledAsync(true);
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+    }
+
+    private static string Percent(int part, int total) =>
+        total <= 0 ? "100" : (100.0 * part / total).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) start?.Dispose();
+    }
+}

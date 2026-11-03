@@ -45,13 +45,13 @@ Een emoji van een jurylid op het bericht bepaalt de status van alle inzendingen 
 
 ## Catch-up
 
-De catch-up leest de kanalen van vandaag (vanaf middernacht) opnieuw en vult aan wat de app gemist heeft. Hij verwijdert niets en laat overrides staan.
+De catch-up leest de kanalen van vandaag (vanaf middernacht, of vanaf de vroegste starttijd van het spel of de Avonturiers) opnieuw en vult aan wat de app gemist heeft. In een Avonturiers-kanaal gelden de start en het einde van de Avonturiers. Hij verwijdert niets en laat overrides staan.
 
 - **Wanneer**: bij het starten van de app, en in Socket Mode bij elke herverbinding. Een admin kan hem ook zelf starten met **Catch-up nu draaien** op `/events`.
 - **Herstelt**: gemiste inzendingen en emoji die niet bij de status passen.
 - **Herstelt niet**: verwijderde berichten. Daarvoor zet je het mislukte event opnieuw in gang, of herbouw je de groep.
 - **Al goedgekeurd** (🔒): de catch-up weigert alleen een bericht dat nog niet in de app staat én na de eerste goedgekeurde inzending van die opdracht is geplaatst. Berichten die al als inzending in de app staan, krijgen geen 🔒 en geen reactie van de bot.
-- **Avonturiers**: de catch-up leest het Avonturiers-kanaal van een groep vóór het Toeristen-kanaal, zodat de vrijgespeelde opdrachten kloppen voordat de Toeristen-inzendingen worden gecontroleerd. In de melding staat zo'n kanaal als "{groep} (Avonturiers)".
+- **Avonturiers**: de catch-up leest het Avonturiers-kanaal van een groep vóór het Toeristen-kanaal, zodat de vrijgespeelde opdrachten kloppen voordat de Toeristen-inzendingen worden gecontroleerd. Een gemist Toeristen-bericht voor een opdracht die dan nog op slot zit, krijgt net als live een 🔒 en wordt niet opgeslagen. In de melding staat zo'n kanaal als "{groep} (Avonturiers)".
 - Het resultaat verschijnt als melding in de eventlog op `/events`.
 - In handmatige modus draait de catch-up niet.
 
@@ -85,7 +85,7 @@ Begin bij de lichtste stap en ga pas verder als die niet helpt. Alleen de laatst
 
 Bij catch-up en rebuild plaatst de bot geen berichten opnieuw. Dat geldt ook voor de Avonturiers:
 
-- **Vrijgespeelde opdrachten**: het aantal wordt uit de beoordelingen uitgerekend. Na een rebuild klopt het vanzelf, en de bot meldt het niet opnieuw in het Toeristen-kanaal.
+- **Vrijgespeelde opdrachten**: het aantal wordt uit de beoordelingen en de open locaties per groep uitgerekend. Na een rebuild klopt het vanzelf, en de bot meldt het niet opnieuw in het Toeristen-kanaal. De open locaties per groep, de aangepaste opdrachten en hun afbeeldingen komen niet uit Slack en blijven bij een rebuild staan. Een rebuild slaat alleen berichten over waar de bot zelf 🔒 op zette; dezelfde emoji van een groep of jurylid telt niet.
 - **Rondeberichten, startinformatie en eindlocatie**: welke al geplaatst zijn, staat in `runtime-settings.json`. Een rebuild verandert dat niet, dus elk kanaal krijgt elk bericht maar één keer. Opnieuw sturen kan met de hand op **Avonturiers → Rondes**.
 - **Rondepunten**: worden uitgerekend uit de tijd van het Slack-bericht, dus een rebuild geeft dezelfde uitslag.
 

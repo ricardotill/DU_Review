@@ -19,11 +19,11 @@ public static class SubmissionKindExtensions
     public static string KindLabel(this SubmissionKind kind) => kind switch
     {
         SubmissionKind.CheckIn => "Check-in",
-        SubmissionKind.Theme => "Thema",
+        SubmissionKind.Theme => "Half-uur opdracht",
         _ => "Toeristen"
     };
 
-    /// <summary>How the number is written: "12" for an assignment, "L7" for a location, "T3" for a theme.</summary>
+    /// <summary>How the number is written: "12" for an assignment, "L7" for a location, "T3" for a half-hour assignment (theme).</summary>
     public static string Label(this SubmissionKind kind, string? code) => code == null ? "?" : kind switch
     {
         SubmissionKind.CheckIn => $"L{code}",

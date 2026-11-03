@@ -1,0 +1,299 @@
+@page "/onze-kaart"
+@rendermode InteractiveServer
+@inherits LiveComponentBase
+@inject NavigationManager Navigation
+@inject TimeProvider Time
+@inject SlackLinks Links
+@inject RuntimeSettingsService Runtime
+@attribute [GroupAccess]
+
+<PageTitle>Kaart - DU Review</PageTitle>
+
+@* The Avonturiers of one group: the theme round that runs now, the map with the locations open to the group, and
+   which of them are approved, waiting, rejected or still to visit. A group only ever loads its own data; locations
+   that are not open yet stay off the map. The jury picks a group to see what it sees. *@
+<PageHeader Title="@(ownGroup != null ? "Onze kaart" : "Kaart van een groep")" Subtitle="De locaties die open zijn en de half-uur opdracht van nu." />
+
+@if (!loaded)
+{
+    <div class="empty-state">
+        <div class="spinner-border text-success" role="status"></div>
+    </div>
+}
+else if (!adventurersEnabled)
+{
+    <div class="glass-panel empty-state">Het Avonturiers-deel staat uit.</div>
+}
+else
+{
+    @if (isStaff)
+    {
+        <div class="mb-3" style="max-width: 20rem">
+            <select class="form-select form-select-dark group-picker" aria-label="Groep" value="@GroupFromQuery" @onchange="PickGroup">
+                <option value="">Kies een groep…</option>
+                @foreach (var group in groups)
+                {
+                    <option value="@group.Id">@group.Name</option>
+                }
+            </select>
+        </div>
+    }
+
+    @if (ownGroup != null && start?.Upcoming is { } startsAt)
+    {
+        @* Before the Avonturiers start a group sees no locations yet *@
+        <div class="glass-panel empty-state not-started">
+            <i class="bi bi-map"></i>
+            De kaart verschijnt hier zodra de Avonturiers beginnen, om @startsAt.ToGameTime().ToString("HH:mm").
+        </div>
+    }
+    else if (groupId == null)
+    {
+        @if (isStaff)
+        {
+            <div class="glass-panel empty-state">Kies een groep om te zien wat die op haar kaart ziet.</div>
+        }
+    }
+    else
+    {
+        @if (start?.Upcoming is { } groupsFrom)
+        {
+            <div class="text-secondary small mb-3 hidden-until-start">
+                <i class="bi bi-eye-slash me-1"></i>Groepen zien hun kaart pas vanaf de start van de Avonturiers, om @groupsFrom.ToGameTime().ToString("HH:mm").
+            </div>
+        }
+        <div class="glass-panel p-4 mb-4 current-round">
+            <h2 class="panel-title"><i class="bi bi-camera-fill text-info"></i> Half-uur opdracht</h2>
+            @if (running is { } round)
+            {
+                <div class="d-flex flex-wrap align-items-baseline gap-3">
+                    <div class="h4 fw-bold text-white mb-0 round-themes">Ronde @round.Number: @round.ThemesLabel</div>
+                    <span class="text-secondary">@round.Start.ToGameTime().ToString("HH:mm")–@round.End.ToGameTime().ToString("HH:mm") · nog @MinutesLeft(round) min</span>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(round.Message))
+                {
+                    <p class="text-white-50 mt-2 mb-0 round-message" style="white-space: pre-line">@round.Message</p>
+                }
+                <p class="text-secondary small mt-2 mb-2">Plaats je foto in het Avonturiers-kanaal met het nummer, bijvoorbeeld "Opdracht @round.Themes[0]".</p>
+                <div class="d-flex flex-wrap gap-2">
+                    @foreach (var theme in round.Themes)
+                    {
+                        <span class="d-inline-flex align-items-center gap-2 theme-status" data-theme="@theme">
+                            <span class="badge bg-secondary font-monospace">T@(theme)</span>
+                            @if (themeStatuses.TryGetValue(theme, out var status))
+                            {
+                                <StatusBadge Status="status" />
+                            }
+                            else
+                            {
+                                <span class="text-secondary small">nog niet ingestuurd</span>
+                            }
+                        </span>
+                    }
+                </div>
+            }
+            else if (next is { } upcoming)
+            {
+                <p class="text-white mb-0 next-round">Er loopt nu geen ronde. Ronde @upcoming.Number begint om @upcoming.Start.ToGameTime().ToString("HH:mm").</p>
+            }
+            else
+            {
+                <p class="text-secondary mb-0 no-round">Er loopt nu geen ronde, en er komt er ook geen meer.</p>
+            }
+        </div>
+
+        <div class="row g-4">
+            <div class="col-lg-8">
+                <div class="glass-panel p-2">
+                    <MapView Markers="markers" FitKey="fitKey" Height="60vh" />
+                </div>
+                <div class="d-flex flex-wrap gap-3 small text-secondary mt-2">
+                    @foreach (var status in Enum.GetValues<LocationStatus>())
+                    {
+                        <span><span class="du-map-dot me-1" style="background: @status.Color()"></span>@status.Label()</span>
+                    }
+                </div>
+            </div>
+            <div class="col-lg-4 d-flex flex-column gap-3">
+                <LocationList Title="Goedgekeurd" Icon="bi-check-circle-fill text-success" Class="approved-locations" Items="ByStatus(LocationStatus.Approved)" Empty="Nog geen goedgekeurde locaties." />
+                <LocationList Title="Wacht op de jury" Icon="bi-hourglass-split text-warning" Class="waiting-locations" Items="ByStatus(LocationStatus.Waiting)" Empty="Niets dat wacht." />
+                <LocationList Title="Afgekeurd: probeer opnieuw" Icon="bi-x-circle-fill text-danger" Class="rejected-locations" Items="ByStatus(LocationStatus.Rejected)" Empty="Geen afgekeurde locaties." />
+                <LocationList Title="Open, nog niet bezocht" Icon="bi-geo-alt text-secondary" Class="open-locations" Items="ByStatus(LocationStatus.Open)" Empty="Alle open locaties zijn bezocht." />
+                @if (notOpenYet.Count > 0)
+                {
+                    <div class="glass-panel p-3 closed-checkins">
+                        <div class="fw-semibold text-white small mb-1"><i class="bi bi-cone-striped text-warning me-1"></i> Nog niet open</div>
+                        <p class="text-secondary small mb-0">
+                            Check-ins op @(notOpenYet.Count == 1 ? "locatie" : "locaties") @string.Join(", ", notOpenYet): bewaard, en ze tellen zodra de organisatie
+                            @(notOpenYet.Count == 1 ? "deze locatie" : "deze locaties") voor jullie opent.
+                        </p>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+}
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    /// <summary>For the jury: the group to show.</summary>
+    [SupplyParameterFromQuery(Name = "group")]
+    public Guid? GroupFromQuery { get; set; }
+
+    /// <summary>A round opens or closes by the clock, not by a change: look again this often.</summary>
+    private static readonly TimeSpan ClockInterval = TimeSpan.FromSeconds(30);
+
+    private bool loaded;
+    private bool adventurersEnabled;
+    private Guid? ownGroup;
+    private Guid? groupId;
+    private Guid? fittedGroup;
+    private bool isStaff;
+    private int fitKey;
+    private IReadOnlyList<Group> groups = Array.Empty<Group>();
+    private IReadOnlyList<(Location Location, LocationState State)> open = Array.Empty<(Location, LocationState)>();
+    private IReadOnlyList<MapMarker> markers = Array.Empty<MapMarker>();
+    private List<string> notOpenYet = new();
+    private ThemeRound? running;
+    private ThemeRound? next;
+    private Dictionary<string, SubmissionStatus> themeStatuses = new();
+    private ITimer? clock;
+    private StartClock? start;
+    private bool disposed;
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        start = new StartClock(Runtime, Time, () => Runtime.AdventurersStartAt, () => InvokeAsync(StateHasChanged));
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var user = AuthState == null ? null : (await AuthState).User;
+        ownGroup = user == null ? null : KeyAuth.GroupId(user);
+        isStaff = await StaffActions.IsStaffAsync(AuthState);
+        await ReloadAsync();
+        loaded = true;
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        // Only once interactive: a prerendered copy must not start a clock
+        if (firstRender && !disposed) clock ??= Time.CreateTimer(_ => _ = TickAsync(), null, ClockInterval, ClockInterval);
+    }
+
+    private async Task TickAsync()
+    {
+        if (disposed) return;
+
+        try
+        {
+            await InvokeAsync(async () =>
+            {
+                if (disposed) return;
+                await ReloadAsync();
+                StateHasChanged();
+            });
+        }
+        catch (Exception ex) when (disposed || ex is ObjectDisposedException or JSDisconnectedException or InvalidOperationException)
+        {
+            // The page closed while the clock ticked; the next live change or tick tries again
+        }
+    }
+
+    protected override async Task LoadAsync(IServiceProvider services)
+    {
+        var runtime = services.GetRequiredService<RuntimeSettingsService>();
+        adventurersEnabled = runtime.AdventurersEnabled;
+        if (isStaff) groups = await services.GetRequiredService<IGroupRepository>().GetAllAsync();
+
+        // A group sees only itself, whatever the address says
+        groupId = ownGroup ?? (isStaff ? GroupFromQuery : null);
+        var group = groupId is { } id ? await services.GetRequiredService<IGroupRepository>().GetByIdAsync(id) : null;
+        if (group == null || !adventurersEnabled)
+        {
+            groupId = null;
+            return;
+        }
+
+        var openUpTo = services.GetRequiredService<AssignmentUnlockService>().OpenLocationsOf(group);
+        var submissions = services.GetRequiredService<ISubmissionRepository>();
+        var checkIns = await submissions.SearchSubmissionsAsync(new SubmissionFilter { GroupId = group.Id, Kind = SubmissionKind.CheckIn });
+        var locations = await services.GetRequiredService<ILocationRepository>().GetAllAsync();
+
+        open = locations
+            .Where(l => l.Number <= openUpTo)
+            .Select(l => (l, AdventurersMap.StateOf(checkIns, group.Id, l.Number)))
+            .ToList();
+        await Links.EnsureLoadedAsync();
+        var super = Runtime.SuperLocations;
+        markers = open
+            .Select(o => MapMarker.For(o.Location, o.State.Status.Color(), new[] { MapMarker.StatusLine(o.State) }, PhotoOf(o.State), super.Contains(o.Location.Number)))
+            .ToList();
+        var known = locations.Select(l => l.Number).ToHashSet();
+        notOpenYet = checkIns
+            .Select(s => int.TryParse(s.AssignmentCode, out var n) ? n : 0)
+            .Where(n => n > openUpTo && known.Contains(n))
+            .Distinct()
+            .Order()
+            .Select(n => n.ToString())
+            .ToList();
+
+        // Fit the map to the markers once per group, not on every live reload
+        if (fittedGroup != group.Id)
+        {
+            fittedGroup = group.Id;
+            fitKey++;
+        }
+
+        var now = Time.GetUtcNow();
+        var rounds = runtime.ThemeRounds;
+        running = AdventurersScoring.RoundAt(rounds, now);
+        next = rounds.Where(r => r.Start > now).OrderBy(r => r.Start).FirstOrDefault();
+        themeStatuses = running == null
+            ? new Dictionary<string, SubmissionStatus>()
+            : (await submissions.SearchSubmissionsAsync(new SubmissionFilter { GroupId = group.Id, Kind = SubmissionKind.Theme }))
+                .Where(s => AdventurersScoring.CountingRound(s, rounds) == running)
+                .GroupBy(s => s.AssignmentCode!)
+                .ToDictionary(g => g.Key, g => g.Select(s => s.Kind.Effective(s.Status)).Best());
+    }
+
+    /// <summary>
+    /// The check-in in the popup. The jury sees the photo; a group gets a link to it in Slack, because loading files
+    /// from the app would use the location's bandwidth.
+    /// </summary>
+    private IReadOnlyList<MapPhoto>? PhotoOf(LocationState state)
+    {
+        if (state.Submission is not { } s) return null;
+        if (ownGroup == null) return new[] { MapMarker.PhotoOf(s, state.Status.Label()) };
+
+        return Links.WebLink(s.SlackChannelId, s.SlackMessageId) is { } slack
+            // The permalink, not slack://: the popup opens a new tab, and on a phone the permalink opens the Slack app
+            ? new[] { new MapPhoto(slack, "Bekijk in Slack", false, slack) }
+            : null;
+    }
+
+    private IReadOnlyList<LocationList.Item> ByStatus(LocationStatus status) => open
+        .Where(o => o.State.Status == status)
+        .Select(o => new LocationList.Item(o.Location.Number, o.Location.Name, o.Location.Hint, o.State.LastPostAt))
+        .ToList();
+
+    private int MinutesLeft(ThemeRound round) => Math.Max(0, (int)Math.Ceiling((round.End - Time.GetUtcNow()).TotalMinutes));
+
+    private void PickGroup(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString();
+        Navigation.NavigateTo(Guid.TryParse(value, out var id) ? $"onze-kaart?group={id}" : "onze-kaart");
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        disposed = true;
+        if (disposing)
+        {
+            clock?.Dispose();
+            start?.Dispose();
+        }
+    }
+}

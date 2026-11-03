@@ -1,8 +1,11 @@
 @implements IDisposable
 @inject RuntimeSettingsService Runtime
 @inject IOptions<ScoutingSettings> ScoutingOptions
+@inject IServiceScopeFactory ScopeFactory
+@inject ISubmissionChangeNotifier Notifier
+@inject TimeProvider Time
 
-@* The Avonturiers settings: what comes from appsettings, the unlock pool, and the texts of the bot *@
+@* The Avonturiers settings: what comes from appsettings, how assignments open, and the texts of the bot *@
 <div class="glass-panel p-4">
     <h2 class="panel-title"><i class="bi bi-compass-fill text-info"></i> Avonturiers</h2>
     @{
@@ -11,24 +14,55 @@
     <dl class="row small mb-3">
         <dt class="col-sm-4 text-secondary">Aan</dt>
         <dd class="col-sm-8">@(options.Enabled ? "ja" : "nee") <span class="text-muted">(<code>Scouting:Adventurers:Enabled</code>)</span></dd>
-        <dt class="col-sm-4 text-secondary">Maximum</dt>
-        <dd class="col-sm-8">thema's @options.ThemeMaxPoints, eindspel @options.FinalMaxPoints (categorie <code>@options.FinalGameCategoryKey</code>)</dd>
+        <dt class="col-sm-4 text-secondary">Categorie</dt>
+        <dd class="col-sm-8"><code>@options.FinalGameCategoryKey</code> (vast). Het eindspel vul je in op <a href="admin">Beheer</a> onder <strong>Extra punten</strong>.</dd>
         <dt class="col-sm-4 text-secondary">Adres van de app</dt>
         <dd class="col-sm-8">@(string.IsNullOrWhiteSpace(ScoutingOptions.Value.PublicUrl) ? "niet ingesteld: de kaartlinks in Slack ontbreken" : ScoutingOptions.Value.PublicUrl) <span class="text-muted">(<code>Scouting:PublicUrl</code>)</span></dd>
         <dt class="col-sm-4 text-secondary">Kaarttegels</dt>
         <dd class="col-sm-8"><code>@options.MapTileUrl</code> <span class="text-muted">(<code>MapTileUrl</code>, <code>MapAttribution</code>)</span></dd>
     </dl>
 
-    <div class="inset-panel py-2 mb-3">
-        <div class="fw-semibold text-white small mb-1">Vrij te spelen opdrachten</div>
-        <p class="text-secondary small mb-2">
-            Leeg: alleen het aantal telt en de Toeristen kiezen zelf (lijst op papier). Met een lijst noemt de bot de volgende opdracht,
-            en krijgt een inzending voor een opdracht die nog niet vrijgespeeld is een 🔒 en telt niet.
-        </p>
-        <div class="small text-white mb-2 unlock-pool">@(Runtime.UnlockPool.Count == 0 ? "Alleen tellen" : string.Join(", ", Runtime.UnlockPool))</div>
+    <div class="inset-panel py-2 mb-3 max-points">
+        <div class="fw-semibold text-white small mb-1">Maximum aantal punten</div>
+        <div class="small text-white mb-2 max-points-current">Half-uur opdrachten @Runtime.ThemeMaxPoints, eindspel @Runtime.FinalMaxPoints</div>
         <AuthorizeView Roles="@KeyAuth.AdminRole">
-            <form class="d-flex gap-2" @onsubmit="SavePool">
-                <input type="text" class="form-control form-control-dark form-control-sm pool-input" placeholder="bijv. 4, 9, 12, A" @bind="poolDraft" />
+            <form class="d-flex flex-wrap gap-2 align-items-end" @onsubmit="SaveMaxPoints">
+                <div>
+                    <label class="form-label text-secondary small mb-1" for="themeMax">Half-uur opdrachten</label>
+                    <input id="themeMax" type="number" min="0" max="@BonusPointsChange.MaxPoints" class="form-control form-control-dark form-control-sm theme-max-input" style="width: 7rem" @bind="themeMaxDraft" />
+                </div>
+                <div>
+                    <label class="form-label text-secondary small mb-1" for="finalMax">Eindspel</label>
+                    <input id="finalMax" type="number" min="0" max="@BonusPointsChange.MaxPoints" class="form-control form-control-dark form-control-sm final-max-input" style="width: 7rem" @bind="finalMaxDraft" />
+                </div>
+                <button type="submit" class="btn btn-sm btn-scout-secondary text-nowrap save-max-points"><i class="bi bi-check-lg me-1"></i> Opslaan</button>
+            </form>
+        </AuthorizeView>
+        @if (maxError != null)
+        {
+            <div class="text-danger small mt-1">@maxError</div>
+        }
+        <Origin Changed="Runtime.IsMaxPointsChanged" Reset="ResetMaxPoints" Configured="@($"{options.ThemeMaxPoints} en {options.FinalMaxPoints}")" />
+        <p class="text-secondary small mt-2 mb-0">
+            De punten van gesloten rondes en het eindspel tellen tot dit maximum. Wat erboven ligt, blijft bewaard en telt weer mee als je het maximum verhoogt.
+        </p>
+    </div>
+
+    <div class="inset-panel py-2 mb-3">
+        <div class="fw-semibold text-white small mb-1">Opdrachten vrijspelen</div>
+        <p class="text-secondary small mb-2">
+            Opdracht 1 t/m @Runtime.InitialOpenAssignments is altijd open (<code>InitialOpenAssignments</code>). De andere genummerde opdrachten gaan open
+            naar rato van de goedgekeurde check-ins op open locaties: met k van de L locaties zijn de eerste
+            @Runtime.InitialOpenAssignments + (alle − @Runtime.InitialOpenAssignments) × k ÷ L opdrachten open, naar beneden afgerond.
+            Een supercoördinaat telt als twee locaties, in k en in L.
+            Opdrachten met letters zijn altijd open. Een inzending voor een opdracht die nog op slot zit, krijgt een 🔒 en telt niet.
+        </p>
+        <div class="fw-semibold text-white small mb-1">Open locaties bij de start</div>
+        <div class="small text-white mb-2 initial-open">Locatie 1 t/m @Runtime.InitialOpenLocations</div>
+        <AuthorizeView Roles="@KeyAuth.AdminRole">
+            <form class="d-flex gap-2" @onsubmit="SaveInitialOpen">
+                <input type="number" min="0" max="@RuntimeSettingsService.MaxOpenLocations" class="form-control form-control-dark form-control-sm initial-open-input" style="width: 7rem"
+                       aria-label="Open locaties bij de start" @bind="initialOpenDraft" />
                 <button type="submit" class="btn btn-sm btn-scout-secondary text-nowrap"><i class="bi bi-check-lg me-1"></i> Opslaan</button>
             </form>
         </AuthorizeView>
@@ -36,7 +70,54 @@
         {
             <div class="text-danger small mt-1">@error</div>
         }
-        <Origin Changed="Runtime.IsUnlockPoolChanged" Reset="ResetPool" Configured="@(options.UnlockPool.Count == 0 ? "alleen tellen" : string.Join(", ", options.UnlockPool))" />
+        <Origin Changed="Runtime.IsInitialOpenLocationsChanged" Reset="ResetInitialOpen" Configured="@($"t/m {options.InitialOpenLocations}")" />
+        <p class="text-secondary small mt-2 mb-0">Per groep verhoog je het nummer op <a href="admin">Beheer</a>, onder <strong>Open locaties per groep</strong>.</p>
+    </div>
+
+    <div class="inset-panel py-2 mb-3 super-locations">
+        @{
+            var super = Runtime.SuperLocationsSetting;
+            var configuredSuper = options.SuperLocations ?? new SuperLocationsConfig();
+        }
+        <div class="fw-semibold text-white small mb-1">Supercoördinaten</div>
+        <div class="small text-white mb-2 super-current">
+            @(super.Enabled ? (super.Numbers.Count > 0 ? $"Aan: locatie {string.Join(", ", super.Numbers)}" : "Aan, maar zonder locaties") : "Uit")
+        </div>
+        @{
+            var unknown = locationNumbers.Count == 0 ? new List<int>() : super.Numbers.Where(n => !locationNumbers.Contains(n)).ToList();
+        }
+        @if (unknown.Count > 0)
+        {
+            <div class="text-warning small mb-2 super-unknown"><i class="bi bi-exclamation-triangle me-1"></i> Geen locatie: @string.Join(", ", unknown). Deze nummers tellen niet.</div>
+        }
+        @if (Runtime.AdventurersStartAt is { } start && Time.GetUtcNow() >= start)
+        {
+            <div class="text-warning small mb-2 super-running">
+                <i class="bi bi-exclamation-triangle me-1"></i> De Avonturiers zijn begonnen. Een wijziging telt meteen voor alle groepen; gaan er opdrachten dicht, dan plaatst de bot een correctie in de Toeristen-kanalen.
+            </div>
+        }
+        <AuthorizeView Roles="@KeyAuth.AdminRole">
+            <form class="d-flex flex-wrap gap-2 align-items-center" @onsubmit="SaveSuper">
+                <div class="form-check form-switch mb-0">
+                    <input id="superEnabled" type="checkbox" class="form-check-input super-enabled" @bind="superEnabledDraft" />
+                    <label class="form-check-label text-secondary small" for="superEnabled">Aan</label>
+                </div>
+                <input type="text" class="form-control form-control-dark form-control-sm super-numbers" style="width: 16rem" placeholder="10, 20, 30"
+                       aria-label="Locatienummers van de supercoördinaten" @bind="superNumbersDraft" />
+                <button type="button" class="btn btn-sm btn-outline-secondary text-nowrap super-every-ten" @onclick="FillEveryTen">Elke 10e</button>
+                <button type="submit" class="btn btn-sm btn-scout-secondary text-nowrap save-super"><i class="bi bi-check-lg me-1"></i> Opslaan</button>
+            </form>
+        </AuthorizeView>
+        @if (superError != null)
+        {
+            <div class="text-danger small mt-1">@superError</div>
+        }
+        <Origin Changed="Runtime.IsSuperLocationsChanged" Reset="ResetSuper"
+                Configured="@(configuredSuper.Enabled ? $"aan: {string.Join(", ", configuredSuper.Numbers)}" : "uit")" />
+        <p class="text-secondary small mt-2 mb-0">
+            Een goedgekeurde check-in op een supercoördinaat telt dubbel: hij opent twee keer zoveel opdrachten. Alle locaties samen openen nog steeds alle opdrachten.
+            De groepen zien de supercoördinaten met een ster op hun kaart. Een nummer dat geen locatie is, doet niets.
+        </p>
     </div>
 
     <details>
@@ -60,34 +141,131 @@
     {
         (SlackText.UnlockNotice, "Opdracht vrijgespeeld (Toeristen-kanaal)", "{count}, {total}, {assignment}"),
         (SlackText.UnlockCorrection, "Correctie vrijgespeeld (Toeristen-kanaal)", "{count}, {total}"),
-        (SlackText.AdventurersMissingNumber, "Geen locatie- of themanummer", ""),
+        (SlackText.AdventurersMissingNumber, "Geen locatie- of opdrachtnummer", ""),
         (SlackText.UnknownLocation, "Onbekende locatie", "{number}"),
-        (SlackText.UnknownTheme, "Onbekend thema", "{number}"),
-        (SlackText.ThemeOutsideRound, "Thema buiten zijn ronde", "{number}, {round}"),
+        (SlackText.UnknownTheme, "Onbekende half-uur opdracht", "{number}"),
+        (SlackText.ThemeOutsideRound, "Half-uur opdracht buiten zijn ronde", "{number}, {round}"),
         (SlackText.NoRoundOpen, "Geen ronde bezig", "{number}"),
-        (SlackText.LocationNotUnlocked, "Locatie niet vrijgespeeld (voor de jury)", "{number}"),
+        (SlackText.LocationNotUnlocked, "Locatie nog niet open (Avonturiers-kanaal)", "{number}"),
         (SlackText.AssignmentLocked, "Opdracht nog op slot (Toeristen-kanaal)", "{number}")
     };
 
-    private string poolDraft = "";
+    private int initialOpenDraft;
     private string? error;
+    private bool superEnabledDraft;
+    private string superNumbersDraft = "";
+    private string? superError;
+    private IReadOnlySet<int> locationNumbers = new HashSet<int>();
+    private int themeMaxDraft;
+    private int finalMaxDraft;
+    private string? maxError;
 
     protected override void OnInitialized()
     {
-        poolDraft = string.Join(", ", Runtime.UnlockPool);
+        initialOpenDraft = Runtime.InitialOpenLocations;
+        LoadSuperDraft();
+        (themeMaxDraft, finalMaxDraft) = (Runtime.ThemeMaxPoints, Runtime.FinalMaxPoints);
         Runtime.Changed += OnRuntimeChanged;
     }
 
-    private async Task SavePool()
+    protected override async Task OnInitializedAsync()
     {
-        var codes = poolDraft.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        error = await AdminActions.RunAsync(AuthState, () => Runtime.SetUnlockPool(codes));
+        await using var scope = ScopeFactory.CreateAsyncScope();
+        locationNumbers = (await scope.ServiceProvider.GetRequiredService<ILocationRepository>().GetAllAsync()).Select(l => l.Number).ToHashSet();
     }
 
-    private async Task ResetPool()
+    private async Task SaveInitialOpen()
     {
-        error = await AdminActions.RunAsync(AuthState, Runtime.ResetUnlockPool);
-        poolDraft = string.Join(", ", Runtime.UnlockPool);
+        error = await AdminActions.RunTaskAsync(AuthState, async () =>
+        {
+            var problem = Runtime.SetInitialOpenLocations(initialOpenDraft);
+            if (problem == null) await ChangedForAllAsync();
+            return problem;
+        });
+    }
+
+    private async Task ResetInitialOpen()
+    {
+        error = await AdminActions.RunTaskAsync(AuthState, async () =>
+        {
+            Runtime.ResetInitialOpenLocations();
+            await ChangedForAllAsync();
+            return null;
+        });
+        initialOpenDraft = Runtime.InitialOpenLocations;
+    }
+
+    private void LoadSuperDraft()
+    {
+        var super = Runtime.SuperLocationsSetting;
+        (superEnabledDraft, superNumbersDraft) = (super.Enabled, string.Join(", ", super.Numbers));
+    }
+
+    private void FillEveryTen()
+    {
+        if (locationNumbers.Count == 0)
+        {
+            superError = "Er zijn nog geen locaties. Voer eerst de locaties in, of typ de nummers zelf.";
+            return;
+        }
+
+        superError = null;
+        superNumbersDraft = string.Join(", ", Enumerable.Range(1, locationNumbers.Max() / 10).Select(i => i * 10));
+    }
+
+    private async Task SaveSuper()
+    {
+        var numbers = new List<int>();
+        foreach (var part in superNumbersDraft.Split(new[] { ',', ';', ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (!int.TryParse(part, out var number))
+            {
+                superError = $"'{part}' is geen locatienummer.";
+                return;
+            }
+
+            numbers.Add(number);
+        }
+
+        superError = await AdminActions.RunTaskAsync(AuthState, async () =>
+        {
+            var problem = Runtime.SetSuperLocations(superEnabledDraft, numbers);
+            if (problem == null) await ChangedForAllAsync();
+            return problem;
+        });
+        if (superError == null) LoadSuperDraft();
+    }
+
+    private async Task ResetSuper()
+    {
+        superError = await AdminActions.RunTaskAsync(AuthState, async () =>
+        {
+            Runtime.ResetSuperLocations();
+            await ChangedForAllAsync();
+            return null;
+        });
+        LoadSuperDraft();
+    }
+
+    private async Task SaveMaxPoints()
+    {
+        maxError = await AdminActions.RunAsync(AuthState, () => Runtime.SetMaxPoints(themeMaxDraft, finalMaxDraft));
+        // Every score with Avonturiers points changes: the open pages reload
+        if (maxError == null) Notifier.NotifyChanged();
+    }
+
+    private async Task ResetMaxPoints()
+    {
+        maxError = await AdminActions.RunAsync(AuthState, Runtime.ResetMaxPoints);
+        (themeMaxDraft, finalMaxDraft) = (Runtime.ThemeMaxPoints, Runtime.FinalMaxPoints);
+        if (maxError == null) Notifier.NotifyChanged();
+    }
+
+    // Groups without a number of their own may now have more or fewer locations open
+    private async Task ChangedForAllAsync()
+    {
+        await using var scope = ScopeFactory.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<LocationService>().ChangedForAllAsync();
     }
 
     private void OnRuntimeChanged() => InvokeAsync(StateHasChanged);

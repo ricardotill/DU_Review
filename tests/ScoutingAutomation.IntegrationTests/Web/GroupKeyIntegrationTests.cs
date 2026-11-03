@@ -80,8 +80,9 @@ public class GroupKeyIntegrationTests : IClassFixture<WebApplicationFactory<Prog
         (await client.GetAsync($"/submissions/{_ownSubmission.Id}")).StatusCode.Should().Be(HttpStatusCode.OK);
         (await client.GetAsync("/geen-toegang")).StatusCode.Should().Be(HttpStatusCode.OK);
 
+        // A group never downloads from the app; in simulation there is no Slack message to send it to
         var file = await client.GetAsync($"/api/files/{_ownSubmission.Id}");
-        file.StatusCode.Should().Be(HttpStatusCode.OK);
+        file.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     [Fact]

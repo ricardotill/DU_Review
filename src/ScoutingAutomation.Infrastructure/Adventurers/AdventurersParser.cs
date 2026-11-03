@@ -14,7 +14,8 @@ public sealed record AdventurersParseResult(SubmissionKind? Kind, string? Number
 
 /// <summary>
 /// Reads what an Avonturiers message is for: "Locatie 7", "Loc 7", "L7" or a bare "#7" is a check-in;
-/// "Thema 3", "T3", and the wording teams use for assignments ("Opdracht 3", "Opdr 3", "O3") is a theme.
+/// a half-hour assignment (a theme) is "Opdracht 3", "Half-uur opdracht 3", "Halfuuropdracht 3", "Opdr 3", "Thema 3",
+/// "T3" or "O3": in the Avonturiers channel the usual assignment wording means the half-hour assignment.
 /// Spelled-out words win over short forms, which win over "#7"; within a tier the first one in the text counts.
 /// </summary>
 public static partial class AdventurersParser
@@ -25,7 +26,7 @@ public static partial class AdventurersParser
     [GeneratedRegex(@"\b(?:locatie|location|loc)\s*[:#.-]?\s*(\d{1,5})\b", RegexOptions.IgnoreCase)]
     private static partial Regex LocationWord();
 
-    [GeneratedRegex(@"\b(?:thema|theme|opdracht|opdr)\s*[:#.-]?\s*(\d{1,5})\b", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"\b(?:half[\s-]*uur[\s-]*opdracht|thema|theme|opdracht|opdr)\s*[:#.-]?\s*(\d{1,5})\b", RegexOptions.IgnoreCase)]
     private static partial Regex ThemeWord();
 
     [GeneratedRegex(@"\b[lL]\s?(\d{1,5})\b")]

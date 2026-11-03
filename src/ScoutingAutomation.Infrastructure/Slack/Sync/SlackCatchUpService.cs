@@ -176,7 +176,7 @@ public class SlackCatchUpService : BackgroundService, ISlackCatchUpService
                     continue;
                 }
 
-                foreach (var message in messages.Where(m => SlackRebuildService.IsCandidate(m, _runtime, botUserId)))
+                foreach (var message in messages.Where(m => SlackRebuildService.IsCandidate(m, _runtime, botUserId, role == ChannelRole.Avonturiers)))
                 {
                     checkedCount++;
 

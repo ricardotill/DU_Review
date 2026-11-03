@@ -20,10 +20,12 @@ public class ScoutingDbContext : DbContext
     public const string AdventurersChannelIndexName = "IX_Groups_AdventurersSlackChannelId";
     public const string MapTokenIndexName = "IX_Groups_MapToken";
     public const string SubmissionKindIndexName = "IX_Submissions_Kind";
+    public const string AssignmentImageCodeIndexName = "IX_AssignmentImages_AssignmentCode";
     public const int MaxLocationNameLength = 150;
     public const int MaxLocationHintLength = 1000;
     public const int MaxAssignmentTitleLength = 200;
     public const int MaxAssignmentDescriptionLength = 4000;
+    public const int MaxAssignmentImageNameLength = 260;
 
     public DbSet<Group> Groups => Set<Group>();
     public DbSet<Assignment> Assignments => Set<Assignment>();
@@ -33,7 +35,7 @@ public class ScoutingDbContext : DbContext
     public DbSet<BonusPointsEntry> BonusPointsEntries => Set<BonusPointsEntry>();
     public DbSet<GroupBonusPoints> GroupBonusPoints => Set<GroupBonusPoints>();
     public DbSet<Location> Locations => Set<Location>();
-    public DbSet<LocationUnlock> LocationUnlocks => Set<LocationUnlock>();
+    public DbSet<AssignmentImage> AssignmentImages => Set<AssignmentImage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -164,14 +166,15 @@ public class ScoutingDbContext : DbContext
             entity.Property(l => l.Hint).HasMaxLength(MaxLocationHintLength);
         });
 
-        // LocationUnlock
-        modelBuilder.Entity<LocationUnlock>(entity =>
+        // AssignmentImage: by code rather than by row, so a picture survives the assignment being read again from the points file
+        modelBuilder.Entity<AssignmentImage>(entity =>
         {
-            entity.HasKey(u => new { u.GroupId, u.LocationNumber });
-            entity.HasOne(u => u.Group)
-                  .WithMany()
-                  .HasForeignKey(u => u.GroupId)
-                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasKey(i => i.Id);
+            entity.Property(i => i.Id).ValueGeneratedNever();
+            entity.Property(i => i.AssignmentCode).IsRequired().HasMaxLength(AssignmentCode.MaxLength);
+            entity.Property(i => i.FileName).IsRequired().HasMaxLength(MaxAssignmentImageNameLength);
+            entity.Property(i => i.StoragePath).IsRequired().HasMaxLength(500);
+            entity.HasIndex(i => i.AssignmentCode).HasDatabaseName(AssignmentImageCodeIndexName);
         });
 
         // GroupBonusPoints

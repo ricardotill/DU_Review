@@ -170,7 +170,7 @@ public class GroupLoginComponentTests : PageTestBase
 
         var cut = Render<NavMenu>();
 
-        cut.FindAll("a.nav-link").Select(a => a.GetAttribute("href")).Should().Equal("", "submissions");
+        cut.FindAll("a.nav-link").Select(a => a.GetAttribute("href")).Should().Equal("", "mijn-opdrachten", "submissions");
         cut.Markup.Should().Contain("De Wolven");
     }
 
@@ -207,7 +207,8 @@ public class GroupLoginComponentTests : PageTestBase
         var cut = RenderLayout("body");
         AnnounceOwlsUpload();
 
-        cut.FindAll(".toast-stack").Should().BeEmpty();
+        // The group's own (empty) live region for its unlock notices is there, but no toast of another group
+        cut.FindAll(".submission-toast").Should().BeEmpty();
         cut.Markup.Should().NotContain("De Bosuilen");
     }
 

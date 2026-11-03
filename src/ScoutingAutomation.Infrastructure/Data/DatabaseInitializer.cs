@@ -70,7 +70,8 @@ public class DatabaseInitializer
 
     /// <summary>
     /// The Avonturiers part: a kind per submission (0 = Toeristen assignment, so older rows keep their meaning),
-    /// a second channel and a map link per group, and the locations with their unlocks.
+    /// a second channel, a map link and the open locations per group, the locations, and the assignments' pictures and
+    /// whether the jury edited them.
     /// </summary>
     private async Task AddAdventurersSchemaAsync(CancellationToken ct)
     {
@@ -80,6 +81,8 @@ public class DatabaseInitializer
             await AddSqliteColumnAsync("Submissions", "Kind", "INTEGER NOT NULL DEFAULT 0", ct);
             await AddSqliteColumnAsync("Groups", "AdventurersSlackChannelId", "TEXT NULL", ct);
             await AddSqliteColumnAsync("Groups", "MapToken", "TEXT NULL", ct);
+            await AddSqliteColumnAsync("Groups", "OpenLocations", "INTEGER NULL", ct);
+            await AddSqliteColumnAsync("Assignments", "EditedAt", "TEXT NULL", ct);
         }
         else
         {
@@ -89,6 +92,10 @@ public class DatabaseInitializer
                 "ALTER TABLE \"Groups\" ADD COLUMN IF NOT EXISTS \"AdventurersSlackChannelId\" character varying(50) NULL", ct);
             await _context.Database.ExecuteSqlRawAsync(
                 "ALTER TABLE \"Groups\" ADD COLUMN IF NOT EXISTS \"MapToken\" character varying(64) NULL", ct);
+            await _context.Database.ExecuteSqlRawAsync(
+                "ALTER TABLE \"Groups\" ADD COLUMN IF NOT EXISTS \"OpenLocations\" integer NULL", ct);
+            await _context.Database.ExecuteSqlRawAsync(
+                "ALTER TABLE \"Assignments\" ADD COLUMN IF NOT EXISTS \"EditedAt\" timestamp with time zone NULL", ct);
         }
 
         await _context.Database.ExecuteSqlRawAsync(
@@ -119,24 +126,28 @@ public class DatabaseInitializer
               """;
         await _context.Database.ExecuteSqlRawAsync(locations, ct);
 
-        var unlocks = sqlite
+        var images = sqlite
             ? """
-              CREATE TABLE IF NOT EXISTS "LocationUnlocks" (
-                  "GroupId" TEXT NOT NULL,
-                  "LocationNumber" INTEGER NOT NULL,
-                  "UnlockedAt" TEXT NOT NULL,
-                  CONSTRAINT "PK_LocationUnlocks" PRIMARY KEY ("GroupId", "LocationNumber"),
-                  CONSTRAINT "FK_LocationUnlocks_Groups_GroupId" FOREIGN KEY ("GroupId") REFERENCES "Groups" ("Id") ON DELETE CASCADE)
+              CREATE TABLE IF NOT EXISTS "AssignmentImages" (
+                  "Id" TEXT NOT NULL CONSTRAINT "PK_AssignmentImages" PRIMARY KEY,
+                  "AssignmentCode" TEXT NOT NULL,
+                  "FileName" TEXT NOT NULL,
+                  "StoragePath" TEXT NOT NULL,
+                  "SortOrder" INTEGER NOT NULL,
+                  "UploadedAt" TEXT NOT NULL)
               """
-            : """
-              CREATE TABLE IF NOT EXISTS "LocationUnlocks" (
-                  "GroupId" uuid NOT NULL,
-                  "LocationNumber" integer NOT NULL,
-                  "UnlockedAt" timestamp with time zone NOT NULL,
-                  CONSTRAINT "PK_LocationUnlocks" PRIMARY KEY ("GroupId", "LocationNumber"),
-                  CONSTRAINT "FK_LocationUnlocks_Groups_GroupId" FOREIGN KEY ("GroupId") REFERENCES "Groups" ("Id") ON DELETE CASCADE)
+            : $"""
+              CREATE TABLE IF NOT EXISTS "AssignmentImages" (
+                  "Id" uuid NOT NULL CONSTRAINT "PK_AssignmentImages" PRIMARY KEY,
+                  "AssignmentCode" character varying({AssignmentCode.MaxLength}) NOT NULL,
+                  "FileName" character varying({ScoutingDbContext.MaxAssignmentImageNameLength}) NOT NULL,
+                  "StoragePath" character varying(500) NOT NULL,
+                  "SortOrder" integer NOT NULL,
+                  "UploadedAt" timestamp with time zone NOT NULL)
               """;
-        await _context.Database.ExecuteSqlRawAsync(unlocks, ct);
+        await _context.Database.ExecuteSqlRawAsync(images, ct);
+        await _context.Database.ExecuteSqlRawAsync(
+            $"CREATE INDEX IF NOT EXISTS \"{ScoutingDbContext.AssignmentImageCodeIndexName}\" ON \"AssignmentImages\" (\"AssignmentCode\")", ct);
     }
 
     /// <summary>The two fixed categories of the first game, as columns on Groups, and their keys now.</summary>
@@ -371,6 +382,7 @@ public class DatabaseInitializer
         EnsureDistinctFolders(configuredGroups);
         EnsureDistinctChannels(configuredGroups);
         EnsureValidBonusCategories(_options.Value.BonusCategories);
+        EnsureValidAdventurersCategory(_options.Value.Adventurers);
         if (configuredGroups != null && configuredGroups.Count > 0)
         {
             foreach (var cfg in configuredGroups)
@@ -422,10 +434,18 @@ public class DatabaseInitializer
         if (configuredAssignments != null)
         {
             var existingAssignments = await _context.Assignments.ToDictionaryAsync(a => a.Code, ct);
+            var kept = new List<string>();
             foreach (var cfg in configuredAssignments)
             {
                 if (existingAssignments.TryGetValue(cfg.Code, out var existing))
                 {
+                    // Changed by the jury in the app: that wins until someone sets it back to the points file
+                    if (existing.EditedAt != null)
+                    {
+                        kept.Add(existing.Code);
+                        continue;
+                    }
+
                     existing.StandardPoints = cfg.StandardPoints;
                     existing.AwesomePoints = cfg.AwesomePoints;
                     existing.Title = cfg.Title;
@@ -439,6 +459,10 @@ public class DatabaseInitializer
 
             await _context.SaveChangesAsync(ct);
             _logger.LogInformation("Synchronized {Count} assignments from {File}", configuredAssignments.Count, pointsFile);
+            if (kept.Count > 0)
+            {
+                _logger.LogInformation("Kept the values edited in the app for assignments {Numbers}", string.Join(", ", kept.Order(AssignmentCode.Comparer)));
+            }
 
             var codes = configuredAssignments.Select(a => a.Code).ToHashSet();
             var removed = existingAssignments.Keys.Where(c => !codes.Contains(c)).Order(AssignmentCode.Comparer).ToList();
@@ -541,6 +565,18 @@ public class DatabaseInitializer
         if (categories?.GroupBy(c => c.Key).FirstOrDefault(g => g.Count() > 1) is { } twice)
         {
             throw new StartupConfigurationException($"BonusCategories in de instellingen heeft de sleutel '{twice.Key}' twee keer");
+        }
+    }
+
+    /// <summary>With the Avonturiers on, their category is always shown: its key must be one a category can have.</summary>
+    private static void EnsureValidAdventurersCategory(AdventurersSettings? adventurers)
+    {
+        if (adventurers is not { Enabled: true }) return;
+
+        var category = new BonusCategoryConfig { Key = adventurers.FinalGameCategoryKey, Name = "Avonturiers" };
+        if (RuntimeSettingsService.CheckBonusCategory(category) is { } error)
+        {
+            throw new StartupConfigurationException($"Adventurers:FinalGameCategoryKey in de instellingen klopt niet: {error}");
         }
     }
 

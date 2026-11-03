@@ -63,8 +63,15 @@
                                     <td class="text-end text-nowrap">
                                         <button class="btn btn-sm btn-scout-secondary edit-category" title="Naam wijzigen" aria-label="@($"{category.Name} wijzigen")"
                                                 @onclick="() => StartEdit(category)"><i class="bi bi-pencil"></i></button>
-                                        <button class="btn btn-sm btn-outline-danger remove-category" title="Weghalen" aria-label="@($"{category.Name} weghalen")"
-                                                @onclick="() => { removing = key; editing = null; }"><i class="bi bi-trash"></i></button>
+                                        @if (Runtime.IsFixedBonusCategory(key))
+                                        {
+                                            <span class="badge bg-secondary fixed-category" title="Hoort bij de Avonturiers: de half-uur opdrachten en het eindspel. Kan niet weg zolang de Avonturiers aan staan.">vast</span>
+                                        }
+                                        else
+                                        {
+                                            <button class="btn btn-sm btn-outline-danger remove-category" title="Weghalen" aria-label="@($"{category.Name} weghalen")"
+                                                    @onclick="() => { removing = key; editing = null; }"><i class="bi bi-trash"></i></button>
+                                        }
                                     </td>
                                 }
                             </tr>
@@ -159,7 +166,9 @@
 
     private async Task RemoveAsync(string key)
     {
-        error = await AdminActions.RunAsync(AuthState, () => Runtime.RemoveBonusCategory(key) ? null : $"Categorie '{key}' bestaat niet meer.");
+        error = await AdminActions.RunAsync(AuthState, () => Runtime.IsFixedBonusCategory(key)
+            ? "De Avonturiers-categorie kan niet weg zolang de Avonturiers aan staan."
+            : Runtime.RemoveBonusCategory(key) ? null : $"Categorie '{key}' bestaat niet meer.");
         removing = null;
         if (error == null) ChangeNotifier.NotifyChanged();
     }

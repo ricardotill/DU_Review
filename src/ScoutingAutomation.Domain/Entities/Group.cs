@@ -12,6 +12,12 @@ public class Group
 
     /// <summary>Secret part of the link to the group's map page, which opens without a login.</summary>
     public string? MapToken { get; set; }
+
+    /// <summary>
+    /// Avonturiers locations 1 through this number are open for the group, set by the organisation during the game;
+    /// null means the number every group starts with.
+    /// </summary>
+    public int? OpenLocations { get; set; }
     public string? Description { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 

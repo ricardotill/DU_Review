@@ -11,7 +11,7 @@ Jullie sturen opdrachten in via Slack. De jury beoordeelt ze daar, en in de app 
 - Zet de bot een ❓, bewerk dan je bericht en zet het juiste nummer erin.
 - Zet de bot een ⚠️, lees de uitleg in de thread.
 - Met jullie groepssleutel zie je in de app jullie score, de stand en jullie inzendingen.
-- Avonturiers plaatsen hun foto's in hun eigen kanaal, met `Locatie 7` bij een check-in en `Thema 3` bij een themafoto. Zie **Voor de Avonturiers**.
+- Avonturiers plaatsen hun foto's in hun eigen kanaal, met `Locatie 7` bij een check-in en `Opdracht 3` bij een half-uur opdracht. Zie **Voor de Avonturiers**.
 
 ## Een opdracht insturen
 
@@ -65,19 +65,25 @@ Doet jullie groep mee met de Avonturiers, dan hebben jullie een tweede Slack-kan
 1. Maak op de locatie een foto van jullie groep.
 2. Plaats hem in het Avonturiers-kanaal met het locatienummer: `Locatie 7`, `Loc 7`, `L7` of `#7`.
 
-Keurt de jury de check-in goed, dan spelen jullie daarmee een opdracht vrij voor de Toeristen van je groep. De bot meldt dat in het kanaal van de Toeristen: "Jullie Avonturiers hebben opdracht 4 van 12 vrijgespeeld!". Elke locatie telt één keer. Wordt een goedkeuring teruggedraaid, dan meldt de bot ook dat.
+Op jullie kaart staan de locaties die voor jullie **open** zijn. Bij de start zijn dat er een paar; tijdens het spel opent de organisatie er meer voor jullie.
 
-Speelt jullie organisatie met een vaste volgorde van opdrachten, dan noemt de bot de opdracht die erbij komt. Een opdracht uit die lijst insturen voordat hij is vrijgespeeld, telt niet: de bot zet er een 🔒 op in het kanaal van de Toeristen.
+Keurt de jury een check-in op een open locatie goed, dan spelen jullie daarmee opdrachten vrij voor de Toeristen van je groep. De eerste 30 opdrachten zijn altijd open; elke goedgekeurde locatie opent er één of twee bij, in nummervolgorde. Elke locatie telt één keer.
 
-### Een themafoto in een ronde
+Net als vorig jaar zijn er weer **supercoördinaten**: locaties die twee keer zoveel opleveren. Dat zijn de nummers 10, 20, 30 enzovoort. Twijfel je, kijk dan op jullie kaart: een supercoördinaat heeft een gele rand en een ★. Extra leuk bij het plannen van jullie route! Op **Onze opdrachten** zien de Toeristen hoeveel opdrachten de volgende supercoördinaat opent.
 
-De middag is verdeeld in rondes, meestal van een half uur. Bij het begin van elke ronde zet de bot het thema in jullie kanaal.
+De bot meldt nieuwe opdrachten in het kanaal van de Toeristen: "Jullie kunnen nu opdracht 31 en 32 doen." Wordt een goedkeuring teruggedraaid, dan meldt de bot ook dat.
 
-1. Maak een foto of video bij het thema.
-2. Plaats hem in het Avonturiers-kanaal met het themanummer: `Thema 3` of `T3`. `Opdracht 3` mag ook.
+Een check-in op een locatie die nog niet open is voor jullie, krijgt een 🚧. De foto is bewaard, en telt vanzelf zodra de organisatie die locatie voor jullie opent. Je hoeft hem dan niet opnieuw te plaatsen.
+
+### Een half-uur opdracht
+
+De middag is verdeeld in rondes, meestal van een half uur. Bij het begin van elke ronde zet de bot de half-uur opdracht in jullie kanaal. Volgt de ronde direct op de vorige, dan staan de sluiting van de vorige ronde en de nieuwe opdracht in één bericht.
+
+1. Maak een foto of video bij de half-uur opdracht.
+2. Plaats hem in het Avonturiers-kanaal met het nummer: `Opdracht 3`, `Half-uur opdracht 3` of `O3`.
 3. Doe dat vóór het einde van de ronde: het tijdstip waarop je bericht in Slack staat telt, niet wanneer de jury kijkt.
 
-Per ronde telt het aantal verschillende goedgekeurde thema's. De beste groep krijgt 2 punten, de tweede 1. Na de ronde zet de bot de uitslag in jullie kanaal, zodra de jury alles heeft bekeken.
+Per ronde telt het aantal verschillende goedgekeurde half-uur opdrachten. De beste groep krijgt 2 punten, de tweede 1. Na de ronde zet de bot de uitslag in jullie kanaal, zodra de jury alles heeft bekeken.
 
 ### De kaart
 
@@ -96,10 +102,31 @@ Voor de kaart hoef je niet in te loggen. Hij ververst elke halve minuut vanzelf.
 
 | De bot zet | Betekenis | Wat jij doet |
 | --- | --- | --- |
-| ❓ | Geen locatie- of themanummer gevonden, of dat nummer bestaat niet | Plaats je foto opnieuw met het juiste nummer |
-| ⌛ | Dit thema hoort niet bij de ronde die nu loopt, of er loopt geen ronde | Niets: de foto is bewaard maar telt niet. Kijk welk thema nu aan de beurt is |
+| ❓ | Geen locatie- of opdrachtnummer gevonden, of dat nummer bestaat niet | Plaats je foto opnieuw met het juiste nummer |
+| ⌛ | Deze half-uur opdracht hoort niet bij de ronde die nu loopt, of er loopt geen ronde | Niets: de foto is bewaard maar telt niet. Kijk welke half-uur opdracht nu aan de beurt is |
+| 🚧 | Deze locatie is nog niet open voor jullie | Niets: de foto is bewaard en telt zodra de organisatie de locatie opent |
 
-In het kanaal van de Toeristen kan de bot ook een 🔒 zetten met de uitleg dat de opdracht nog niet is vrijgespeeld door jullie Avonturiers. Die inzending telt dan niet; stuur hem opnieuw in als de opdracht is vrijgespeeld.
+Een goedgekeurde check-in speelt opdrachten vrij aan het **einde van de ronde** waarin hij is geplaatst (of van de eerstvolgende ronde, als er op dat moment geen ronde liep). Op **Onze opdrachten** zie je hoeveel locaties nog wachten en hoe laat de ronde eindigt.
+
+In het kanaal van de Toeristen kan de bot ook een 🔒 zetten met de uitleg dat de opdracht nog niet is vrijgespeeld door jullie Avonturiers. Die inzending is niet bewaard en telt niet; stuur hem opnieuw in als de opdracht open is.
+
+### Onze kaart
+
+Log in op de app met de sleutel van je groep en open **Onze kaart**. Bovenaan staat de half-uur opdracht van de ronde die nu loopt: welke opdracht, tot hoe laat, en of jullie er al een foto voor instuurden. Loopt er geen ronde, dan zie je wanneer de volgende begint.
+
+Vóór de start van de Avonturiers staat hier alleen hoe laat de kaart verschijnt; dat geldt ook voor de kaartlink in Slack.
+
+Daaronder staat de kaart met de locaties die voor jullie open zijn, met dezelfde kleuren als de kaartlink in Slack: grijs nog niet bezocht, oranje wacht op de jury, groen goedgekeurd, rood afgekeurd (probeer opnieuw). Ernaast staan dezelfde locaties in lijstjes. De pagina werkt zichzelf bij.
+
+### Welke opdrachten zijn open?
+
+Log in op de app met de sleutel van je groep en open **Onze opdrachten**. Daar staan alle opdrachten die jullie nu kunnen doen, met de beschrijving, de punten, eventuele afbeeldingen en hoe de jury jullie inzending beoordeelde. Met **Alleen nog te doen** zie je wat er nog openstaat. Van de opdrachten op slot zie je alleen hoeveel het er zijn. Vóór de start van het spel zie je nog geen opdrachten, alleen hoe laat ze verschijnen.
+
+Gaan er nieuwe opdrachten open, dan krijg je een melding op de pagina en staan ze bovenaan met **nieuw**. Met het **belletje** rechtsboven kies je zelf:
+
+- **Meldingen tonen**: de melding op de pagina (standaard aan).
+- **Geluid afspelen**: een zacht geluidje (standaard uit). Na het herladen moet je één keer ergens op de pagina klikken voordat de browser geluid toestaat.
+- **Melding van telefoon of computer**: ook een melding als de app op de achtergrond staat (standaard uit). De browser vraagt dan om toestemming. De app moet wel open staan in een tabblad. **Meldingen aanzetten** op **Onze opdrachten** zet deze ook aan.
 
 ## Het dashboard van je groep
 
@@ -118,7 +145,7 @@ Deel de groepssleutel alleen binnen je eigen groep. Na 30 verkeerde sleutels bin
 Met de groepssleutel zie je alleen je eigen groep:
 
 - **Dashboard**: jullie score en plaats, de stand van alle groepen, de punten in de loop van het spel, en per opdracht de beoordeling en de punten.
-- **Onze inzendingen**: al jullie uploads, met de beoordeling. Klik op een upload om het bestand te bekijken.
+- **Onze inzendingen**: al jullie uploads, met de beoordeling. De foto's en video's zelf staan niet in de app, om de verbinding op de locatie te sparen: klik op **Bekijk in Slack** (of het Slack-icoontje in de lijst) om je inzending in jullie Slack-kanaal te openen.
 
 Inzendingen van andere groepen zie je niet. Jullie eigen score en de punten per opdracht zie je altijd. Heeft de jury de stand verborgen, dan zie je jullie plaats, de scores van andere groepen en de grafiek niet, en eventueel wel een **Tussenstand** met het tijdstip waarop die is vastgelegd.
 
@@ -126,7 +153,7 @@ Inzendingen van andere groepen zie je niet. Jullie eigen score en de punten per 
 
 - Goedgekeurd geeft de standaardpunten van de opdracht, Awesome de awesome-punten. Open en Afgekeurd geven 0.
 - Elke opdracht telt één keer per groep: de beste beoordeling van al haar inzendingen voor die opdracht. Twee foto's in één bericht leveren dus niet dubbel punten op.
-- Daarbij komen de extra punten uit de puntencategorieën die in gebruik zijn, zoals Avonturiers en Reisbureau. De Avonturiers-punten zijn de punten van de themarondes plus het eindspel.
+- Daarbij komen de extra punten uit de puntencategorieën die in gebruik zijn, zoals Avonturiers en Reisbureau. De Avonturiers-punten zijn de punten van de half-uur opdrachten plus het eindspel.
 - Groepen met evenveel punten delen een plaats.
 
 ## Problemen

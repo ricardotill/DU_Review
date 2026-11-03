@@ -1,14 +1,16 @@
 // Live notifications: preferences per browser, a soft chime, and whether the tab is visible
 window.duNotifications = (function () {
+    // The jury's choices (new submissions) and a group's (new assignments) are kept apart
     var storageKey = 'du_notifications';
+    var groupStorageKey = 'du_notifications_group';
     // A burst of submissions (e.g. catching up after a reconnect) gives one chime, not many
     var minChimeGapMs = 3000;
     var audio = null;
     var lastChime = 0;
 
-    function readPrefs() {
+    function readPrefs(key) {
         try {
-            return JSON.parse(localStorage.getItem(storageKey) || 'null');
+            return JSON.parse(localStorage.getItem(key || storageKey) || 'null');
         } catch (e) {
             return null;
         }
@@ -26,8 +28,9 @@ window.duNotifications = (function () {
     // Browsers only allow sound once the person interacted with the page, and some (Safari) only
     // start audio inside that interaction. So start it there, but only when sound is wanted.
     function unlock(e) {
-        var prefs = readPrefs();
-        var wanted = (prefs && prefs.sound) || (e.target.closest && e.target.closest('[data-du-sound-toggle]'));
+        var jury = readPrefs(storageKey);
+        var group = readPrefs(groupStorageKey);
+        var wanted = (jury && jury.sound) || (group && group.sound) || (e.target.closest && e.target.closest('[data-du-sound-toggle]'));
         if (!wanted) return;
         var ctx = context();
         if (ctx && ctx.state === 'suspended') {
@@ -53,9 +56,9 @@ window.duNotifications = (function () {
 
     return {
         getPrefs: readPrefs,
-        setPrefs: function (prefs) {
+        setPrefs: function (prefs, key) {
             try {
-                localStorage.setItem(storageKey, JSON.stringify(prefs));
+                localStorage.setItem(key || storageKey, JSON.stringify(prefs));
             } catch (e) {
                 // Private window or blocked storage: the choice lasts until the page closes
             }
@@ -81,6 +84,28 @@ window.duNotifications = (function () {
                 ctx.resume().then(function () {
                     if (ctx.state === 'running' && Date.now() - now < 1000) play();
                 }).catch(function () { });
+            }
+        },
+        // System notifications (outside the page) for a group whose tab is in the background.
+        // Browsers only allow them on https or localhost, and only after the person said yes once.
+        systemPermission: function () {
+            return 'Notification' in window ? Notification.permission : 'unsupported';
+        },
+        requestSystemPermission: function () {
+            if (!('Notification' in window)) return Promise.resolve('unsupported');
+            return Promise.resolve(Notification.requestPermission()).catch(function () { return Notification.permission; });
+        },
+        systemNotify: function (title, body, url) {
+            if (!('Notification' in window) || Notification.permission !== 'granted' || document.visibilityState === 'visible') return;
+            try {
+                var n = new Notification(title, { body: body, tag: 'du-unlock' });
+                n.onclick = function () {
+                    window.focus();
+                    if (url) window.location.href = url;
+                    n.close();
+                };
+            } catch (e) {
+                // Some mobile browsers only allow notifications from a service worker: the toast in the page remains
             }
         },
         isVisible: function () {

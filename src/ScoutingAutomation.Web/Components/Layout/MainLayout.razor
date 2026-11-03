@@ -49,6 +49,9 @@
             <AuthorizeView Roles="@KeyAuth.JuryRole">
                 <NotificationSettings />
             </AuthorizeView>
+            <AuthorizeView Roles="@KeyAuth.GroupRole">
+                <NotificationSettings ForGroups="true" />
+            </AuthorizeView>
         </div>
 
         <article class="content px-4 py-4" style="max-width: 1400px; margin: 0 auto;">
@@ -72,6 +75,11 @@
 @* Toasts announce every group's uploads: for the jury only *@
 <AuthorizeView Roles="@KeyAuth.JuryRole">
     <ToastHost />
+</AuthorizeView>
+
+@* A group hears when its Avonturiers opened new assignments *@
+<AuthorizeView Roles="@KeyAuth.GroupRole">
+    <GroupToastHost />
 </AuthorizeView>
 
 <div id="blazor-error-ui" data-nosnippet>

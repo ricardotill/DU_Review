@@ -10,12 +10,12 @@
     @if (Final)
     {
         <h2 class="panel-title"><i class="bi bi-geo-fill text-danger"></i> Eindlocatie</h2>
-        <p class="text-secondary small">Waar 'Destination Unknown' is. Gaat naar elk Avonturiers-kanaal op de ingestelde tijd, of met de hand.</p>
+        <p class="text-secondary small">Waar 'Destination Unknown' is. Gaat naar elk Avonturiers-kanaal aan het einde van de Avonturiers, of met de hand.</p>
     }
     else
     {
         <h2 class="panel-title"><i class="bi bi-flag-fill text-success"></i> Startinformatie</h2>
-        <p class="text-secondary small">Welkom, spelregels en de link naar de kaart van de groep. Gaat naar elk Avonturiers-kanaal op de ingestelde tijd, of met de hand.</p>
+        <p class="text-secondary small">Welkom, spelregels en de link naar de kaart van de groep. Gaat naar elk Avonturiers-kanaal bij de start van de Avonturiers, of met de hand.</p>
     }
 
     <div class="inset-panel py-2 mb-3">
@@ -29,14 +29,36 @@
     </div>
 
     <div class="mb-3">
-        <div class="fw-semibold text-white small mb-1">Tijd</div>
-        <div class="small text-white mb-2 post-time">@(PostTimeGameTime?.ToString("dd-MM-yyyy HH:mm") ?? "alleen met de hand")</div>
+        <div class="fw-semibold text-white small mb-1">@(Final ? "Einde van de Avonturiers" : "Start van de Avonturiers")</div>
+        <div class="small text-white mb-1 post-time">@(PostTimeGameTime?.ToString("dd-MM-yyyy HH:mm") ?? "geen: alleen met de hand")</div>
+        <div class="stat-caption mb-2">
+            @(Final
+                ? "Check-ins en foto's in de Avonturiers-kanalen tellen tot dit moment."
+                : "Check-ins en foto's in de Avonturiers-kanalen tellen vanaf dit moment, en dan zien de groepen hun kaart.")
+        </div>
         <AuthorizeView Roles="@KeyAuth.AdminRole">
             <form class="d-flex gap-2 align-items-start" @onsubmit="SaveTime">
-                <input type="datetime-local" class="form-control form-control-dark form-control-sm" aria-label="Tijd" step="60" @bind="timeDraft" />
+                <input type="datetime-local" class="form-control form-control-dark form-control-sm" aria-label="@(Final ? "Einde van de Avonturiers" : "Start van de Avonturiers")" step="60" @bind="timeDraft" />
                 <button type="submit" class="btn btn-sm btn-scout-secondary text-nowrap"><i class="bi bi-check-lg me-1"></i> Opslaan</button>
             </form>
         </AuthorizeView>
+        @if (Runtime.IsAdventurersPostTimeChanged(Final))
+        {
+            <div class="stat-caption mt-1">
+                <i class="bi bi-pencil-square text-info me-1"></i>Aangepast in de app.
+                <AuthorizeView Roles="@KeyAuth.AdminRole">
+                    <button type="button" class="btn btn-sm btn-link text-secondary p-0 align-baseline reset-time" @onclick="ResetTime">Terug naar appsettings</button>
+                </AuthorizeView>
+            </div>
+        }
+        else if (Runtime.AdventurersOwnTime(Final) != null)
+        {
+            <div class="stat-caption mt-1">Uit appsettings (<code>Scouting:Adventurers:@(Final ? "FinalAnnouncement" : "StartAnnouncement"):PostAt</code>).</div>
+        }
+        else
+        {
+            <div class="stat-caption mt-1 follows-event">Geen eigen tijd: @(Final ? "het einde" : "de start") van het spel.</div>
+        }
         @if (!AutoPost)
         {
             <div class="stat-caption mt-1">Automatisch plaatsen staat uit in appsettings: stuur het met de hand.</div>
@@ -124,11 +146,17 @@
             groups = await scope.ServiceProvider.GetRequiredService<IGroupRepository>().GetAllAsync();
         }
 
-        timeDraft = PostTimeGameTime;
+        timeDraft = Runtime.AdventurersOwnTime(Final);
         Runtime.Changed += OnRuntimeChanged;
     }
 
     private async Task SaveTime() => postError = await AdminActions.RunAsync(AuthState, () => Runtime.SetAdventurersPostTime(Final, timeDraft));
+
+    private async Task ResetTime()
+    {
+        postError = await AdminActions.RunAsync(AuthState, () => Runtime.ResetAdventurersPostTime(Final));
+        if (postError == null) timeDraft = Runtime.AdventurersOwnTime(Final);
+    }
 
     private async Task Post(bool resend)
     {

@@ -218,7 +218,11 @@ else
                                 <div class="text-white-50" title="@sub.Submitter">@sub.SubmitterDisplayName</div>
                                 <div class="text-muted small">@sub.CreatedAt.ToGameTime().ToString("g")</div>
                             </td>
-                            <td class="text-end">
+                            <td class="text-end text-nowrap">
+                                @if (IsGroup)
+                                {
+                                    <SlackMessageLinks ChannelId="@sub.SlackChannelId" MessageTs="@sub.SlackMessageId" Compact="true" />
+                                }
                                 <a href="submissions/@sub.Id" class="btn btn-sm btn-scout-secondary" title="Details bekijken" aria-label="Details bekijken">
                                     <i class="bi bi-chevron-right"></i>
                                 </a>

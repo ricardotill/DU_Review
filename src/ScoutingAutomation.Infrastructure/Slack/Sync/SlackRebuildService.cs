@@ -268,7 +268,8 @@ public class SlackRebuildService : ISlackRebuildService
         var imported = new List<(Group Group, SlackEventItemDto Message)>();
         foreach (var (group, message) in ordered)
         {
-            if (IsCandidate(message, _runtime, botUserId))
+            var adventurers = message.Channel != null && message.Channel == group.AdventurersSlackChannelId;
+            if (IsCandidate(message, _runtime, botUserId, adventurers))
             {
                 var result = await workflow.ImportSlackMessageAsync(message);
                 if (result.CreatedSubmissionIds.Count > 0) imported.Add((group, message));
@@ -313,14 +314,15 @@ public class SlackRebuildService : ISlackRebuildService
 
     /// <summary>Messages from Slack's history that could be submissions: from people, with files, not from reviewers.</summary>
     /// <param name="botUserId">The bot's own user ID, when known: a picture the bot shared need not carry bot_id.</param>
-    public static bool IsCandidate(SlackEventItemDto message, RuntimeSettingsService runtime, string? botUserId = null) =>
+    /// <param name="adventurers">From an Avonturiers channel: the Avonturiers' start and end apply, not the event's.</param>
+    public static bool IsCandidate(SlackEventItemDto message, RuntimeSettingsService runtime, string? botUserId = null, bool adventurers = false) =>
         message.BotId == null
         && (botUserId == null || message.User != botUserId)
         && message.Subtype is null or "file_share" or "thread_broadcast"
         && message.Files is { Count: > 0 }
         && !runtime.IsReviewer(message.User)
-        && !runtime.IsBeforeEventStart(message.Ts)
-        && !runtime.IsAfterEventEnd(message.Ts);
+        && !runtime.IsBeforeStart(message.Ts, adventurers)
+        && !runtime.IsAfterEnd(message.Ts, adventurers);
 
     private static IEnumerable<RebuildIssue> Issues(Group group, SlackEventItemDto message, ProcessSlackMessageResult result)
     {

@@ -338,9 +338,9 @@ public class SubmissionRepository : ISubmissionRepository
         return stats;
     }
 
-    private int ThemeMax => _runtime?.AdventurersOptions.ThemeMaxPoints ?? 14;
+    private int ThemeMax => _runtime?.ThemeMaxPoints ?? 14;
 
-    private int FinalMax => _runtime?.AdventurersOptions.FinalMaxPoints ?? 14;
+    private int FinalMax => _runtime?.FinalMaxPoints ?? 14;
 
     /// <summary>The Avonturiers standing now; null while the Avonturiers part is off.</summary>
     private AdventurersStanding? AdventurersFor(IReadOnlyList<Group> groups, IReadOnlyList<Submission> submissions,

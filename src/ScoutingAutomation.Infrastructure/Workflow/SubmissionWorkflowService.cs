@@ -33,6 +33,7 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
     private readonly SlackOwnUploads? _ownUploads;
     private readonly ILocationRepository? _locations;
     private readonly UnlockNotifier? _unlocks;
+    private readonly TimeProvider _time;
 
     public SubmissionWorkflowService(
         ISubmissionRepository submissionRepository,
@@ -50,10 +51,12 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         SlackProcessingGate? gate = null,
         SlackOwnUploads? ownUploads = null,
         ILocationRepository? locations = null,
-        UnlockNotifier? unlocks = null)
+        UnlockNotifier? unlocks = null,
+        TimeProvider? time = null)
     {
         _locations = locations;
         _unlocks = unlocks;
+        _time = time ?? TimeProvider.System;
         _channels = channels;
         _gate = gate;
         _ownUploads = ownUploads;
@@ -73,7 +76,7 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
     public Task<ProcessSlackMessageResult> ProcessSlackMessageAsync(SlackEventItemDto messageEvent, CancellationToken ct = default) =>
         ProcessMessageAsync(messageEvent, silent: false, manual: _runtime.ManualMode, ct);
 
-    public Task<ProcessSlackMessageResult> ImportSlackMessageAsync(SlackEventItemDto message, CancellationToken ct = default)
+    public async Task<ProcessSlackMessageResult> ImportSlackMessageAsync(SlackEventItemDto message, CancellationToken ct = default)
     {
         // The bot blocked this attempt live, and nothing was stored then. A rebuild applies reviews only after
         // importing every message, so it cannot see that the assignment was already done: the bot's emoji tells.
@@ -82,14 +85,22 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
             .Select(r => r?.Trim(':'))
             .Where(r => !string.IsNullOrWhiteSpace(r))
             .ToList();
-        if (blocked.Count > 0
-            && (message.Reactions ?? new List<SlackMessageReactionDto>()).Any(r => blocked.Contains(r.Name?.Trim(':'), StringComparer.OrdinalIgnoreCase)))
+        var marked = (message.Reactions ?? new List<SlackMessageReactionDto>())
+            .Where(r => blocked.Contains(r.Name?.Trim(':'), StringComparer.OrdinalIgnoreCase))
+            .ToList();
+        if (marked.Count > 0)
         {
-            _logger.LogInformation("Skipped message {Ts} in {Channel}: it was blocked live as a new attempt after approval", message.Ts, message.Channel);
-            return Task.FromResult(ProcessSlackMessageResult.Ignored("Nieuwe poging na goedkeuring; was al geweigerd"));
+            // Only the bot's own emoji: a scout or jury member putting the same emoji on a message must not drop it.
+            // When the bot's user ID or the reacting users are not known, the emoji alone decides, as before.
+            var bot = await BotUserIdAsync(ct);
+            if (marked.Any(r => bot == null || r.Users == null || r.Users.Count == 0 || r.Users.Contains(bot)))
+            {
+                _logger.LogInformation("Skipped message {Ts} in {Channel}: the bot refused it live (already completed or not unlocked)", message.Ts, message.Channel);
+                return ProcessSlackMessageResult.Ignored("Live al geweigerd door de bot (al goedgekeurd of nog op slot)");
+            }
         }
 
-        return ProcessMessageAsync(message, silent: true, manual: false, ct);
+        return await ProcessMessageAsync(message, silent: true, manual: false, ct);
     }
 
     /// <param name="silent">True when importing history: Slack already saw this message, so no feedback is posted again.</param>
@@ -105,10 +116,12 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
             return ProcessSlackMessageResult.Ignored("Bericht zonder kanaal-ID");
         }
 
-        // Messages from before the event never count; no feedback either, the game had not started
-        if (_runtime.IsBeforeEventStart(messageEvent.Ts))
+        // Messages from before the start never count; no feedback either, the game had not started.
+        // Before every start, without looking up the channel; the Avonturiers can start at another time, checked below
+        if (_runtime.IsBeforeStart(messageEvent.Ts, adventurers: false)
+            && (!_runtime.AdventurersEnabled || _runtime.IsBeforeStart(messageEvent.Ts, adventurers: true)))
         {
-            _logger.LogDebug("Ignored message {Ts} in {ChannelId}: posted before the event start", messageEvent.Ts, channelId);
+            _logger.LogDebug("Ignored message {Ts} in {ChannelId}: posted before the start", messageEvent.Ts, channelId);
             return ProcessSlackMessageResult.Ignored("Bericht van vóór de starttijd");
         }
 
@@ -129,6 +142,12 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         {
             _logger.LogDebug("Ignored message in Avonturiers channel {ChannelId}: the Avonturiers part is off", channelId);
             return ProcessSlackMessageResult.Ignored("Avonturiers-kanaal, maar het Avonturiers-deel staat uit");
+        }
+
+        if (_runtime.IsBeforeStart(messageEvent.Ts, adventurers))
+        {
+            _logger.LogDebug("Ignored message {Ts} in {ChannelId}: posted before the start", messageEvent.Ts, channelId);
+            return ProcessSlackMessageResult.Ignored("Bericht van vóór de starttijd");
         }
 
         // Reviewers post in group channels too, but their messages are never submissions
@@ -159,10 +178,10 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
 
         // A submission posted after the event ended never counts; the message's own time decides,
         // so an edit or a catch-up after the end does not drop a submission that was on time
-        if (_runtime.IsAfterEventEnd(messageEvent.Ts))
+        if (_runtime.IsAfterEnd(messageEvent.Ts, adventurers))
         {
-            _logger.LogInformation("Skipped message {Ts} in {Channel}: posted after the event end", messageEvent.Ts, channelId);
-            await SendFeedbackAsync(silent, feedback.TooLate, channelId, messageEvent.Ts, "{end}", _runtime.EventEnd?.ToGameTime().ToString("HH:mm"), ct);
+            _logger.LogInformation("Skipped message {Ts} in {Channel}: posted after the end", messageEvent.Ts, channelId);
+            await SendFeedbackAsync(silent, feedback.TooLate, channelId, messageEvent.Ts, "{end}", _runtime.EndOf(adventurers)?.ToGameTime().ToString("HH:mm"), ct);
             return ProcessSlackMessageResult.Ignored("Bericht van na de eindtijd");
         }
 
@@ -409,7 +428,7 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
             return MessageTarget.Skipped(ProcessSlackMessageResult.Ignored($"Opdracht {assignmentCode} is al goedgekeurd voor deze groep"));
         }
 
-        // In pool mode the Avonturiers unlock assignments in a fixed order. A rebuild reads the bot's lock instead:
+        // The Avonturiers unlock assignments as they check in. A rebuild reads the bot's lock instead:
         // it applies reviews only after importing every message, so the check-ins are not approved yet at this point.
         if (!manual && !silent && await IsLockedAsync(group.Id, assignmentCode, channelId, messageEvent.Ts, ct))
         {
@@ -423,24 +442,34 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
     }
 
     /// <summary>
-    /// Whether an assignment is still locked for the group: the Avonturiers part is on, the pool is used, the assignment
-    /// is in it, and the group has fewer approved check-ins than its place in the pool. A message that is already
-    /// registered is never locked: nothing is locked after the fact.
+    /// Whether an assignment is still locked for the group: the Avonturiers part is on and the assignment is not among
+    /// the open ones (see <see cref="AssignmentUnlocks"/>). Letter assignments are never locked. A message that is
+    /// already registered is never locked either: nothing is locked after the fact.
     /// </summary>
     private async Task<bool> IsLockedAsync(Guid groupId, string assignmentCode, string channelId, string? messageTs, CancellationToken ct)
     {
-        if (!_runtime.AdventurersEnabled) return false;
-
-        var index = _runtime.UnlockPool.ToList().IndexOf(assignmentCode);
-        if (index < 0) return false;
-
         if (!string.IsNullOrWhiteSpace(messageTs) && (await _submissionRepository.GetBySlackMessageIdAsync(channelId, messageTs, ct)).Count > 0)
         {
             return false;
         }
 
+        return await IsAssignmentLockedAsync(groupId, assignmentCode, ct);
+    }
+
+    /// <summary>Whether the group cannot do this assignment now, whatever message it comes from.</summary>
+    private async Task<bool> IsAssignmentLockedAsync(Guid groupId, string assignmentCode, CancellationToken ct)
+    {
+        if (!_runtime.AdventurersEnabled || _locations == null || AssignmentCode.IsLetter(assignmentCode)) return false;
+
+        var group = await _groupRepository.GetByIdAsync(groupId, ct);
+        if (group == null) return false;
+
+        var numbers = (await _locations.GetAllAsync(ct)).Select(l => l.Number).ToHashSet();
+        var codes = (await _assignmentRepository.GetAllAsync(ct)).Select(a => a.Code);
         var checkIns = await _submissionRepository.SearchSubmissionsAsync(new SubmissionFilter { GroupId = groupId, Kind = SubmissionKind.CheckIn }, ct);
-        return AdventurersScoring.ApprovedLocations(checkIns).Count <= index;
+        var state = AssignmentUnlocks.Compute(groupId, checkIns, group.OpenLocations ?? _runtime.InitialOpenLocations, numbers, codes, _runtime.InitialOpenAssignments,
+            _runtime.ThemeRounds, _time.GetUtcNow(), _runtime.SuperLocations);
+        return !state.IsOpen(assignmentCode);
     }
 
     /// <summary>An Avonturiers message: a check-in at a known location, or a theme (stored also outside its round).</summary>
@@ -453,13 +482,13 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         {
             _logger.LogWarning("Skipped message '{Text}' in Avonturiers channel {Channel}: no location or theme number", messageEvent.Text, channelId);
             await SendFeedbackAsync(silent, feedback.MissingNumber, channelId, messageEvent.Ts, null, null, ct);
-            return MessageTarget.Skipped(ProcessSlackMessageResult.Ignored("Geen locatie- of themanummer gevonden"));
+            return MessageTarget.Skipped(ProcessSlackMessageResult.Ignored("Geen locatie- of opdrachtnummer gevonden"));
         }
 
         var number = parsed.Number!;
         if (parsed.Kind == SubmissionKind.CheckIn)
         {
-            var (known, unlocked) = await LocationStateAsync(group.Id, number, ct);
+            var (known, open) = await LocationStateAsync(group, number, ct);
             if (!known)
             {
                 _logger.LogWarning("Skipped check-in in {Channel}: unknown location {Number}", channelId, number);
@@ -467,10 +496,11 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
                 return MessageTarget.Skipped(ProcessSlackMessageResult.Ignored($"Locatie {number} bestaat niet"));
             }
 
-            return !unlocked && _runtime.RequireUnlockedLocation
-                ? new MessageTarget(SubmissionKind.CheckIn, number, null, $"Locatie {number} is nog niet vrijgespeeld voor deze groep",
-                    new FeedbackNote(feedback.LocationNotUnlocked, Replace(("{number}", number))))
-                : new MessageTarget(SubmissionKind.CheckIn, number, null);
+            // Stored all the same: it counts by itself once the organisation opens the location for the group.
+            // No reason is stored with it, as that would still be there after the location opened.
+            return open
+                ? new MessageTarget(SubmissionKind.CheckIn, number, null)
+                : new MessageTarget(SubmissionKind.CheckIn, number, null, null, new FeedbackNote(feedback.LocationNotUnlocked, Replace(("{number}", number))));
         }
 
         // A theme is stored whenever it comes: a late review or a fixed round must still be able to count it
@@ -487,20 +517,20 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
 
         if (AdventurersScoring.RoundOfTheme(rounds, theme) is { } other)
         {
-            return ($"Thema {theme} hoort bij ronde {other.Number}",
+            return ($"Half-uur opdracht {theme} hoort bij ronde {other.Number}",
                 new FeedbackNote(feedback.ThemeOutsideRound, Replace(("{number}", theme), ("{round}", other.Number.ToString()))));
         }
 
         return current == null
             ? ("Er liep geen ronde", new FeedbackNote(feedback.NoRoundOpen, Replace(("{number}", theme))))
-            : ($"Thema {theme} hoort bij geen ronde", new FeedbackNote(feedback.UnknownTheme, Replace(("{number}", theme))));
+            : ($"Half-uur opdracht {theme} hoort bij geen ronde", new FeedbackNote(feedback.UnknownTheme, Replace(("{number}", theme))));
     }
 
     /// <summary>
-    /// Whether a location exists, and whether it is unlocked for the group. Without any locations set up every number
-    /// is accepted, so check-ins work before the map is filled in.
+    /// Whether a location exists, and whether it is open for the group (locations 1 through its number). Without any
+    /// locations set up every number is accepted, so check-ins work before the map is filled in.
     /// </summary>
-    private async Task<(bool Known, bool Unlocked)> LocationStateAsync(Guid groupId, string number, CancellationToken ct)
+    private async Task<(bool Known, bool Open)> LocationStateAsync(Group group, string number, CancellationToken ct)
     {
         if (_locations == null || !int.TryParse(number, out var n)) return (true, true);
 
@@ -508,8 +538,7 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         if (all.Count == 0) return (true, true);
         if (all.All(l => l.Number != n)) return (false, false);
 
-        var unlocks = await _locations.GetUnlocksAsync(groupId, ct);
-        return (true, unlocks.Any(u => u.LocationNumber == n));
+        return (true, n <= (group.OpenLocations ?? _runtime.InitialOpenLocations));
     }
 
     private static IReadOnlyDictionary<string, string?> Replace(params (string Placeholder, string? Value)[] values) =>
@@ -608,21 +637,18 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         if (first.Kind.IsAdventurers())
         {
             var parsed = AdventurersParser.Parse(message.Text);
-            var known = parsed.Success && (parsed.Kind != SubmissionKind.CheckIn || (await LocationStateAsync(first.GroupId, parsed.Number!, ct)).Known);
+            var group = await _groupRepository.GetByIdAsync(first.GroupId, ct);
+            var known = parsed.Success && group != null && (parsed.Kind != SubmissionKind.CheckIn || (await LocationStateAsync(group, parsed.Number!, ct)).Known);
             if (!known)
             {
                 _logger.LogInformation("Edit of message {Ts} has no valid location or theme number; submissions keep {Code}", message.Ts, first.CodeLabel);
-                return ProcessSlackMessageResult.Ignored("Bewerkte tekst heeft geen geldig locatie- of themanummer; er is niets veranderd");
+                return ProcessSlackMessageResult.Ignored("Bewerkte tekst heeft geen geldig locatie- of opdrachtnummer; er is niets veranderd");
             }
 
             kind = parsed.Kind!.Value;
             number = parsed.Number!;
             // A theme counts for the round of the original message's time, whatever time it is now
             if (kind == SubmissionKind.Theme) reason = ThemeNote(number, first.CreatedAt, _runtime.AdventurersFeedback).Reason;
-            else if (_runtime.RequireUnlockedLocation && !(await LocationStateAsync(first.GroupId, number, ct)).Unlocked)
-            {
-                reason = $"Locatie {number} is nog niet vrijgespeeld voor deze groep";
-            }
         }
         else
         {
@@ -653,6 +679,14 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
             _logger.LogInformation("Edit of message {Ts} not applied: the group already completed assignment {Number}", message.Ts, number);
             await SendFeedbackAsync(silent: false, _runtime.Feedback.AlreadyCompleted, first.SlackChannelId, message.Ts, "{number}", number, ct);
             return ProcessSlackMessageResult.Ignored($"Opdracht {number} is al goedgekeurd voor deze groep; er is niets veranderd");
+        }
+
+        // Editing the number is no way around the lock: an assignment the Avonturiers did not open yet stays closed
+        if (kind == SubmissionKind.Assignment && await IsAssignmentLockedAsync(first.GroupId, number, ct))
+        {
+            _logger.LogInformation("Edit of message {Ts} not applied: assignment {Number} is not unlocked for the group yet", message.Ts, number);
+            await SendFeedbackAsync(silent: false, _runtime.AdventurersFeedback.AssignmentLocked, first.SlackChannelId, message.Ts, "{number}", number, ct);
+            return ProcessSlackMessageResult.Ignored($"Opdracht {number} is nog niet vrijgespeeld; er is niets veranderd");
         }
 
         var checkInsChanged = false;
@@ -1218,5 +1252,13 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
         if (_links == null || string.IsNullOrWhiteSpace(userId)) return false;
         await _links.EnsureLoadedAsync(ct);
         return _links.BotUserId == userId;
+    }
+
+    /// <summary>The bot's own Slack user ID; null when it cannot be known (no Slack, or simulation).</summary>
+    private async Task<string?> BotUserIdAsync(CancellationToken ct)
+    {
+        if (_links == null) return null;
+        await _links.EnsureLoadedAsync(ct);
+        return string.IsNullOrWhiteSpace(_links.BotUserId) ? null : _links.BotUserId;
     }
 }
