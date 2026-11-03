@@ -215,7 +215,14 @@ public sealed class EditionArchive
                 _logger.LogInformation("Imported edition {Edition}: {Groups} groups, {Submissions} submissions", edition.Name, data.Groups.Count, data.Submissions.Count);
                 return (edition, null);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (OperationCanceledException)
+            {
+                // The upload was broken off: leave nothing behind either
+                _db.ChangeTracker.Clear();
+                TryDelete(root);
+                throw;
+            }
+            catch (Exception ex)
             {
                 _logger.LogError(ex, "Import of edition {Edition} failed; its files are removed again", data.Edition.Name);
                 _db.ChangeTracker.Clear();
