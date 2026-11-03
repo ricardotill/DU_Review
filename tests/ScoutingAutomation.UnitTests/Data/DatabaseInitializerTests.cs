@@ -324,7 +324,7 @@ public class DatabaseInitializerTests : IDisposable
             await db.Database.ExecuteSqlRawAsync("""
                 DROP INDEX "IX_Submissions_Kind";
                 ALTER TABLE "Submissions" DROP COLUMN "Kind";
-                DROP INDEX "IX_Groups_AdventurersSlackChannelId";
+                DROP INDEX "IX_Groups_EditionId_AdventurersSlackChannelId";
                 DROP INDEX "IX_Groups_MapToken";
                 ALTER TABLE "Groups" DROP COLUMN "AdventurersSlackChannelId";
                 ALTER TABLE "Groups" DROP COLUMN "MapToken";
@@ -358,6 +358,107 @@ public class DatabaseInitializerTests : IDisposable
             await db.SaveChangesAsync();
             (await new LocationRepository(db).GetUnlocksAsync(groupId)).Should().ContainSingle();
         }
+    }
+
+    [Fact]
+    public async Task InitializeAsync_DatabaseFromBeforeEditions_ShouldMakeItTheFirstEdition()
+    {
+        var path = Path.Combine(_temp.Path, "before-editions.db");
+        var options = new DbContextOptionsBuilder<ScoutingDbContext>().UseSqlite($"Data Source={path}").Options;
+        var settings = Settings();
+        var wolves = Guid.NewGuid().ToString().ToUpperInvariant();
+        var owls = Guid.NewGuid().ToString().ToUpperInvariant();
+        await using (var db = new ScoutingDbContext(options))
+        {
+            // The tables as they were before editions: no edition on groups, assignments and locations, no teams
+            await db.Database.EnsureCreatedAsync();
+            await db.Database.OpenConnectionAsync();
+            await db.Database.ExecuteSqlRawAsync("""
+                PRAGMA foreign_keys = OFF;
+                DROP TABLE "Groups"; DROP TABLE "Assignments"; DROP TABLE "Locations"; DROP TABLE "Teams"; DROP TABLE "Editions";
+                CREATE TABLE "Groups" (
+                    "Id" TEXT NOT NULL CONSTRAINT "PK_Groups" PRIMARY KEY,
+                    "Name" TEXT NOT NULL, "Abbreviation" TEXT NULL, "SlackChannelId" TEXT NOT NULL,
+                    "AdventurersSlackChannelId" TEXT NULL, "MapToken" TEXT NULL, "Description" TEXT NULL, "CreatedAt" TEXT NOT NULL);
+                CREATE UNIQUE INDEX "IX_Groups_SlackChannelId" ON "Groups" ("SlackChannelId");
+                CREATE UNIQUE INDEX "IX_Groups_AdventurersSlackChannelId" ON "Groups" ("AdventurersSlackChannelId") WHERE "AdventurersSlackChannelId" IS NOT NULL;
+                CREATE UNIQUE INDEX "IX_Groups_MapToken" ON "Groups" ("MapToken") WHERE "MapToken" IS NOT NULL;
+                CREATE TABLE "Assignments" (
+                    "Id" TEXT NOT NULL CONSTRAINT "PK_Assignments" PRIMARY KEY,
+                    "Code" TEXT NOT NULL, "Title" TEXT NULL, "Description" TEXT NULL,
+                    "StandardPoints" INTEGER NOT NULL, "AwesomePoints" INTEGER NOT NULL, "CreatedAt" TEXT NOT NULL);
+                CREATE UNIQUE INDEX "IX_Assignments_Code" ON "Assignments" ("Code");
+                CREATE TABLE "Locations" (
+                    "Number" INTEGER NOT NULL CONSTRAINT "PK_Locations" PRIMARY KEY,
+                    "Name" TEXT NOT NULL, "Latitude" REAL NOT NULL, "Longitude" REAL NOT NULL, "Hint" TEXT NULL);
+                PRAGMA foreign_keys = ON;
+                """);
+            await db.Database.ExecuteSqlRawAsync("""
+                INSERT INTO "Groups" ("Id", "Name", "Abbreviation", "SlackChannelId", "MapToken", "CreatedAt")
+                    VALUES ({0}, 'De Wolven', 'DWO', 'C1', 'token1', '2025-09-01 10:00:00+00:00'),
+                           ({1}, 'Oud team', NULL, 'C9', 'token9', '2025-09-01 10:00:00+00:00');
+                INSERT INTO "Assignments" ("Id", "Code", "StandardPoints", "AwesomePoints", "CreatedAt")
+                    VALUES ('7C9E6679-7425-40DE-944B-E07FC1F90AE7', '2', 1, 1, '2025-09-01 10:00:00+00:00');
+                INSERT INTO "Locations" VALUES (7, 'Molen', 51.6, 5.0, NULL);
+                INSERT INTO "LocationUnlocks" VALUES ({0}, 7, '2025-10-04 10:00:00+00:00');
+                INSERT INTO "Submissions" ("Id", "GroupId", "AssignmentCode", "SlackChannelId", "SlackMessageId", "Submitter",
+                    "FileName", "StoragePath", "FileSizeBytes", "ContentType", "Status", "CreatedAt")
+                VALUES ('0F8FAD5B-D9CB-469F-A165-70867728950E', {0}, '2', 'C1', '1727700000.000100', 'U1',
+                    'a.jpg', '/s/a.jpg', 1, 'image/jpeg', 'Approved', '2025-10-04 10:00:00+00:00')
+                """, wolves, owls);
+            await db.Database.CloseConnectionAsync();
+
+            await Create(db, settings).InitializeAsync();
+        }
+
+        Directory.GetFiles(Path.Combine(settings.StorageRoot, "_backup"), "pre-editions-*.db").Should().ContainSingle();
+
+        await using (var db = new ScoutingDbContext(options))
+        {
+            // A second start finds nothing left to convert and makes no second copy
+            await Create(db, settings).InitializeAsync();
+
+            var edition = await db.Editions.SingleAsync();
+            edition.Should().BeEquivalentTo(new { Name = "DU 2025", Year = 2025, Status = EditionStatus.Active }, "the game is from the year of its first submission");
+            var groups = await db.Groups.ToListAsync();
+            groups.Should().HaveCount(3, "both old groups are kept and De Bosuilen is added");
+            groups.Should().OnlyContain(g => g.EditionId == edition.Id && g.TeamId != Guid.Empty);
+            groups.Single(g => g.Name == "De Wolven").TeamId.Should().Be(Guid.Parse(wolves), "group accounts keep pointing at the group's id");
+            (await db.Teams.Select(t => t.Name).ToListAsync()).Should().BeEquivalentTo("De Wolven", "Oud team", "De Bosuilen");
+            (await db.Assignments.Select(a => a.Code).ToListAsync()).Should().Contain("2");
+            (await db.Locations.SingleAsync()).Name.Should().Be("Molen");
+            (await new LocationRepository(db).GetUnlocksAsync(Guid.Parse(wolves))).Should().ContainSingle();
+            (await db.Submissions.SingleAsync()).GroupId.Should().Be(Guid.Parse(wolves));
+
+            var indexes = await db.Database.SqlQueryRaw<string>(
+                "SELECT name AS \"Value\" FROM sqlite_master WHERE type = 'index' AND name NOT LIKE 'sqlite_%' AND tbl_name IN ('Groups', 'Assignments', 'Locations', 'Editions')").ToListAsync();
+            indexes.Should().BeEquivalentTo(await FreshIndexesAsync());
+        }
+
+        Directory.GetFiles(Path.Combine(settings.StorageRoot, "_backup"), "pre-editions-*.db").Should().ContainSingle();
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+    }
+
+    private async Task<List<string>> FreshIndexesAsync()
+    {
+        var options = new DbContextOptionsBuilder<ScoutingDbContext>().UseSqlite($"Data Source={Path.Combine(_temp.Path, "fresh.db")}").Options;
+        await using var db = new ScoutingDbContext(options);
+        await db.Database.EnsureCreatedAsync();
+        return await db.Database.SqlQueryRaw<string>(
+            "SELECT name AS \"Value\" FROM sqlite_master WHERE type = 'index' AND name NOT LIKE 'sqlite_%' AND tbl_name IN ('Groups', 'Assignments', 'Locations', 'Editions')").ToListAsync();
+    }
+
+    [Fact]
+    public async Task InitializeAsync_EmptyDatabase_ShouldMakeTheActiveEditionOfThisYear()
+    {
+        await using var db = TestDb.Create();
+
+        await Create(db, Settings()).InitializeAsync();
+
+        var edition = await db.Editions.SingleAsync();
+        edition.Status.Should().Be(EditionStatus.Active);
+        edition.Year.Should().Be(DateTimeOffset.UtcNow.Year);
+        (await db.Groups.ToListAsync()).Should().OnlyContain(g => g.EditionId == edition.Id);
     }
 
     [Fact]

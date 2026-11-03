@@ -1,8 +1,11 @@
 namespace ScoutingAutomation.Domain.Entities;
 
 /// <summary>A place the Avonturiers can check in at. The number is the one teams write ("Locatie 7").</summary>
-public class Location
+public class Location : IEditionScoped
 {
+    /// <summary>Part of the key with <see cref="Number"/>: each edition numbers its own locations.</summary>
+    public Guid EditionId { get; set; }
+
     public int Number { get; set; }
     public string Name { get; set; } = string.Empty;
     public double Latitude { get; set; }

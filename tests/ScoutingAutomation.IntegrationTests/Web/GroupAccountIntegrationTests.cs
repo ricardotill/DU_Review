@@ -94,6 +94,26 @@ public class GroupAccountIntegrationTests : IClassFixture<WebApplicationFactory<
     }
 
     [Fact]
+    public async Task TeamOutsideTheActiveEdition_ShouldSeeNoGroupPages()
+    {
+        // A team that took part before but has no group in the active edition
+        var team = new Team { Name = "Vorig jaar" };
+        await _app.GetAsync(async sp =>
+        {
+            var db = sp.GetRequiredService<Infrastructure.Data.ScoutingDbContext>();
+            db.Teams.Add(team);
+            return await db.SaveChangesAsync();
+        });
+        await _app.EnsureAccountAsync("vorig-jaar@du.test", AccountKind.Group, team.Id);
+        using var client = _app.CreateClient();
+        await TestApp.LogInAsync(client, "vorig-jaar@du.test", TestApp.Password);
+
+        (await client.GetAsync($"/api/files/{_ownSubmission.Id}")).StatusCode.Should().NotBe(HttpStatusCode.OK);
+        var submissions = await client.GetAsync("/submissions");
+        submissions.StatusCode.Should().NotBe(HttpStatusCode.OK, "the account gets no group, so no group page opens");
+    }
+
+    [Fact]
     public async Task Group_ShouldNotGetFilesOfOtherGroups()
     {
         using var client = await CreateGroupClientAsync();
