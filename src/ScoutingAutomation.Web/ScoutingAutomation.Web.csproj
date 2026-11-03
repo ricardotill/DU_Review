@@ -8,7 +8,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Aspire.Npgsql.EntityFrameworkCore.PostgreSQL" Version="13.6.0" />
+    <PackageReference Include="Aspire.Npgsql.EntityFrameworkCore.PostgreSQL" Version="13.6.4" />
   </ItemGroup>
 
   <!-- Created at runtime and holding secrets or local state: never copy them to build or publish output -->
