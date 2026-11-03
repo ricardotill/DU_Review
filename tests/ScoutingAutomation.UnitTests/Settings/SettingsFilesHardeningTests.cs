@@ -81,6 +81,21 @@ public class SettingsFilesHardeningTests : IDisposable
     }
 
     [Fact]
+    public void ChangeThatCannotBeSavedOrReadBack_ShouldNotStayInEffect()
+    {
+        var store = new FailingStore();
+        var runtime = TestRuntime.Create(new ScoutingSettings { ManualMode = false }, store);
+        runtime.SetManualMode(true);
+        store.Fail = true;
+        store.FailLoad = true;
+
+        var act = () => runtime.SetManualMode(false);
+
+        act.Should().Throw<RuntimeSettingsSaveException>();
+        runtime.ManualMode.Should().BeTrue("the last saved settings apply, not the change that failed");
+    }
+
+    [Fact]
     public void DatabaseThatCannotBeRead_ShouldKeepTheSettingsInMemory()
     {
         var store = new FailingStore();

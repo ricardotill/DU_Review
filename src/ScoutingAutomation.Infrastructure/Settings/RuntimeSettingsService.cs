@@ -624,6 +624,15 @@ public partial class RuntimeSettingsService
     {
         // Read first: when the database cannot be reached, the settings in memory stay as they were
         var (json, version) = _store.Load();
+        Apply(json, version);
+    }
+
+    /// <summary>The settings as last read from or saved to the database, to fall back on when a save fails.</summary>
+    private (string? Json, long Version) _persisted;
+
+    private void Apply(string? json, long version)
+    {
+        _persisted = (json, version);
         ResetToDefaults();
         _version = version;
         if (json == null) return;
@@ -711,10 +720,11 @@ public partial class RuntimeSettingsService
             SlackTexts = _texts.ToDictionary(t => t.Key.ToString(), t => t.Value),
             BlockAttemptsAfterApproval = _blockAttempts, ReviewReminder = _reminder, Standings = SaveStandings(),
             BonusCategories = _bonusCategories, Adventurers = SaveAdventurers(), ManualMode = _manualMode };
+        var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
         long? saved;
         try
         {
-            saved = _store.TrySave(JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true }), _version);
+            saved = _store.TrySave(json, _version);
         }
         catch (Exception ex)
         {
@@ -731,6 +741,7 @@ public partial class RuntimeSettingsService
         }
 
         _version = saved.Value;
+        _persisted = (json, saved.Value);
         _bus.Publish(ClusterTopic);
     }
 
@@ -764,7 +775,9 @@ public partial class RuntimeSettingsService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Could not read the settings back after a failed save");
+            // The failed change must not stay in effect: back to the settings as last saved
+            _logger.LogError(ex, "Could not read the settings back after a failed save; the last saved ones apply");
+            Apply(_persisted.Json, _persisted.Version);
         }
     }
 
