@@ -56,6 +56,35 @@ public class LeaderOnlyHostedServiceTests
     }
 
     [Fact]
+    public async Task SlackCallInFlight_ShouldBeCancelledWhenTheLeadershipIsLost()
+    {
+        var leadership = new Leadership { IsLeader = true };
+        var worker = new TokenWorker();
+        var service = new LeaderOnlyHostedService<TokenWorker>(worker, leadership, NullLogger<LeaderOnlyHostedService<TokenWorker>>.Instance);
+        await service.StartAsync(CancellationToken.None);
+        worker.Token.IsCancellationRequested.Should().BeFalse();
+
+        leadership.IsLeader = false;
+        leadership.Raise();
+
+        worker.Token.IsCancellationRequested.Should().BeTrue();
+        LeaderWork.Token.CanBeCanceled.Should().BeFalse("outside leader-only work nothing is cancelled");
+    }
+
+    private sealed class TokenWorker : IHostedService
+    {
+        public CancellationToken Token { get; private set; }
+
+        public Task StartAsync(CancellationToken cancellationToken)
+        {
+            Token = LeaderWork.Token;
+            return Task.CompletedTask;
+        }
+
+        public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    [Fact]
     public async Task WorkOfTheLeader_ShouldGoAhead()
     {
         var leadership = new Leadership { IsLeader = true };
