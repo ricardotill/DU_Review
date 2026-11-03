@@ -1,5 +1,5 @@
 # DU Review as a container: a Release build of the Web project, run as the non-root `app` user.
-# Build and run with docker-compose.yml (PostgreSQL plus this app); see docs/handleiding-beheer.md, "Met Docker Compose".
+# Run with docker-compose.yml (two replicas behind a proxy, on your own PostgreSQL server); see docs/handleiding-beheer.md, "Met Docker Compose".
 # CI (.github/workflows/ci.yml) builds it for linux/amd64 and linux/arm64 and pushes it to ghcr.io/ricardotill/du_review.
 
 # Node for the build machine, not the target: npm only fetches Bootstrap and the fonts
@@ -40,12 +40,12 @@ COPY --from=build /app .
 COPY src/ScoutingAutomation.Web/opdrachtenpunten.csv /app/opdrachtenpunten.csv
 
 # Everything the app writes lives in /data (a volume), owned by `app` so a new volume is writable.
-# The login cookie keys go there too: without them every restart logs everyone out.
+# The login cookie keys live in the database.
 # libgssapi-krb5-2: the PostgreSQL driver looks for it at every connection and logs an error without it
 RUN apt-get update && apt-get install -y --no-install-recommends libgssapi-krb5-2 && rm -rf /var/lib/apt/lists/*
 
-RUN mkdir -p /data/storage /home/app/.aspnet/DataProtection-Keys \
-    && chown -R app:app /data /home/app/.aspnet
+RUN mkdir -p /data/storage \
+    && chown -R app:app /data
 
 ENV ASPNETCORE_ENVIRONMENT=Production \
     ASPNETCORE_HTTP_PORTS=8080 \
@@ -56,5 +56,5 @@ ENV ASPNETCORE_ENVIRONMENT=Production \
 
 USER app
 EXPOSE 8080
-VOLUME ["/data", "/home/app/.aspnet/DataProtection-Keys"]
+VOLUME ["/data"]
 ENTRYPOINT ["dotnet", "ScoutingAutomation.Web.dll"]

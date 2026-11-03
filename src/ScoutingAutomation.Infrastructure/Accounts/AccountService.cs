@@ -1,3 +1,4 @@
+using ScoutingAutomation.Infrastructure.Cluster;
 using System.Buffers.Text;
 using System.Text;
 using Microsoft.AspNetCore.Identity;
@@ -37,8 +38,10 @@ public class AccountService
     private readonly AccountChangeNotifier _notifier;
     private readonly ILogger<AccountService> _logger;
 
-    public AccountService(UserManager<AppUser> users, IAccountMailer mailer, AccountChangeNotifier notifier, ILogger<AccountService> logger)
+    public AccountService(UserManager<AppUser> users, IAccountMailer mailer, AccountChangeNotifier notifier, ILogger<AccountService> logger,
+        IClusterLocks? cluster = null)
     {
+        _cluster = cluster ?? SingleInstance.Instance;
         _users = users;
         _mailer = mailer;
         _notifier = notifier;
@@ -61,7 +64,12 @@ public class AccountService
 
     /// <returns>The new account, or the reason it was not made.</returns>
     /// <param name="actingUserId">The admin who makes it, checked against the database; null only for the app itself (the first admin).</param>
-    public async Task<(AppUser? User, string? Error)> CreateAsync(string? email, string? displayName, AccountKind kind, Guid? groupId, Guid? actingUserId)
+    public Task<(AppUser? User, string? Error)> CreateAsync(string? email, string? displayName, AccountKind kind, Guid? groupId, Guid? actingUserId) =>
+        // One at a time with the changes that take away an admin: an admin who is demoted or blocked at the same
+        // moment, also on another instance, cannot still make an account afterwards
+        _cluster.OneAtATimeAsync(AdminChanges, ClusterLockNames.Accounts, () => CreateCoreAsync(email, displayName, kind, groupId, actingUserId));
+
+    private async Task<(AppUser? User, string? Error)> CreateCoreAsync(string? email, string? displayName, AccountKind kind, Guid? groupId, Guid? actingUserId)
     {
         if (actingUserId is { } acting && await NotAdminAsync(acting) is { } notAdmin) return (null, notAdmin);
         email = email?.Trim();
@@ -283,22 +291,14 @@ public class AccountService
 
     /// <summary>
     /// Changes that can take away an admin run one at a time, so two admins who demote, block or delete each other at the same
-    /// moment cannot both pass the last-admin check. The app runs as one server, so a lock in the process is enough.
+    /// moment cannot both pass the last-admin check. Also across instances of the app on the same database.
     /// </summary>
     private static readonly SemaphoreSlim AdminChanges = new(1, 1);
 
-    private static async Task<string?> OneAtATimeAsync(Func<Task<string?>> change)
-    {
-        await AdminChanges.WaitAsync();
-        try
-        {
-            return await change();
-        }
-        finally
-        {
-            AdminChanges.Release();
-        }
-    }
+    private readonly IClusterLocks _cluster;
+
+    private Task<string?> OneAtATimeAsync(Func<Task<string?>> change) =>
+        _cluster.OneAtATimeAsync(AdminChanges, ClusterLockNames.Accounts, change);
 
     /// <summary>
     /// Whether <paramref name="actingUserId"/> is an active admin right now, read from the database. A page checks the

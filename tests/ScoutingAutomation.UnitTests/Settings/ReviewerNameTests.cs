@@ -16,12 +16,12 @@ public class ReviewerNameTests : IDisposable
 
     private string File_ => Path.Combine(_temp.Path, "runtime-settings.json");
 
-    private RuntimeSettingsService Runtime() => new(Options.Create(new ScoutingSettings
+    private RuntimeSettingsService Runtime() => TestRuntime.For(Options.Create(new ScoutingSettings
     {
         Reviewers = new List<string> { "U_EVA", "U_PIET" },
         ReviewerNames = new Dictionary<string, string> { ["u_eva"] = " Eva uit config ", ["U_PIET"] = " " },
         RuntimeSettingsFile = File_
-    }), NullLogger<RuntimeSettingsService>.Instance);
+    }));
 
     [Fact]
     public void Names_ShouldComeFromTheAppBeforeAppSettings()
@@ -108,8 +108,7 @@ public class ReviewerNameTests : IDisposable
     [Fact]
     public void WithoutConfiguredNames_ShouldHaveNone()
     {
-        var runtime = new RuntimeSettingsService(Options.Create(new ScoutingSettings { Reviewers = new List<string> { "U1" }, ReviewerNames = null!, RuntimeSettingsFile = File_ }),
-            NullLogger<RuntimeSettingsService>.Instance);
+        var runtime = TestRuntime.For(Options.Create(new ScoutingSettings { Reviewers = new List<string> { "U1" }, ReviewerNames = null!, RuntimeSettingsFile = File_ }));
 
         runtime.NameOf("U1").Should().BeNull();
     }
@@ -125,11 +124,11 @@ public class ReviewerNameFetcherTests : IDisposable
 
     public ReviewerNameFetcherTests()
     {
-        _runtime = new RuntimeSettingsService(Options.Create(new ScoutingSettings
+        _runtime = TestRuntime.For(Options.Create(new ScoutingSettings
         {
             Reviewers = new List<string> { "U_EVA", "U_PIET", "U_WEG" },
             RuntimeSettingsFile = Path.Combine(_temp.Path, "rt.json")
-        }), NullLogger<RuntimeSettingsService>.Instance);
+        }));
         _slack.IsConnected.Returns(true);
         _slack.GetUserNameAsync("U_EVA", Arg.Any<CancellationToken>()).Returns(SlackUserLookup.Found("Eva"));
         _slack.GetUserNameAsync("U_PIET", Arg.Any<CancellationToken>()).Returns(SlackUserLookup.Found("Piet"));

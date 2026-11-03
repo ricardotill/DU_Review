@@ -28,7 +28,7 @@ public class RoundsPanelTests : BunitContext
             Adventurers = new AdventurersSettings { Enabled = true }
         };
         var options = Options.Create(settings);
-        _runtime = new RuntimeSettingsService(options, NullLogger<RuntimeSettingsService>.Instance);
+        _runtime = TestRuntime.For(options);
         Services.AddSingleton(_runtime);
         Services.AddSingleton(options);
         _auth = AddAuthorization();

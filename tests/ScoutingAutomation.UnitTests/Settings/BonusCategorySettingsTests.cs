@@ -17,8 +17,7 @@ public class BonusCategorySettingsTests : IDisposable
     private string File => Path.Combine(_temp.Path, "runtime-settings.json");
 
     private RuntimeSettingsService Create(List<BonusCategoryConfig>? configured = null) =>
-        new(Options.Create(new ScoutingSettings { RuntimeSettingsFile = File, BonusCategories = configured }),
-            NullLogger<RuntimeSettingsService>.Instance);
+        TestRuntime.For(Options.Create(new ScoutingSettings { RuntimeSettingsFile = File, BonusCategories = configured }));
 
     private static IEnumerable<string> Keys(RuntimeSettingsService runtime) => runtime.BonusCategories.Select(c => c.Key);
 

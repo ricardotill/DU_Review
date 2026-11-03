@@ -47,7 +47,7 @@ public class ReviewReminderServiceTests : IDisposable
             RuntimeSettingsFile = Path.Combine(_temp.Path, "runtime-settings.json"),
             ReviewReminder = new ReviewReminderConfig { AfterMinutes = minutes, ChannelId = channel }
         });
-        var runtime = new RuntimeSettingsService(options, NullLogger<RuntimeSettingsService>.Instance);
+        var runtime = TestRuntime.For(options);
         var services = new ServiceCollection()
             .AddSingleton(_submissions)
             .AddSingleton(_slack)

@@ -21,15 +21,18 @@ public partial class DatabaseInitializer
     private readonly IOptions<ScoutingSettings> _options;
     private readonly ILogger<DatabaseInitializer> _logger;
     private readonly ActiveEdition? _activeEdition;
+    private readonly RuntimeSettingsService? _runtimeSettings;
 
     public DatabaseInitializer(
         ScoutingDbContext context,
         IFileStorageService fileStorage,
         IOptions<ScoutingSettings> options,
         ILogger<DatabaseInitializer> logger,
-        ActiveEdition? activeEdition = null)
+        ActiveEdition? activeEdition = null,
+        RuntimeSettingsService? runtimeSettings = null)
     {
         _activeEdition = activeEdition;
+        _runtimeSettings = runtimeSettings;
         _context = context;
         _fileStorage = fileStorage;
         _options = options;
@@ -344,6 +347,12 @@ public partial class DatabaseInitializer
             await _context.Database.EnsureCreatedAsync(ct);
             await AddMissingColumnsAsync(ct);
             await EnsureActiveEditionAsync(ct);
+            if (_context.Database.IsRelational())
+            {
+                await EnsureRuntimeSettingsAsync(ct);
+                // The settings service may have been made before the table existed
+                _runtimeSettings?.Reload();
+            }
         }
         catch (Exception ex)
         {

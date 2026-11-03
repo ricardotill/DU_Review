@@ -1,4 +1,5 @@
 using System.Threading.Channels;
+using ScoutingAutomation.Infrastructure.Cluster;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -22,13 +23,15 @@ public sealed class UnlockNotifier : BackgroundService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly RuntimeSettingsService _runtime;
     private readonly ILogger<UnlockNotifier> _logger;
+    private readonly IClusterLocks _cluster;
     private int _pending;
 
-    public UnlockNotifier(IServiceScopeFactory scopeFactory, RuntimeSettingsService runtime, ILogger<UnlockNotifier> logger)
+    public UnlockNotifier(IServiceScopeFactory scopeFactory, RuntimeSettingsService runtime, ILogger<UnlockNotifier> logger, IClusterLocks? cluster = null)
     {
         _scopeFactory = scopeFactory;
         _runtime = runtime;
         _logger = logger;
+        _cluster = cluster ?? SingleInstance.Instance;
     }
 
     /// <summary>Groups queued and not handled yet; for tests and the events page.</summary>
@@ -73,6 +76,11 @@ public sealed class UnlockNotifier : BackgroundService
     /// <returns>True when a message was posted.</returns>
     public async Task<bool> NotifyAsync(Guid groupId, CancellationToken ct = default)
     {
+        // Another instance may handle a check-in of the same group at the same moment: one at a time per group, and
+        // with the last posted count as saved by the other instance, so a notice is not posted twice
+        await using var groupLock = await _cluster.AcquireAsync(ClusterLockNames.Unlock(groupId), ct);
+        if (_cluster.IsDistributed) _runtime.Reload();
+
         await using var scope = _scopeFactory.CreateAsyncScope();
         var services = scope.ServiceProvider;
         var group = await services.GetRequiredService<IGroupRepository>().GetByIdAsync(groupId, ct);

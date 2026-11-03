@@ -10,13 +10,11 @@ PORT="${PORT:-5231}"
 
 dotnet publish "$PROJECT" -c Release -o "$APP_DIR" --nologo
 
-# Runtime settings are never published: take them over once from the project folder,
-# so the reviewer names and rules stay the same. Accounts live in the database.
-for f in runtime-settings.json; do
-  if [[ ! -e "$APP_DIR/$f" && -e "$PROJECT/$f" ]]; then
-    cp "$PROJECT/$f" "$APP_DIR/"
-  fi
-done
+# Settings made in the app live in the database. For a new database, bring along a
+# runtime-settings.json of an older version from the project folder: the first start imports it once.
+if [[ ! -e "$APP_DIR/scouting_dev.db" && ! -e "$APP_DIR/runtime-settings.json" && -e "$PROJECT/runtime-settings.json" ]]; then
+  cp "$PROJECT/runtime-settings.json" "$APP_DIR/"
+fi
 
 # User secrets (the Slack tokens) are only read in Development: pass them on as environment variables
 while IFS= read -r line; do

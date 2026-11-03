@@ -399,9 +399,7 @@ public class WorkflowImportTests
     {
         var submission = ApprovedSubmission();
         var temp = Path.Combine(Path.GetTempPath(), $"runtime_{Guid.NewGuid():N}.json");
-        var runtime = new RuntimeSettingsService(
-            Options.Create(new ScoutingSettings { Reviewers = Settings.Value.Reviewers, ReviewStatusReactions = Settings.Value.ReviewStatusReactions, RuntimeSettingsFile = temp }),
-            NullLogger<RuntimeSettingsService>.Instance);
+        var runtime = TestRuntime.For(Options.Create(new ScoutingSettings { Reviewers = Settings.Value.Reviewers, ReviewStatusReactions = Settings.Value.ReviewStatusReactions, RuntimeSettingsFile = temp }));
         var service = new SubmissionWorkflowService(
             _submissions, _groups, _assignments, new AssignmentParser(NullLogger<AssignmentParser>.Instance),
             _storage, _slack, _notifier, runtime, Settings, NullLogger<SubmissionWorkflowService>.Instance);

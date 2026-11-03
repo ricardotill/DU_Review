@@ -1,37 +1,22 @@
-# DU Review in production: PostgreSQL plus the app, data in Docker volumes.
-# Fill in .env first (copy .env.example), then: docker compose pull && docker compose up -d
+# DU Review in production: two app replicas behind a proxy, on an existing PostgreSQL server
+# (not in this file). Fill in .env first (copy .env.example), then: docker compose pull && docker compose up -d
 # See docs/handleiding-beheer.md, "Met Docker Compose".
 
 services:
-  db:
-    image: postgres:17
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: scoutingdb
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
-    volumes:
-      - db-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d scoutingdb"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-
   app:
     # The image CI builds and pushes (see .github/workflows/ci.yml); APP_VERSION in .env pins a release.
     # `docker compose up -d --build` builds it from this repository instead.
     image: ghcr.io/ricardotill/du_review:${APP_VERSION:-latest}
     build: .
     restart: unless-stopped
-    # The app prepares the database at startup: wait until PostgreSQL accepts connections
-    depends_on:
-      db:
-        condition: service_healthy
-    ports:
-      - "${PORT:-5231}:8080"
+    # Two instances on the same database: one talks to Slack, both serve pages (README, "Meerdere instanties")
+    deploy:
+      replicas: ${APP_REPLICAS:-2}
+    # A PostgreSQL server on this machine is reachable as host.docker.internal
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
-      ConnectionStrings__scoutingdb: "Host=db;Database=scoutingdb;Username=postgres;Password=${POSTGRES_PASSWORD}"
+      ConnectionStrings__scoutingdb: ${DATABASE_CONNECTION_STRING:?Set DATABASE_CONNECTION_STRING in .env}
       Scouting__Slack__BotToken: ${SLACK_BOT_TOKEN:?Set SLACK_BOT_TOKEN in .env}
       Scouting__Slack__AppToken: ${SLACK_APP_TOKEN:?Set SLACK_APP_TOKEN in .env}
       Scouting__Slack__SocketMode: "true"
@@ -47,19 +32,32 @@ services:
       Scouting__Email__Username: ${SMTP_USERNAME:-}
       Scouting__Email__Password: ${SMTP_PASSWORD:-}
       Scouting__Email__FromAddress: ${SMTP_FROM:-}
-      # Trust X-Forwarded-For/-Proto from the cloudflared container only (fixed address below)
-      ForwardedHeaders__KnownNetworks__0: 172.29.53.10/32
+      # Trust X-Forwarded-For/-Proto from the proxy and cloudflared: the network below has only these containers
+      ForwardedHeaders__KnownNetworks__0: 172.29.53.0/24
     networks:
-      - default
-      - tunnel
+      - web
+    # The replicas share the files, so every replica sees every upload
     volumes:
       - app-data:/data
-      - app-keys:/home/app/.aspnet/DataProtection-Keys
       # Edits to the points file count after `docker compose restart app`, without a rebuild
       - ./src/ScoutingAutomation.Web/opdrachtenpunten.csv:/app/opdrachtenpunten.csv:ro
 
+  # The entrance: keeps each visitor on one replica (sticky sessions, see docker/Caddyfile)
+  proxy:
+    image: caddy:2.10
+    restart: unless-stopped
+    ports:
+      - "${PORT:-5231}:8080"
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - app
+    networks:
+      web:
+        ipv4_address: 172.29.53.20
+
   # Optional HTTPS address via a Cloudflare Tunnel: set CLOUDFLARE_TUNNEL_TOKEN in .env, then
-  # docker compose --profile tunnel up -d. In Cloudflare the public hostname points to http://app:8080.
+  # docker compose --profile tunnel up -d. In Cloudflare the public hostname points to http://proxy:8080.
   cloudflared:
     image: cloudflare/cloudflared:latest
     profiles: ["tunnel"]
@@ -68,19 +66,18 @@ services:
     environment:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
     depends_on:
-      - app
+      - proxy
     networks:
-      tunnel:
+      web:
         ipv4_address: 172.29.53.10
 
 networks:
-  # Own network with a fixed address for cloudflared, so the app can trust exactly that address
-  tunnel:
+  # Own network: fixed addresses for cloudflared (.10) and the proxy (.20), replicas from the upper half
+  web:
     ipam:
       config:
         - subnet: 172.29.53.0/24
+          ip_range: 172.29.53.128/25
 
 volumes:
-  db-data:
   app-data:
-  app-keys:

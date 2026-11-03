@@ -14,12 +14,12 @@ public class RuntimeSettingsServiceTests : IDisposable
     private string File_ => Path.Combine(_temp.Path, "sub", "runtime-settings.json");
 
     private RuntimeSettingsService Create(bool manualMode = false, List<string>? reviewers = null) =>
-        new(Options.Create(new ScoutingSettings
+        TestRuntime.For(Options.Create(new ScoutingSettings
         {
             ManualMode = manualMode,
             Reviewers = reviewers ?? new List<string> { " U_CONFIG ", "" },
             RuntimeSettingsFile = File_
-        }), NullLogger<RuntimeSettingsService>.Instance);
+        }));
 
     [Theory]
     [InlineData(true)]
@@ -56,7 +56,7 @@ public class RuntimeSettingsServiceTests : IDisposable
     public void ConfiguredReviewers_ShouldBeTrimmedAndSkipEmpty()
     {
         Create().ConfiguredReviewers.Should().Equal("U_CONFIG");
-        new RuntimeSettingsService(Options.Create(new ScoutingSettings { Reviewers = null!, RuntimeSettingsFile = File_ }), NullLogger<RuntimeSettingsService>.Instance)
+        TestRuntime.For(Options.Create(new ScoutingSettings { Reviewers = null!, RuntimeSettingsFile = File_ }))
             .ConfiguredReviewers.Should().BeEmpty();
     }
 
@@ -154,7 +154,7 @@ public class RuntimeSettingsServiceTests : IDisposable
     [Fact]
     public void WithoutFileSetting_ShouldUseDefaultLocation()
     {
-        var runtime = new RuntimeSettingsService(Options.Create(new ScoutingSettings { RuntimeSettingsFile = "" }), NullLogger<RuntimeSettingsService>.Instance);
+        var runtime = TestRuntime.For(Options.Create(new ScoutingSettings { RuntimeSettingsFile = "" }));
 
         runtime.AddedReviewers.Should().BeEmpty();
     }

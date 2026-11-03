@@ -84,7 +84,7 @@ Een groep met inzendingen kan niet uit een editie worden gehaald. Groepen in de 
 Vanaf deze versie hoort alles bij een **editie** (een jaar van het spel); zie de [README](../README.md#edities). Bij de eerste start wordt een bestaande database de eerste editie, genoemd naar het jaar van de eerste inzending ("DU 2025"). Groepen, opdrachten, locaties, inzendingen en punten blijven staan en groepsaccounts blijven werken.
 
 - **SQLite** (`run-gameday.sh`, lokaal draaien): de app bewaart vooraf een kopie in `scouting_storage/_backup/pre-editions-{tijdstip}.db`. Gaat er iets mis, zet dan die kopie terug als database en start de vorige versie.
-- **PostgreSQL** (Docker Compose): maak vóór de update zelf een back-up, bijvoorbeeld met `docker compose exec db pg_dump -U postgres scoutingdb > voor-edities.sql`. De omzetting gebeurt in één keer; lukt die niet, dan blijft de database zoals hij was en start de app niet.
+- **PostgreSQL** (Docker Compose): maak vóór de update zelf een back-up, bijvoorbeeld met `pg_dump scoutingdb > voor-edities.sql` op de databaseserver. De omzetting gebeurt in één keer; lukt die niet, dan blijft de database zoals hij was en start de app niet.
 
 ### Juryleden
 
@@ -147,7 +147,7 @@ Het Avonturiers-deel staat standaard uit. Zo zet je het op:
 
 ### Handmatige modus
 
-Zet **Handmatige modus** aan met de schakelaar op het **Dashboard** als de organisatie alles zelf wil beoordelen. De app slaat dan alleen nog bestanden op met de juiste naam in de map van de groep. Er komen geen inzendingen op het dashboard, emoji's worden genegeerd en de bot zegt niets in Slack. Bovenaan elke pagina staat dan **Handmatige modus**. Na een herstart geldt weer de instelling `Scouting:ManualMode`.
+Zet **Handmatige modus** aan met de schakelaar op het **Dashboard** als de organisatie alles zelf wil beoordelen. De app slaat dan alleen nog bestanden op met de juiste naam in de map van de groep. Er komen geen inzendingen op het dashboard, emoji's worden genegeerd en de bot zegt niets in Slack. Bovenaan elke pagina staat dan **Handmatige modus**. De schakelaar blijft staan na een herstart en geldt voor alle instanties van de app.
 
 ### Automatisch inhalen
 
@@ -194,7 +194,7 @@ Er zijn drie manieren om de app te starten:
 | Manier | Wanneer | Database |
 |---|---|---|
 | `run-gameday.sh` | Speeldag op een Mac | SQLite |
-| Docker Compose | Speeldag op een server of een andere computer met Docker | PostgreSQL |
+| Docker Compose | Speeldag op een server met Docker en een eigen PostgreSQL-server | PostgreSQL (eigen server) |
 | .NET Aspire | Ontwikkelen en testen | PostgreSQL |
 
 Moeten groepen of jury via internet bij de app, zonder in hetzelfde netwerk te zitten? Zet er dan een [Cloudflare Tunnel](#via-internet-cloudflare-tunnel) voor; dat kan bij `run-gameday.sh` en bij Docker Compose.
@@ -212,7 +212,7 @@ Start in de map van de repository:
 Het script doet het volgende:
 
 1. Het bouwt een Release-versie van de app in `~/du-app`.
-2. De eerste keer neemt het `runtime-settings.json` over uit de projectmap. Zo blijven de juryleden en regels hetzelfde. Staan ze al in `~/du-app`, dan blijven die staan.
+2. Staat er nog geen database in `~/du-app`, dan neemt het een `runtime-settings.json` uit de projectmap mee. De eerste start leest dat bestand één keer in de database in, zodat de juryleden en regels hetzelfde blijven. Daarna staan de instellingen alleen nog in de database.
 3. Het haalt de Slack-tokens en het adres van de eerste beheerder (zie [De eerste beheerder](#de-eerste-beheerder)) uit de user secrets. Ontbreekt de BotToken of de AppToken, dan stopt het script met een melding. De app start dan niet.
 4. Het start de app met SQLite. De database `scouting_dev.db` staat in `~/du-app`. Het puntenbestand `opdrachtenpunten.csv` leest de app uit de repository, dus een aanpassing daarin geldt na een herstart.
 5. Zolang de app draait, gaat de Mac niet in de slaapstand en blijft het scherm aan.
@@ -229,13 +229,23 @@ Laat de Mac aan de stroom hangen en houd het deksel open: met het deksel dicht g
 
 ### Met Docker Compose (productie)
 
-In de repository staan een `Dockerfile` en een `docker-compose.yml`. Samen starten ze twee containers: een PostgreSQL-database (`db`) en de app (`app`). De app draait als productieversie, met Socket Mode en zonder simulatiemodus.
+In de repository staan een `Dockerfile` en een `docker-compose.yml`. Samen starten ze twee instanties van de app (`app`) en een proxy ervoor (`proxy`, [Caddy](https://caddyserver.com)). De app draait als productieversie, met Socket Mode en zonder simulatiemodus. De database zit er niet in: de app gebruikt een PostgreSQL-server die je zelf beheert, op dezelfde computer of ergens anders.
+
+De proxy verdeelt de bezoekers over de instanties en houdt elke bezoeker bij dezelfde instantie, met een cookie `du_instance`. Eén instantie praat met Slack; valt die weg, dan neemt de andere het binnen een paar seconden over. Zie [Meerdere instanties](../README.md#meerdere-instanties) in de README. Het aantal instanties stel je in met `APP_REPLICAS` in `.env` (standaard `2`).
 
 Het image van de app hoef je niet zelf te bouwen: GitHub bouwt het bij elke release en zet het in de GitHub Container Registry (`ghcr.io/ricardotill/du_review`), voor `amd64` en `arm64` (bijvoorbeeld een Mac met Apple-chip of een Raspberry Pi). Zie [Updates en versies](#updates-en-versies).
 
 **De eerste keer**
 
 1. Installeer Docker (op een Mac: Docker Desktop) en start het.
+   Zorg voor een PostgreSQL-server (versie 14 of nieuwer) met een lege database en een gebruiker die daarin tabellen mag maken:
+
+   ```sql
+   CREATE USER du WITH PASSWORD 'een-lang-wachtwoord';
+   CREATE DATABASE scoutingdb OWNER du;
+   ```
+
+   Draait PostgreSQL op dezelfde computer als Docker, dan bereiken de containers hem als `host.docker.internal`. Laat PostgreSQL dan ook luisteren op het adres van Docker (`listen_addresses` in `postgresql.conf`, bijvoorbeeld `'*'`) en sta de Docker-netwerken toe in `pg_hba.conf`, bijvoorbeeld `host scoutingdb du 172.16.0.0/12 scram-sha-256`.
 2. Maak in de map van de repository het bestand `.env` aan, met `.env.example` als voorbeeld:
 
    ```bash
@@ -243,7 +253,7 @@ Het image van de app hoef je niet zelf te bouwen: GitHub bouwt het bij elke rele
    ```
 
 3. Vul in `.env` in:
-   - `POSTGRES_PASSWORD`: een zelfgekozen, lang wachtwoord voor de database.
+   - `DATABASE_CONNECTION_STRING`: hoe de app de database bereikt, bijvoorbeeld `Host=host.docker.internal;Database=scoutingdb;Username=du;Password=een-lang-wachtwoord`. Staat de database op een andere machine, zet er dan `;SSL Mode=VerifyFull` achter (of minstens `;SSL Mode=Require`). Anders gaan het wachtwoord en alle gegevens onversleuteld over het netwerk.
    - `SLACK_BOT_TOKEN` (`xoxb-...`) en `SLACK_APP_TOKEN` (`xapp-...`): de tokens uit [Slack koppelen](slack-koppelen.md).
    - Optioneel `PORT`, de poort op deze computer (standaard `5231`).
    - `BOOTSTRAP_ADMIN_EMAIL`: jouw e-mailadres. Daarvoor maakt de app bij de eerste start het eerste beheerdersaccount.
@@ -264,7 +274,7 @@ Het image van de app hoef je niet zelf te bouwen: GitHub bouwt het bij elke rele
    docker compose up -d
    ```
 
-   De app wacht tot de database klaar is. Wil je een eigen aanpassing draaien die nog niet is uitgebracht? Bouw het image dan zelf met `docker compose up -d --build` (dat duurt een paar minuten).
+   Is de database niet bereikbaar, dan stopt de app met een melding in het logboek en probeert Docker het steeds opnieuw. Wil je een eigen aanpassing draaien die nog niet is uitgebracht? Bouw het image dan zelf met `docker compose up -d --build` (dat duurt een paar minuten).
 
 6. Kies je wachtwoord via de link in de mail. Alleen als er geen mail kan worden verstuurd, staat de link in het logboek:
 
@@ -278,7 +288,7 @@ Het image van de app hoef je niet zelf te bouwen: GitHub bouwt het bij elke rele
 
 **Instellingen overnemen van een eerdere installatie**
 
-Heb je juryleden, regels en bottekst al ingesteld in `runtime-settings.json`? Zet dat bestand dan in de container en herstart de app:
+De app bewaart wat je in de app instelt in de database. Een oudere versie gebruikte daarvoor `runtime-settings.json`. Bij de overstap naar deze versie leest de app een bestaand `/data/runtime-settings.json` vanzelf één keer in en hernoemt het naar `runtime-settings.json.imported`. Wil je een bestand van een andere installatie overnemen, en zijn er nog geen instellingen in de database opgeslagen? Zet het bestand dan in de container en herstart de app:
 
 ```bash
 docker compose exec -T app sh -c 'cat > /data/runtime-settings.json' < src/ScoutingAutomation.Web/runtime-settings.json
@@ -294,7 +304,8 @@ Gebruik dit commando en niet `docker compose cp`: met `cp` hoort het bestand bij
 | Starten | `docker compose up -d` |
 | Stoppen | `docker compose down` |
 | Logboek volgen | `docker compose logs -f app` |
-| Herstarten, bijvoorbeeld na een aanpassing in `opdrachtenpunten.csv` | `docker compose restart app` |
+| Herstarten, bijvoorbeeld na een aanpassing in `opdrachtenpunten.csv` | `docker compose restart app` (alle instanties) |
+| Aantal instanties tijdelijk aanpassen | `docker compose up -d --scale app=3` |
 | Nieuwe versie | `docker compose pull app` en daarna `docker compose up -d app` (of vanzelf, zie [Updates en versies](#updates-en-versies)) |
 | Eigen versie van de code bouwen | `git pull` en daarna `docker compose up -d --build` |
 
@@ -316,13 +327,14 @@ Haalt de server nieuwe images automatisch op (bijvoorbeeld met Watchtower), zet 
 
 **Waar staat alles?**
 
-- De database staat in het Docker-volume `db-data`.
-- De accounts staan in de database. De bestanden en `runtime-settings.json` staan in het volume `app-data`, in de container onder `/data`. De bestanden van de groepen staan in `/data/storage`.
-- De sleutels voor de inlogcookies en de wachtwoordlinks staan in het volume `app-keys`. Daardoor blijft iedereen ingelogd na een herstart.
+- De database staat op je eigen PostgreSQL-server. Maak daar ook de back-ups, bijvoorbeeld met `pg_dump`.
+- De accounts, de instellingen uit de app en de sleutels voor de inlogcookies en wachtwoordlinks staan in de database. Daardoor blijft iedereen ingelogd na een herstart.
+- De bestanden staan in het volume `app-data`, in de container onder `/data`. Alle instanties gebruiken dat ene volume. De bestanden van de groepen staan in `/data/storage`.
+- Na de overstap naar deze versie moet iedereen één keer opnieuw inloggen, omdat de sleutels voor de inlogcookies van het volume `app-keys` naar de database gaan. Dat volume is daarna niet meer nodig.
 - Het puntenbestand komt direct uit de repository: `src/ScoutingAutomation.Web/opdrachtenpunten.csv`.
 - Andere instellingen, zoals de start- en eindtijd, pas je aan in de app (als beheerder). Of je zet ze in `docker-compose.yml` onder `environment`, met `__` in plaats van `:`, bijvoorbeeld `Scouting__EventStart: "2026-10-03T09:00"`. Een waarde die je in de app hebt aangepast, gaat altijd voor.
 
-Volumes blijven bewaard bij `docker compose down`, maar `docker compose down -v` wist ze, met de database en alle bestanden. Gebruik `-v` dus nooit op de speeldag.
+Volumes blijven bewaard bij `docker compose down`, maar `docker compose down -v` wist ze, met alle bestanden. Gebruik `-v` dus nooit op de speeldag.
 
 Een kopie van alle bestanden maak je zo:
 
@@ -359,7 +371,7 @@ Ja. Zes groepen, de jury en een beamer zijn een paar tientallen browsers; dat is
 3. Cloudflare toont een token (een lange tekst na `--token`). Kopieer die en bewaar hem veilig: met de token kan iedereen jouw tunnel draaien.
 4. Voeg een **Public hostname** toe: kies een subdomein en je domein (bijvoorbeeld `du` en `jouwdomein.nl`), type **HTTP**, en als URL:
    - met `run-gameday.sh`: `localhost:5231`
-   - met Docker Compose: `app:8080`
+   - met Docker Compose: `proxy:8080` (de proxy voor de instanties; stond hier eerder `app:8080`, pas het dan aan)
 5. Zet bij **SSL/TLS** > **Edge Certificates** **Always Use HTTPS** aan, zodat ook wie `http://` intypt op HTTPS uitkomt.
 
 Gebruik in de tunnel altijd `http` naar de app, niet `https`: de app heeft zelf geen certificaat, Cloudflare zorgt voor HTTPS.
@@ -404,14 +416,14 @@ cloudflared tunnel --url http://localhost:5231
 
 3. Controleer de tunnel met `docker compose logs cloudflared`: er staat `Registered tunnel connection`. In het Cloudflare-dashboard staat de tunnel op **Healthy**.
 
-Gebruik `--profile tunnel` ook bij `docker compose down` en `docker compose up -d`, anders blijft de tunnel draaien of start hij niet mee. `docker compose restart app` herstart alleen de app; de tunnel maakt daarna vanzelf weer verbinding.
+Gebruik `--profile tunnel` ook bij `docker compose down` en `docker compose up -d`, anders blijft de tunnel draaien of start hij niet mee. `docker compose restart app` herstart alleen de app; de proxy en de tunnel blijven draaien.
 
 **Waarom de app de tunnel moet vertrouwen**
 
 De tunnel geeft het echte adres van de bezoeker door, en dat het verzoek via HTTPS binnenkwam. De app gebruikt dat voor de grens op mislukte logins en om het login-cookie alleen via HTTPS te versturen. Dat doorgeven vertrouwt de app alleen van een proxy die hij kent:
 
 - `cloudflared` op dezelfde computer als de app (`run-gameday.sh`): vertrouwd, er hoeft niets ingesteld.
-- `cloudflared` in Docker Compose: de container heeft een vast adres (`172.29.53.10`), en de app vertrouwt dat adres via `ForwardedHeaders__KnownNetworks__0` in `docker-compose.yml`. Ook hier hoef je niets in te stellen.
+- `cloudflared` in Docker Compose: de container heeft een vast adres (`172.29.53.10`). De proxy vertrouwt alleen dat adres (in `docker/Caddyfile`), en de app vertrouwt het eigen netwerk van de proxy en de tunnel via `ForwardedHeaders__KnownNetworks__0` in `docker-compose.yml`. Ook hier hoef je niets in te stellen.
 - `cloudflared` of een andere proxy op een andere machine: zet het adres van die machine in `ForwardedHeaders:KnownNetworks`, als lijst van netwerken in CIDR-vorm (`"192.168.1.5/32"`).
 
 Klopt dit niet, dan werkt de app nog steeds, maar ziet hij voor iedereen het adres van de proxy en staat bij elke inlog van een groep een waarschuwing over gewone HTTP in het logboek.

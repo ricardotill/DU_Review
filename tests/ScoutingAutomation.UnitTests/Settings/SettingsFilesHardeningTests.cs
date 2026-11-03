@@ -8,7 +8,7 @@ using Xunit;
 
 namespace ScoutingAutomation.UnitTests.Settings;
 
-/// <summary>Settings files that are damaged, cannot be written, or hold values the app cannot use.</summary>
+/// <summary>Saved settings that are damaged, cannot be written, changed elsewhere, or hold values the app cannot use.</summary>
 public class SettingsFilesHardeningTests : IDisposable
 {
     private static readonly DateTime Start = new(2026, 10, 3, 12, 0, 0);
@@ -18,7 +18,7 @@ public class SettingsFilesHardeningTests : IDisposable
     private string SettingsFile => Path.Combine(_temp.Path, "runtime-settings.json");
 
     private RuntimeSettingsService Runtime() =>
-        new(Options.Create(new ScoutingSettings { EventStart = Start, RuntimeSettingsFile = SettingsFile }), NullLogger<RuntimeSettingsService>.Instance);
+        TestRuntime.For(Options.Create(new ScoutingSettings { EventStart = Start, RuntimeSettingsFile = SettingsFile }));
 
     [Theory]
     [InlineData(1)]
@@ -50,38 +50,128 @@ public class SettingsFilesHardeningTests : IDisposable
     [Fact]
     public void EventTime_OutsideTheAllowedYearsInAppSettings_ShouldBeIgnored()
     {
-        var runtime = new RuntimeSettingsService(
-            Options.Create(new ScoutingSettings { EventStart = DateTime.MinValue, RuntimeSettingsFile = SettingsFile }),
-            NullLogger<RuntimeSettingsService>.Instance);
+        var runtime = TestRuntime.For(Options.Create(new ScoutingSettings { EventStart = DateTime.MinValue, RuntimeSettingsFile = SettingsFile }));
 
         runtime.EventStart.Should().BeNull();
     }
 
     [Fact]
-    public void DamagedSettingsFile_ShouldBeSetAsideInsteadOfOverwritten()
+    public void DamagedSavedSettings_ShouldNotStopTheApp()
     {
-        File.WriteAllText(SettingsFile, "{ broken");
+        var runtime = TestRuntime.Create(new ScoutingSettings { EventStart = Start, BlockAttemptsAfterApproval = true }, new InMemoryRuntimeSettingsStore("{ broken"));
 
-        var runtime = Runtime();
+        runtime.EventStartGameTime.Should().Be(Start);
+        runtime.BlockAttemptsAfterApproval.Should().BeTrue("the settings from appsettings apply");
         runtime.SetBlockAttemptsAfterApproval(false);
-
-        var aside = Directory.GetFiles(_temp.Path, "runtime-settings.json.corrupt-*").Should().ContainSingle().Subject;
-        File.ReadAllText(aside).Should().Be("{ broken");
-        File.ReadAllText(SettingsFile).Should().Contain("BlockAttemptsAfterApproval");
+        runtime.BlockAttemptsAfterApproval.Should().BeFalse("a save replaces the damaged settings");
     }
 
     [Fact]
     public void Settings_ThatCannotBeSaved_ShouldNotChangeInTheAppEither()
     {
-        var runtime = Runtime();
-        // A folder where the file should be: every save fails, like a full disk or a read-only folder
-        Directory.CreateDirectory(SettingsFile);
+        var store = new FailingStore();
+        var runtime = TestRuntime.Create(new ScoutingSettings { EventStart = Start }, store);
+        store.Fail = true;
 
         var act = () => runtime.SetEventStart(Start.AddHours(1));
 
-        act.Should().Throw<Exception>().Which.Should().Match(e => e is IOException || e is UnauthorizedAccessException);
+        // An IOException, so the pages show "Opslaan is mislukt" as before
+        act.Should().Throw<RuntimeSettingsSaveException>().Which.Should().BeAssignableTo<IOException>();
         runtime.EventStartGameTime.Should().Be(Start, "a restart would lose a change that was never saved");
-        Directory.GetFiles(_temp.Path, "*.tmp").Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ChangeThatCannotBeSavedOrReadBack_ShouldNotStayInEffect()
+    {
+        var store = new FailingStore();
+        var runtime = TestRuntime.Create(new ScoutingSettings { ManualMode = false }, store);
+        runtime.SetManualMode(true);
+        store.Fail = true;
+        store.FailLoad = true;
+
+        var act = () => runtime.SetManualMode(false);
+
+        act.Should().Throw<RuntimeSettingsSaveException>();
+        runtime.ManualMode.Should().BeTrue("the last saved settings apply, not the change that failed");
+    }
+
+    [Fact]
+    public void DatabaseThatCannotBeRead_ShouldKeepTheSettingsInMemory()
+    {
+        var store = new FailingStore();
+        var runtime = TestRuntime.Create(new ScoutingSettings { ManualMode = false }, store);
+        runtime.SetManualMode(true);
+        store.FailLoad = true;
+
+        runtime.Reload();
+
+        runtime.ManualMode.Should().BeTrue("a short database outage must not switch manual mode off");
+    }
+
+    [Fact]
+    public void SaveBasedOnOldSettings_ShouldBeRefusedAndShowTheNewOnes()
+    {
+        // Two instances of the app on one database
+        var store = new InMemoryRuntimeSettingsStore();
+        var first = TestRuntime.Create(new ScoutingSettings(), store);
+        var second = TestRuntime.Create(new ScoutingSettings(), store);
+        first.AddReviewer("U_EERSTE").Should().BeNull();
+
+        var act = () => second.AddReviewer("U_TWEEDE");
+
+        act.Should().Throw<RuntimeSettingsSaveException>().WithMessage("*ergens anders gewijzigd*");
+        second.AddedReviewers.Should().Equal(["U_EERSTE"], "the settings are read again, so the admin sees what changed");
+        second.AddReviewer("U_TWEEDE").Should().BeNull("trying again works");
+        first.Reload();
+        first.AddedReviewers.Should().Equal("U_EERSTE", "U_TWEEDE");
+    }
+
+    [Fact]
+    public void RecordOfAPostedMessage_ShouldNotBeLostWhenAnotherInstanceSavedFirst()
+    {
+        var store = new InMemoryRuntimeSettingsStore();
+        var first = TestRuntime.Create(new ScoutingSettings(), store);
+        var second = TestRuntime.Create(new ScoutingSettings(), store);
+        first.AddReviewer("U_EERSTE").Should().BeNull();
+        var group = Guid.NewGuid();
+
+        // The notice is already in Slack: its record must be kept, on top of the other instance's change
+        second.MarkUnlockNotified(group, 3);
+
+        var restarted = TestRuntime.Create(new ScoutingSettings(), store);
+        restarted.UnlockNotified(group).Should().Be(3);
+        restarted.AddedReviewers.Should().Equal("U_EERSTE");
+    }
+
+    [Fact]
+    public void ManualMode_ShouldBeSharedAndKept()
+    {
+        var store = new InMemoryRuntimeSettingsStore();
+        var first = TestRuntime.Create(new ScoutingSettings { ManualMode = false }, store);
+        var changed = 0;
+        var second = TestRuntime.Create(new ScoutingSettings { ManualMode = false }, store);
+        second.Changed += () => changed++;
+
+        first.SetManualMode(true);
+        second.Reload();
+
+        second.ManualMode.Should().BeTrue();
+        changed.Should().Be(1);
+        TestRuntime.Create(new ScoutingSettings { ManualMode = false }, store).ManualMode.Should().BeTrue("a restart keeps it");
+    }
+
+    private sealed class FailingStore : IRuntimeSettingsStore
+    {
+        private readonly InMemoryRuntimeSettingsStore _inner = new();
+
+        public bool Fail { get; set; }
+
+        public bool FailLoad { get; set; }
+
+        public (string? Json, long Version) Load() => FailLoad ? throw new InvalidOperationException("database down") : _inner.Load();
+
+        public long? TrySave(string json, long expectedVersion) =>
+            Fail ? throw new InvalidOperationException("database down") : _inner.TrySave(json, expectedVersion);
     }
 
     public void Dispose() => _temp.Dispose();

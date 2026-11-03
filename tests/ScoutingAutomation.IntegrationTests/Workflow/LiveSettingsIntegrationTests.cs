@@ -1,3 +1,5 @@
+using Microsoft.EntityFrameworkCore;
+using ScoutingAutomation.Infrastructure.Data;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
@@ -141,7 +143,7 @@ public class RuntimeSettingsIntegrationTests : IClassFixture<WebApplicationFacto
         await TestApp.PostEventAsync(client, reaction);
 
         (await Submissions(ts)).Single().Status.Should().Be(SubmissionStatus.Awesome);
-        (await File.ReadAllTextAsync(Path.Combine(_app.StorageRoot, "runtime-settings.json"))).Should().Contain("U_NIEUW");
+        (await _app.GetAsync(sp => sp.GetRequiredService<ScoutingDbContext>().RuntimeSettings.SingleAsync())).Json.Should().Contain("U_NIEUW");
         using var browser = await _app.CreateLoggedInClientAsync();
         (await browser.GetStringAsync("/configuration")).Should().Contain("U_NIEUW");
     }

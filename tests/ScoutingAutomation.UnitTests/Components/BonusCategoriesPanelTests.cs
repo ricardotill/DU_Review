@@ -22,7 +22,7 @@ public class BonusCategoriesPanelTests : BunitContext
     public BonusCategoriesPanelTests()
     {
         var options = Options.Create(new ScoutingSettings { RuntimeSettingsFile = Path.Combine(_temp.Path, "runtime-settings.json") });
-        _runtime = new RuntimeSettingsService(options, NullLogger<RuntimeSettingsService>.Instance);
+        _runtime = TestRuntime.For(options);
         Services.AddSingleton(_runtime);
         Services.AddSingleton(options);
         Services.AddSingleton(_notifier);

@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ScoutingAutomation.Contracts.Configuration;
 using ScoutingAutomation.Contracts.Slack;
+using ScoutingAutomation.Infrastructure.Cluster;
 
 namespace ScoutingAutomation.Infrastructure.Slack;
 
@@ -93,6 +94,7 @@ public class SlackClient : ISlackClient
     /// </summary>
     private async Task<HttpResponseMessage> SendDownloadRequestAsync(string fileUrl, string token, CancellationToken ct)
     {
+        LeaderWork.ThrowIfFenced();
         for (var attempt = 1; ; attempt++)
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, fileUrl);
@@ -274,8 +276,9 @@ public class SlackClient : ISlackClient
         try
         {
             // The address itself grants the upload, so the bot token does not go along
+            LeaderWork.ThrowIfFenced();
             using var request = new HttpRequestMessage(HttpMethod.Post, uploadUri) { Content = new ByteArrayContent(content) };
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct, LeaderWork.Token);
             timeout.CancelAfter(ApiTimeout * 4);
             using var response = await _httpClient.SendAsync(request, timeout.Token);
             response.EnsureSuccessStatusCode();
@@ -401,6 +404,7 @@ public class SlackClient : ISlackClient
     /// <exception cref="TimeoutException">Slack did not answer within <see cref="ApiTimeout"/>.</exception>
     private async Task<HttpResponseMessage> SendApiAsync(Func<HttpRequestMessage> create, bool read, CancellationToken ct)
     {
+        LeaderWork.ThrowIfFenced();
         for (var attempt = 1; ; attempt++)
         {
             using var request = create();
@@ -409,7 +413,8 @@ public class SlackClient : ISlackClient
             HttpResponseMessage response;
             try
             {
-                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                // A leader-only call in flight is cancelled when this instance stops being the leader
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct, LeaderWork.Token);
                 timeout.CancelAfter(ApiTimeout);
                 try
                 {
@@ -418,6 +423,7 @@ public class SlackClient : ISlackClient
                 }
                 catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
                 {
+                    if (LeaderWork.IsFenced) throw new NotLeaderException();
                     throw new TimeoutException($"Slack did not answer {request.RequestUri} within {ApiTimeout.TotalSeconds:0} s", ex);
                 }
             }

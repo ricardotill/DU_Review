@@ -54,7 +54,7 @@ public class GameEndAnnouncerTests : IDisposable
     private (GameEndAnnouncer Announcer, RuntimeSettingsService Runtime) Create(ScoutingSettings settings, TimeProvider? time = null)
     {
         var options = Options.Create(settings);
-        var runtime = new RuntimeSettingsService(options, NullLogger<RuntimeSettingsService>.Instance);
+        var runtime = TestRuntime.For(options);
         var services = new ServiceCollection()
             .AddSingleton(_groups)
             .AddSingleton(_slack)

@@ -1,3 +1,4 @@
+using ScoutingAutomation.Infrastructure.Cluster;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -56,8 +57,12 @@ public sealed class EditionService
         ISubmissionChangeNotifier changes,
         AccountChangeNotifier accountChanges,
         TimeProvider time,
-        ILogger<EditionService> logger)
+        ILogger<EditionService> logger,
+        IClusterLocks? cluster = null,
+        IClusterBus? bus = null)
     {
+        _cluster = cluster ?? SingleInstance.Instance;
+        _bus = bus ?? SingleInstance.Instance;
         _db = db;
         _accounts = accounts;
         _active = active;
@@ -69,6 +74,9 @@ public sealed class EditionService
         _time = time;
         _logger = logger;
     }
+
+    private readonly IClusterLocks _cluster;
+    private readonly IClusterBus _bus;
 
     private IQueryable<Group> AllGroups => _db.Groups.IgnoreQueryFilters();
 
@@ -119,37 +127,27 @@ public sealed class EditionService
             .ToList();
     }
 
-    // One change to the editions at a time, in the whole app: two admins starting and deleting the same draft, or
-    // adding the same channel twice, would otherwise both pass the checks
+    // One change to the editions at a time, in the whole app and across its instances: two admins starting and deleting
+    // the same draft, or adding the same channel twice, would otherwise both pass the checks
     private static readonly SemaphoreSlim Changes = new(1, 1);
 
-    internal static async Task<T> OneAtATimeAsync<T>(Func<Task<T>> change, CancellationToken ct)
-    {
-        await Changes.WaitAsync(ct);
-        try
-        {
-            return await change();
-        }
-        finally
-        {
-            Changes.Release();
-        }
-    }
+    internal static Task<T> OneAtATimeAsync<T>(IClusterLocks cluster, Func<Task<T>> change, CancellationToken ct) =>
+        cluster.OneAtATimeAsync(Changes, ClusterLockNames.Editions, change, ct);
 
     /// <inheritdoc cref="CreateCoreAsync"/>
-    public Task<(Edition? Edition, string? Error)> CreateAsync(string? name, int year, bool copyGroups, CancellationToken ct = default) => OneAtATimeAsync(() => CreateCoreAsync(name, year, copyGroups, ct), ct);
+    public Task<(Edition? Edition, string? Error)> CreateAsync(string? name, int year, bool copyGroups, CancellationToken ct = default) => OneAtATimeAsync(_cluster, () => CreateCoreAsync(name, year, copyGroups, ct), ct);
 
     /// <inheritdoc cref="SaveGroupCoreAsync"/>
-    public Task<string?> SaveGroupAsync(Guid editionId, GroupInput input, CancellationToken ct = default) => OneAtATimeAsync(() => SaveGroupCoreAsync(editionId, input, ct), ct);
+    public Task<string?> SaveGroupAsync(Guid editionId, GroupInput input, CancellationToken ct = default) => OneAtATimeAsync(_cluster, () => SaveGroupCoreAsync(editionId, input, ct), ct);
 
     /// <inheritdoc cref="RemoveGroupCoreAsync"/>
-    public Task<string?> RemoveGroupAsync(Guid groupId, CancellationToken ct = default) => OneAtATimeAsync(() => RemoveGroupCoreAsync(groupId, ct), ct);
+    public Task<string?> RemoveGroupAsync(Guid groupId, CancellationToken ct = default) => OneAtATimeAsync(_cluster, () => RemoveGroupCoreAsync(groupId, ct), ct);
 
     /// <inheritdoc cref="DeleteCoreAsync"/>
-    public Task<string?> DeleteAsync(Guid editionId, CancellationToken ct = default) => OneAtATimeAsync(() => DeleteCoreAsync(editionId, ct), ct);
+    public Task<string?> DeleteAsync(Guid editionId, CancellationToken ct = default) => OneAtATimeAsync(_cluster, () => DeleteCoreAsync(editionId, ct), ct);
 
     /// <inheritdoc cref="ActivateCoreAsync"/>
-    public Task<string?> ActivateAsync(Guid editionId, CancellationToken ct = default) => OneAtATimeAsync(() => ActivateCoreAsync(editionId, ct), ct);
+    public Task<string?> ActivateAsync(Guid editionId, CancellationToken ct = default) => OneAtATimeAsync(_cluster, () => ActivateCoreAsync(editionId, ct), ct);
 
     /// <summary>
     /// A new edition, not yet played: it gets the assignments of the active edition, and its groups too when asked
@@ -362,6 +360,8 @@ public sealed class EditionService
         });
 
         _active.Set(edition);
+        // Sent while the gate is still closed: the other instances read the new edition before their next live event
+        _bus.Publish(ActiveEditionRefresher.ClusterTopic);
         foreach (var group in await _db.Groups.AsNoTracking().ToListAsync(ct))
         {
             await _storage.EnsureFolderStructureAsync(group.Name, ct);

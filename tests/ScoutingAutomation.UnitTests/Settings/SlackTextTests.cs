@@ -14,7 +14,7 @@ public class SlackTextTests : IDisposable
     public void Dispose() => _temp.Dispose();
 
     private RuntimeSettingsService Create() =>
-        new(Options.Create(new ScoutingSettings
+        TestRuntime.For(Options.Create(new ScoutingSettings
         {
             RuntimeSettingsFile = Path.Combine(_temp.Path, "runtime-settings.json"),
             GameStartAnnouncement = new GameStartAnnouncementConfig { Message = "Start {group}" },
@@ -22,7 +22,7 @@ public class SlackTextTests : IDisposable
             {
                 UnknownAssignmentNumber = new FeedbackConfig { Reaction = "question", Message = "Opdracht {number} bestaat niet." }
             }
-        }), NullLogger<RuntimeSettingsService>.Instance);
+        }));
 
     [Fact]
     public void Text_ShouldComeFromAppSettingsUntilChanged()

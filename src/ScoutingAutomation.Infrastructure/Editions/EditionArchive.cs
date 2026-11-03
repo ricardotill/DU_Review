@@ -1,3 +1,4 @@
+using ScoutingAutomation.Infrastructure.Cluster;
 using System.IO.Compression;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -40,6 +41,7 @@ public sealed class EditionArchive
     private readonly string _storageRoot;
     private readonly TimeProvider _time;
     private readonly ILogger<EditionArchive> _logger;
+    private readonly IClusterLocks _cluster;
 
     public EditionArchive(
         ScoutingDbContext db,
@@ -47,8 +49,10 @@ public sealed class EditionArchive
         IFileStorageService storage,
         IOptions<ScoutingSettings> options,
         TimeProvider time,
-        ILogger<EditionArchive> logger)
+        ILogger<EditionArchive> logger,
+        IClusterLocks? cluster = null)
     {
+        _cluster = cluster ?? SingleInstance.Instance;
         _db = db;
         _submissions = submissions;
         _storage = storage;
@@ -71,7 +75,7 @@ public sealed class EditionArchive
     {
         // The rows and the standing are read under the edition lock, so an edition started meanwhile cannot mix in;
         // the files are streamed outside it, so a long download does not hold up other edition changes
-        var (edition, submissions, files, data) = await EditionService.OneAtATimeAsync(() => ReadForExportAsync(editionId, ct), ct);
+        var (edition, submissions, files, data) = await EditionService.OneAtATimeAsync(_cluster, () => ReadForExportAsync(editionId, ct), ct);
 
         var missing = new List<string>();
         await using var zip = await ZipArchive.CreateAsync(output, ZipArchiveMode.Create, leaveOpen: true, entryNameEncoding: null, ct);
@@ -184,7 +188,7 @@ public sealed class EditionArchive
     /// </summary>
     /// <returns>The new edition, or why the file could not be imported; nothing is changed then.</returns>
     public Task<(Edition? Edition, string? Error)> ImportAsync(string zipPath, CancellationToken ct = default) =>
-        EditionService.OneAtATimeAsync(() => ImportCoreAsync(zipPath, ct), ct);
+        EditionService.OneAtATimeAsync(_cluster, () => ImportCoreAsync(zipPath, ct), ct);
 
     private async Task<(Edition? Edition, string? Error)> ImportCoreAsync(string zipPath, CancellationToken ct)
     {

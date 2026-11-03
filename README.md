@@ -80,13 +80,13 @@ Verder gebeurt er niets:
 - emoji's van de jury worden genegeerd;
 - de bot plaatst niets in Slack, ook niet bij een ontbrekend opdrachtnummer of een verkeerd bestandstype.
 
-Bovenaan elke pagina staat dan **Handmatige modus**. Met `Scouting:ManualMode` in `appsettings.json` stel je in of de app met handmatige modus aan of uit start; de schakelaar geldt tot de volgende herstart. **Opnieuw opbouwen uit Slack** verwerkt berichten altijd volledig, ook als handmatige modus aan staat.
+Bovenaan elke pagina staat dan **Handmatige modus**. De schakelaar geldt voor alle instanties van de app en blijft staan na een herstart. `Scouting:ManualMode` in `appsettings.json` geldt alleen zolang niemand de schakelaar heeft gebruikt. **Opnieuw opbouwen uit Slack** verwerkt berichten altijd volledig, ook als handmatige modus aan staat.
 
 ## Nieuwe poging na goedkeuring
 
 Met `Scouting:BlockAttemptsAfterApproval` aan is een opdracht klaar zodra de groep er een goedkeuring of awesome voor heeft. Een nieuwe poging voor die opdracht wordt dan niet opgeslagen. De bot reageert met de emoji en tekst uit `SlackFeedback:AlreadyCompleted`. Zo kan een groep een goedgekeurde opdracht niet blijven insturen in de hoop op awesome.
 
-- Als beheerder zet je de regel aan of uit op **Configuratie**, onder **Beoordelingsregels**. Dat geldt direct en blijft bewaard na een herstart, in `runtime-settings.json`. **Terug naar appsettings** zet de waarde uit `appsettings.json` terug.
+- Als beheerder zet je de regel aan of uit op **Configuratie**, onder **Beoordelingsregels**. Dat geldt direct en blijft bewaard na een herstart, in de database. **Terug naar appsettings** zet de waarde uit `appsettings.json` terug.
 - Alleen een **nieuw** bericht dat **na** de eerste goedgekeurde inzending is geplaatst, wordt geweigerd. Een bericht dat al als inzending in de app staat, wordt nooit geweigerd. Dat geldt ook bij inhalen: een eerdere afgekeurde poging, of een tweede bericht dat al was goedgekeurd, krijgt dan geen 🔒. Een bericht dat de app gemist heeft en dat vóór de goedkeuring is geplaatst, telt gewoon mee; de beste beoordeling telt.
 - Verandert een groep met een bewerking het nummer naar een opdracht die al klaar is, dan blijft de inzending bij het oude nummer en reageert de bot op dezelfde manier.
 - In handmatige modus geldt de regel niet: dan worden alleen bestanden opgeslagen.
@@ -156,7 +156,7 @@ Punten die buiten Slack worden verdiend, zoals de **Avonturiers** en het **Reisb
 
 Welke categorieën er zijn, staat in `Scouting:BonusCategories`. Elke categorie heeft een `Key` (kleine letters, cijfers en streepjes; de punten worden eronder bewaard), een `Name` en optioneel een `ShortName` voor smalle plekken zoals het **Dashboard**. Ontbreekt de lijst, dan gelden Avonturiers en Reisbureau.
 
-Tijdens het spel pas je de categorieën aan op **Beheer**, onder **Puntencategorieën**: toevoegen, hernoemen en weghalen. Dat geldt direct, voor iedereen, en blijft bewaard in `runtime-settings.json`. **Terug naar appsettings** zet de lijst uit `appsettings.json` terug. Een categorie weghalen haalt haar punten uit de score, de stand en de export, maar de punten blijven bewaard: voeg je een categorie met dezelfde sleutel later weer toe, dan zijn ze terug.
+Tijdens het spel pas je de categorieën aan op **Beheer**, onder **Puntencategorieën**: toevoegen, hernoemen en weghalen. Dat geldt direct, voor iedereen, en blijft bewaard in de database. **Terug naar appsettings** zet de lijst uit `appsettings.json` terug. Een categorie weghalen haalt haar punten uit de score, de stand en de export, maar de punten blijven bewaard: voeg je een categorie met dezelfde sleutel later weer toe, dan zijn ze terug.
 
 ## Scorebord en export
 
@@ -186,7 +186,7 @@ Zolang de stand verborgen is, ziet een groep geen plaatsen, geen scores van ande
 
 **Tussenstand.** Met **Tussenstand publiceren** leg je de stand van dat moment vast. Zolang de stand verborgen is, zien groepen (en de beamer, als die ook verbergt) deze tussenstand met het tijdstip erbij, in plaats van niets. De tussenstand verandert daarna niet meer mee; publiceer opnieuw voor een nieuwere, of verwijder hem. Is de stand weer zichtbaar, dan zien groepen gewoon de actuele stand.
 
-Alles op deze pagina wordt bewaard in `runtime-settings.json` en blijft staan na een herstart en na **Opnieuw opbouwen uit Slack**.
+Alles op deze pagina wordt bewaard in de database en blijft staan na een herstart en na **Opnieuw opbouwen uit Slack**.
 
 ## Te beoordelen
 
@@ -205,7 +205,7 @@ Wacht een bericht langer dan `Scouting:ReviewReminder:AfterMinutes` minuten op e
 
 - De app kijkt elke minuut. Elk bericht krijgt één herinnering. Na een herstart kan een bericht er nog één krijgen.
 - Berichten die **niet meer tellen** krijgen geen herinnering.
-- Als beheerder pas je de tijd aan op **Configuratie**, onder **Beoordelingsregels**. Leeg betekent geen herinneringen. De tijd geldt direct en blijft bewaard na een herstart, in `runtime-settings.json`.
+- Als beheerder pas je de tijd aan op **Configuratie**, onder **Beoordelingsregels**. Leeg betekent geen herinneringen. De tijd geldt direct en blijft bewaard na een herstart, in de database.
 - Geen kanaal ingesteld, handmatige modus aan, of geen tijd: dan komen er geen herinneringen. In simulatiemodus komt de herinnering alleen in het logboek.
 - Nodig de bot uit in het jurykanaal. Er zijn geen extra Slack-rechten nodig.
 
@@ -314,7 +314,9 @@ Lukt het opslaan in de database niet nadat een bestand is verplaatst, dan gaat h
 
 De groepsmappen komen uit de groepsnamen. Geven twee groepen dezelfde map, dan start de app niet en zegt het logboek welke groepen het zijn. Is het puntenbestand kapot, dan start de app ook niet. Het puntenbestand mag komma's of puntkomma's gebruiken, zoals Nederlandse Excel opslaat.
 
-`runtime-settings.json` wordt in één stap weggeschreven, zodat een stroomstoring nooit een half bestand achterlaat. Is het toch onleesbaar, dan zet de app het opzij als `….corrupt-{tijd}` en begint opnieuw. Accounts staan in de database, in de tabellen `AspNet…`.
+Wat je in de app instelt (juryleden, regels, teksten, tijden, handmatige modus) staat in de database, in de tabel `RuntimeSettings`. Accounts staan in de tabellen `AspNet…`, de sleutels voor de inlogcookies en wachtwoordlinks in `DataProtectionKeys`. Is de opgeslagen instelling onleesbaar, dan start de app toch, met de waarden uit `appsettings.json`, en zegt het logboek wat er mis is.
+
+Een oudere versie bewaarde de instellingen in `runtime-settings.json`. De eerste start met een lege tabel leest dat bestand één keer in en hernoemt het naar `runtime-settings.json.imported`. Daarna gebruikt de app het bestand niet meer. Is het bestand onleesbaar, dan blijft het staan en meldt het logboek dat.
 
 Geaccepteerde bestanden: alle afbeeldingen, video's en geluidsopnames, plus PDF en Word (`.doc`, `.docx`). SVG-bestanden worden geweigerd, omdat die scripts kunnen bevatten.
 
@@ -336,10 +338,10 @@ De app draait dan op <http://localhost:5231>. De database `scouting_dev.db` en d
 dotnet run --project src/ScoutingAutomation.AppHost
 ```
 
-**In productie, met Docker Compose** (PostgreSQL en de app in containers; alleen Docker vereist):
+**In productie, met Docker Compose** (twee instanties van de app achter een proxy, op een eigen PostgreSQL-server):
 
 ```bash
-cp .env.example .env   # vul POSTGRES_PASSWORD, SLACK_BOT_TOKEN, SLACK_APP_TOKEN, BOOTSTRAP_ADMIN_EMAIL en eventueel SMTP_… in
+cp .env.example .env   # vul DATABASE_CONNECTION_STRING, SLACK_BOT_TOKEN, SLACK_APP_TOKEN, BOOTSTRAP_ADMIN_EMAIL en eventueel SMTP_… in
 docker login ghcr.io   # eenmalig, met een GitHub-token met read:packages
 docker compose pull && docker compose up -d
 ```
@@ -362,19 +364,39 @@ Om zonder Slack te testen, zet je **simulatiemodus** aan met `Scouting:Slack:Sim
 
 Wil je opnieuw beginnen? Stop de app en verwijder `scouting_dev.db*` en de groepsmappen in `scouting_storage/`.
 
+## Meerdere instanties
+
+Met PostgreSQL kun je de app op meer dan één server of container tegelijk laten draaien, op dezelfde database. Dat werkt zo:
+
+- **Eén instantie praat met Slack.** De instanties kiezen via de database een leider. Alleen die houdt de Socket Mode-verbinding open, haalt berichten in en stuurt de geplande berichten (startbericht, eindbericht, herinneringen, rondes). Valt de leider weg, dan neemt binnen een paar seconden een andere het over en haalt die de gemiste berichten in. Bovenaan staat op de andere instanties **Slack via andere instantie**.
+- **Wijzigingen zie je overal direct.** Een beoordeling, een instelling, een account of een nieuwe editie op de ene instantie verschijnt meteen op de pagina's van de andere.
+- **Niets loopt door elkaar.** Wat per kanaal na elkaar moet (Slack-berichten, statuswijzigingen op het dashboard), herbouwen uit Slack, edities en accounts wachten op elkaar, ook tussen instanties.
+- **Inloggen werkt op elke instantie.** De sleutels voor de inlogcookies staan in de database.
+- Bij de start richt één instantie tegelijk de database in; de andere wacht daarop.
+
+Wat je zelf moet regelen:
+
+- **Sticky sessions.** Een pagina houdt een vaste verbinding open met één instantie. Laat de load balancer een bezoeker daarom steeds naar dezelfde instantie sturen (sticky sessions of session affinity, bijvoorbeeld op een cookie). Zonder dat vallen pagina's steeds weg.
+- **Gedeelde opslag.** Alle instanties moeten dezelfde map voor `StorageRoot` zien, bijvoorbeeld een netwerkschijf. Anders staat een bestand alleen op de instantie die het downloadde.
+
+`docker-compose.yml` regelt dit al: twee instanties (`APP_REPLICAS`) met één gedeeld volume, achter een Caddy-proxy met sticky sessions (`docker/Caddyfile`).
+- **Webhook.** Gebruik je de Events API in plaats van Socket Mode, dan verwerkt elke instantie wat bij haar binnenkomt. Dat is veilig, maar alleen de leider haalt in en stuurt geplande berichten.
+
+Met SQLite draait de app altijd als één instantie. Per instantie zijn alleen het logboek op **Gebeurtenissen** en de rem op te veel mislukte inlogpogingen per adres; de blokkade van een account na te veel pogingen geldt overal.
+
 ## Configuratie
 
-Alles staat onder `Scouting` in `src/ScoutingAutomation.Web/appsettings.json`. Wijzigingen gelden na een herstart. Juryleden en handmatige modus kun je daarnaast ook in de app aanpassen, zonder herstart.
+Alles staat onder `Scouting` in `src/ScoutingAutomation.Web/appsettings.json`. Wijzigingen gelden na een herstart. Juryleden, handmatige modus en meer kun je daarnaast ook in de app aanpassen, zonder herstart. Dat bewaart de app in de database.
 
 | Instelling | Betekenis |
 |---|---|
 | `Groups` | De groepen voor een nieuwe installatie: per groep naam, afkorting (voor bestandsnamen), Slack-kanaal-ID, optioneel het kanaal van de Avonturiers (`AdventurersSlackChannelId`) en omschrijving. Elk kanaal mag maar bij één groep horen; anders start de app niet. Alleen gebruikt zolang de actieve editie geen groepen heeft; daarna beheer je groepen op **Beheer** > **Edities**. |
 | `Reviewers` | Slack member-ID's van de jury. Alleen hun emoji's tellen. Op de pagina **Configuratie** kun je er meer toevoegen. |
 | `ReviewerNames` | Optioneel: een naam per member-ID, bijvoorbeeld `{ "U04ABC123": "Sanne" }`. Namen die in de app zijn ingevuld of uit Slack zijn opgehaald, gaan voor. |
-| `RuntimeSettingsFile` | Waar de in de app toegevoegde juryleden, hun namen, de aangepaste teksten van de bot, de in de app gezette start- en eindtijd en de kanalen met een start- of eindbericht worden bewaard (standaard `runtime-settings.json`). |
+| `RuntimeSettingsFile` | Alleen voor overstappen van een oudere versie: het `runtime-settings.json` dat de eerste start één keer in de database inleest (standaard `runtime-settings.json`). |
 | `Accounts` | `BootstrapAdminEmail`: het adres van de eerste beheerder, gemaakt bij de eerste start als er nog geen beheerder is. `BootstrapAdminPassword`: optioneel het wachtwoord daarvan, alleen voor lokaal testen (via user secrets, nooit in een bestand in Git). Zie **Toegang**. |
 | `Email` | De mailserver voor uitnodigingen en **Wachtwoord vergeten?**: `Host`, `Port` (standaard 587), `Security` (`StartTls`, `SslOnConnect` of `None`), `Username`, `Password`, `FromAddress` en `FromName` (standaard `DU Review`). Zonder `Host` mailt de app niets en kopieert een beheerder de links zelf. |
-| `ManualMode` | Of de app met handmatige modus aan start (standaard `false`). |
+| `ManualMode` | Of handmatige modus aan staat zolang niemand de schakelaar in de app heeft gebruikt (standaard `false`). |
 | `ReviewStatusReactions` | Welke emoji Goedgekeurd (`Approved`), Awesome (`Awesome`) of Afgekeurd (`Rejected`) betekent. |
 | `SlackFeedback` | Emoji en tekst waarmee de bot reageert op een probleem. `AlreadyCompleted` is de reactie op een nieuwe poging na goedkeuring (`{number}` = opdrachtnummer). `TooLate` is de reactie op een inzending na de eindtijd (`{end}` = eindtijd, bijvoorbeeld `17:00`). |
 | `BlockAttemptsAfterApproval` | Of een groep een opdracht die al goedgekeurd of awesome is niet opnieuw mag insturen. Ook in de app aan te passen. Zie **Nieuwe poging na goedkeuring**. |
@@ -402,7 +424,7 @@ Bij de start van het spel plaatst de bot in elk groepskanaal één bericht: inze
 - Met een starttijd (`EventStart`) en `AutoPost` aan plaatst de app het bericht zelf op de starttijd.
 - Start de app later dan een uur na de starttijd, dan plaatst hij het bericht niet meer zelf. Een laat "het spel is begonnen" zou alleen verwarren.
 - Op de pagina **Configuratie** staat onder **Startbericht in Slack** een voorbeeld, per groep of het bericht al is geplaatst, en een knop om het met de hand te sturen. Dat werkt alleen als beheerder en als de app met Slack verbonden is.
-- Elk kanaal krijgt het bericht één keer, ook na een herstart. De app onthoudt de geplaatste kanalen in `runtime-settings.json`. Opnieuw sturen naar alle kanalen kan met de hand, na bevestiging.
+- Elk kanaal krijgt het bericht één keer, ook na een herstart. De app onthoudt de geplaatste kanalen in de database. Opnieuw sturen naar alle kanalen kan met de hand, na bevestiging.
 - In simulatiemodus komt het bericht alleen in het logboek.
 
 ## Eindtijd en eindbericht
@@ -422,7 +444,7 @@ Als beheerder pas je op de pagina **Configuratie** onder **Speeltijd** de start-
 - Een nieuwe tijd geldt direct. Het start- of eindbericht volgt de nieuwe tijd.
 - Een leeg veld opslaan betekent: geen start- of eindtijd.
 - De eindtijd moet na de starttijd liggen.
-- De tijden blijven bewaard na een herstart, in `runtime-settings.json`. **Terug naar appsettings** zet een tijd weer op die uit `appsettings.json`.
+- De tijden blijven bewaard na een herstart, in de database. **Terug naar appsettings** zet een tijd weer op die uit `appsettings.json`.
 
 ## Teksten van de bot aanpassen
 
@@ -430,7 +452,7 @@ Als beheerder pas je op de pagina **Configuratie** de teksten van de bot aan ter
 
 - De tekst bewerk je zoals hij in Slack komt, met dezelfde editor als **Bericht sturen**: knoppen voor vet, schuin, doorgehaald, code, links en opsommingen, en 🙂 voor emoji. Opgeslagen wordt Slack-opmaak (`*vet*`, `_schuin_`). Plaatshouders zoals `{group}` en emoji-codes zoals `:thumbsup:` typ je gewoon als tekst. Sla je op zonder iets te wijzigen, dan blijft de tekst precies zoals hij was.
 - Een nieuwe tekst geldt direct voor het volgende bericht van de bot. Wat al in Slack staat, verandert niet.
-- De teksten blijven bewaard na een herstart, in `runtime-settings.json`. Ze gaan voor de teksten in `appsettings.json`.
+- De teksten blijven bewaard na een herstart, in de database. Ze gaan voor de teksten in `appsettings.json`.
 - **Terug naar appsettings** zet een tekst weer op die uit `appsettings.json`.
 - Een lege tekst betekent: geen bericht. De emoji van de bot staan in `appsettings.json` en zijn niet in de app aan te passen.
 - Heb je het startbericht eerder in de app aangepast, dan staat de plaatshouder `{retryRule}` er niet vanzelf in. Klik op **Terug naar appsettings**, of voeg hem zelf toe.

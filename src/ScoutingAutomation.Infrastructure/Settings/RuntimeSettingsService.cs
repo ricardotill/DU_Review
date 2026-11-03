@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ScoutingAutomation.Contracts.Configuration;
+using ScoutingAutomation.Infrastructure.Cluster;
 using ScoutingAutomation.Infrastructure.Slack;
 using ScoutingAutomation.Infrastructure.Storage;
 using ScoutingAutomation.Infrastructure.Workflow;
@@ -15,7 +16,8 @@ namespace ScoutingAutomation.Infrastructure.Settings;
 /// the texts of the bot's Slack messages, the start and end of the event, the channels that got the
 /// game-start and game-end messages, whether attempts after approval are blocked, when the jury is reminded,
 /// and whether groups see the standing (see RuntimeSettingsService.Standings.cs).
-/// Manual mode starts from appsettings on every start; the rest is saved to a file.
+/// They are kept in the database (<see cref="IRuntimeSettingsStore"/>), shared by every instance of the app: a change on
+/// one instance reaches the others through <see cref="IClusterBus"/>.
 /// </summary>
 public partial class RuntimeSettingsService
 {
@@ -35,7 +37,10 @@ public partial class RuntimeSettingsService
     public static bool IsValidEventTime(DateTime? value) => value is not { } v || (v >= MinEventTime && v < MaxEventTime);
 
     private readonly object _lock = new();
-    private readonly string _file;
+    private readonly IRuntimeSettingsStore _store;
+    private readonly IClusterBus _bus;
+    private long _version;
+    private bool? _manualMode;
     private readonly IOptions<ScoutingSettings> _options;
     private readonly ILogger<RuntimeSettingsService> _logger;
     private readonly ConcurrentDictionary<string, byte> _manualDownloads = new();
@@ -50,19 +55,57 @@ public partial class RuntimeSettingsService
     private bool? _blockAttempts;
     private ReminderOverride? _reminder;
 
-    public RuntimeSettingsService(IOptions<ScoutingSettings> options, ILogger<RuntimeSettingsService> logger)
+    /// <param name="store">Where the settings are kept; in memory when left out (tests).</param>
+    /// <param name="bus">Tells the other instances about a change, and reloads when they made one.</param>
+    public RuntimeSettingsService(IOptions<ScoutingSettings> options, ILogger<RuntimeSettingsService> logger,
+        IRuntimeSettingsStore? store = null, IClusterBus? bus = null)
     {
         _options = options;
         _logger = logger;
-        _file = Path.GetFullPath(string.IsNullOrWhiteSpace(options.Value.RuntimeSettingsFile) ? "./runtime-settings.json" : options.Value.RuntimeSettingsFile);
-        ManualMode = options.Value.ManualMode;
-        Load();
+        _store = store ?? new InMemoryRuntimeSettingsStore();
+        _bus = bus ?? SingleInstance.Instance;
+        try
+        {
+            lock (_lock) Load();
+        }
+        catch (Exception ex)
+        {
+            // Made before the database is set up, or while it cannot be reached: DatabaseInitializer loads the settings once
+            // the table is there. A database problem must not stop the app
+            _logger.LogDebug(ex, "Settings made in the app are loaded after the database is set up");
+        }
+
+        _bus.Subscribe(ClusterTopic, _ => Reload());
+        _bus.Reconnected += Reload;
+    }
+
+    /// <summary>The message the other instances get when the settings changed.</summary>
+    public const string ClusterTopic = "settings";
+
+    /// <summary>Reads the settings again, after another instance changed them or the database was set up.</summary>
+    public void Reload()
+    {
+        try
+        {
+            lock (_lock) Load();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Could not read the settings from the database; the ones in memory stay");
+            return;
+        }
+
+        Changed?.Invoke();
     }
 
     /// <summary>Raised when any setting of this service changes, from any thread.</summary>
     public event Action? Changed;
 
-    public bool ManualMode { get; private set; }
+    /// <summary>Set in the app, otherwise from appsettings. Kept like the other settings, so all instances agree.</summary>
+    public bool ManualMode
+    {
+        get { lock (_lock) return _manualMode ?? _options.Value.ManualMode; }
+    }
 
     /// <summary>The start of the event as a point in time: set in the app, otherwise from appsettings; null when there is none.</summary>
     // Converted on each read: the game's time zone is configured after this service may be created
@@ -229,9 +272,14 @@ public partial class RuntimeSettingsService
 
     public void SetManualMode(bool enabled)
     {
-        if (ManualMode == enabled) return;
+        lock (_lock)
+        {
+            if (ManualMode == enabled) return;
 
-        ManualMode = enabled;
+            _manualMode = enabled;
+            Save();
+        }
+
         _logger.LogWarning("Manual mode switched {State}", enabled ? "on" : "off");
         Changed?.Invoke();
     }
@@ -538,8 +586,7 @@ public partial class RuntimeSettingsService
     {
         lock (_lock)
         {
-            _gameStartPosted[channelId] = postedAt;
-            Save();
+            SaveRecord(() => _gameStartPosted[channelId] = postedAt);
         }
 
         Changed?.Invoke();
@@ -556,8 +603,7 @@ public partial class RuntimeSettingsService
     {
         lock (_lock)
         {
-            _gameEndPosted[channelId] = postedAt;
-            Save();
+            SaveRecord(() => _gameEndPosted[channelId] = postedAt);
         }
 
         Changed?.Invoke();
@@ -576,12 +622,25 @@ public partial class RuntimeSettingsService
 
     private void Load()
     {
+        // Read first: when the database cannot be reached, the settings in memory stay as they were
+        var (json, version) = _store.Load();
+        Apply(json, version);
+    }
+
+    /// <summary>The settings as last read from or saved to the database, to fall back on when a save fails.</summary>
+    private (string? Json, long Version) _persisted;
+
+    private void Apply(string? json, long version)
+    {
+        _persisted = (json, version);
         ResetToDefaults();
-        if (!File.Exists(_file)) return;
+        _version = version;
+        if (json == null) return;
 
         try
         {
-            var saved = JsonSerializer.Deserialize<SavedSettings>(File.ReadAllText(_file));
+            var saved = JsonSerializer.Deserialize<SavedSettings>(json);
+            _manualMode = saved?.ManualMode;
             _addedReviewers = saved?.Reviewers?.Where(r => ReviewerIdPattern().IsMatch(r)).Distinct(StringComparer.OrdinalIgnoreCase).ToList() ?? new List<string>();
             foreach (var (id, name) in saved?.ReviewerNames ?? new Dictionary<string, SavedName>())
             {
@@ -603,7 +662,7 @@ public partial class RuntimeSettingsService
             _eventEnd = IsValidEventTime(saved?.EventEnd?.Value) ? saved?.EventEnd : null;
             if (_eventStart != saved?.EventStart || _eventEnd != saved?.EventEnd)
             {
-                _logger.LogError("{File} has an event time outside {Min}-{Max}; the time from appsettings is used", _file, MinEventTime.Year, MaxEventTime.Year);
+                _logger.LogError("The saved settings have an event time outside {Min}-{Max}; the time from appsettings is used", MinEventTime.Year, MaxEventTime.Year);
             }
 
             foreach (var (key, text) in saved?.SlackTexts ?? new Dictionary<string, string>())
@@ -623,13 +682,11 @@ public partial class RuntimeSettingsService
             LoadBonusCategories(saved?.BonusCategories);
             LoadAdventurers(saved?.Adventurers);
         }
-        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+        catch (JsonException ex)
         {
-            // A damaged file must not stop the app; the reviewers from appsettings still apply.
-            // It is set aside rather than overwritten, so what was in it can still be recovered.
-            var aside = ex is JsonException ? DurableFile.Quarantine(_file, _logger) : null;
-            _logger.LogError(ex, "Could not read {File}; settings made in the app are not loaded{Aside}", _file,
-                aside == null ? "" : $" (kept as {aside})");
+            // Damaged settings must not stop the app; the reviewers from appsettings still apply.
+            // Logged in full, so what was in them can still be recovered before the next save overwrites them.
+            _logger.LogError(ex, "Could not read the saved settings; settings made in the app are not loaded. They were: {Json}", json);
             ResetToDefaults();
         }
     }
@@ -645,14 +702,16 @@ public partial class RuntimeSettingsService
         _eventEnd = null;
         _blockAttempts = null;
         _reminder = null;
+        _manualMode = null;
         ResetStandings();
         _bonusCategories = null;
         LoadAdventurers(null);
     }
 
     /// <summary>
-    /// Writes the settings to the file. When that fails (disk full, no rights), the settings in memory go back to
-    /// what the file holds and the exception is thrown: the app never shows a change that a restart would lose.
+    /// Writes the settings to the store. When that fails (database down, or another instance saved in between), the
+    /// settings in memory go back to what is stored and <see cref="RuntimeSettingsSaveException"/> is thrown: the app never
+    /// shows a change that is not kept.
     /// </summary>
     private void Save()
     {
@@ -660,16 +719,67 @@ public partial class RuntimeSettingsService
             GameEndPosted = _gameEndPosted, EventStart = _eventStart, EventEnd = _eventEnd,
             SlackTexts = _texts.ToDictionary(t => t.Key.ToString(), t => t.Value),
             BlockAttemptsAfterApproval = _blockAttempts, ReviewReminder = _reminder, Standings = SaveStandings(),
-            BonusCategories = _bonusCategories, Adventurers = SaveAdventurers() };
+            BonusCategories = _bonusCategories, Adventurers = SaveAdventurers(), ManualMode = _manualMode };
+        var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
+        long? saved;
         try
         {
-            DurableFile.WriteAllText(_file, JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true }));
+            saved = _store.TrySave(json, _version);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex)
         {
-            _logger.LogError(ex, "Could not save {File}; the change is undone", _file);
+            _logger.LogError(ex, "Could not save the settings; the change is undone");
+            TryLoadAfterFailedSave();
+            throw new RuntimeSettingsSaveException("de database is niet bereikbaar.", ex);
+        }
+
+        if (saved == null)
+        {
+            _logger.LogWarning("The settings were changed elsewhere at the same moment; the change is undone");
+            TryLoadAfterFailedSave();
+            throw new RuntimeSettingsSaveException("de instellingen zijn net ergens anders gewijzigd. Kijk of je wijziging nog nodig is en probeer het opnieuw.", changedElsewhere: true);
+        }
+
+        _version = saved.Value;
+        _persisted = (json, saved.Value);
+        _bus.Publish(ClusterTopic);
+    }
+
+    /// <summary>
+    /// Saves a record of something the app already did (a message posted): unlike a change by an admin, that must not be
+    /// lost because another instance saved other settings at the same moment, so it is applied again on the new settings.
+    /// Call while holding <c>_lock</c>.
+    /// </summary>
+    private void SaveRecord(Action apply)
+    {
+        while (true)
+        {
+            apply();
+            try
+            {
+                Save();
+                return;
+            }
+            catch (RuntimeSettingsSaveException ex) when (ex.ChangedElsewhere)
+            {
+                // Save read the newer settings back; apply the record to those. Each attempt starts from the newest
+                // version, so it only fails again when yet another save came in between: it does not give up and lose
+                // the record. A database that cannot be reached still ends the attempts.
+            }
+        }
+    }
+
+    private void TryLoadAfterFailedSave()
+    {
+        try
+        {
             Load();
-            throw;
+        }
+        catch (Exception ex)
+        {
+            // The failed change must not stay in effect: back to the settings as last saved
+            _logger.LogError(ex, "Could not read the settings back after a failed save; the last saved ones apply");
+            Apply(_persisted.Json, _persisted.Version);
         }
     }
 
@@ -690,6 +800,7 @@ public partial class RuntimeSettingsService
         public SavedStandings? Standings { get; set; }
         public List<BonusCategoryConfig>? BonusCategories { get; set; }
         public SavedAdventurers? Adventurers { get; set; }
+        public bool? ManualMode { get; set; }
     }
 
     /// <summary>A reminder time set in the app; <see cref="Minutes"/> null means reminders are off.</summary>
