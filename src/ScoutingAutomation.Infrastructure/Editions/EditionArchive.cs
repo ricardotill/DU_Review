@@ -276,6 +276,12 @@ public sealed class EditionArchive
             return (null, "Een groep in het bestand heeft geen naam of kanaal.");
         }
 
+        // Same rules as editing groups by hand: a channel belongs to one group (either kind), a team to one group per edition
+        var channels = data.Groups.SelectMany(g => new[] { g.SlackChannelId, g.AdventurersSlackChannelId })
+            .Where(c => !string.IsNullOrWhiteSpace(c)).Select(c => c!.Trim()).ToList();
+        if (channels.Distinct(StringComparer.Ordinal).Count() != channels.Count) return (null, "Een Slack-kanaal hoort bij meer dan één groep in het bestand.");
+        if (data.Groups.GroupBy(g => g.TeamId).Any(t => t.Count() > 1)) return (null, "Een team staat twee keer in het bestand.");
+
         var groupIds = data.Groups.Select(g => g.Id).ToHashSet();
         if (groupIds.Count != data.Groups.Count) return (null, "Een groep staat twee keer in het bestand.");
         if (data.Submissions.Any(s => !groupIds.Contains(s.GroupId)) || data.BonusPoints.Any(b => !groupIds.Contains(b.GroupId))
