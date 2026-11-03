@@ -46,6 +46,21 @@ public class SlackCatchUpIntegrationTests : IClassFixture<WebApplicationFactory<
     private Task<IReadOnlyList<Submission>> Submissions(string ts) =>
         _app.GetAsync(sp => sp.GetRequiredService<ISubmissionRepository>().GetBySlackMessageIdAsync(Channel, ts));
 
+    /// <summary>
+    /// The startup catch-up begins once this instance has become the leader, which happens in the background
+    /// after the app has started, so Completion can still be the idle task when a test first looks at it.
+    /// </summary>
+    private async Task StartupCatchUpAsync()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        while (CatchUp.LastResult == null)
+        {
+            await Task.Delay(20, timeout.Token);
+        }
+
+        await CatchUp.Completion.WaitAsync(timeout.Token);
+    }
+
     private async Task RunAgainAsync()
     {
         CatchUp.Request("test");
@@ -55,7 +70,7 @@ public class SlackCatchUpIntegrationTests : IClassFixture<WebApplicationFactory<
     [Fact]
     public async Task Startup_ShouldRegisterMissedSubmissionsReviewsAndFeedback()
     {
-        await CatchUp.Completion.WaitAsync(TimeSpan.FromSeconds(10));
+        await StartupCatchUpAsync();
 
         var result = CatchUp.LastResult;
         result.Should().NotBeNull();
@@ -76,7 +91,7 @@ public class SlackCatchUpIntegrationTests : IClassFixture<WebApplicationFactory<
     [Fact]
     public async Task RunningAgain_ShouldNotDuplicateAnythingOrRepeatFeedback()
     {
-        await CatchUp.Completion.WaitAsync(TimeSpan.FromSeconds(10));
+        await StartupCatchUpAsync();
         var downloads = _slack.Calls("file").Count;
 
         await RunAgainAsync();
@@ -91,7 +106,7 @@ public class SlackCatchUpIntegrationTests : IClassFixture<WebApplicationFactory<
     [Fact]
     public async Task NumberAddedWhileAway_ShouldRegisterAndWithdrawTheQuestionMark()
     {
-        await CatchUp.Completion.WaitAsync(TimeSpan.FromSeconds(10));
+        await StartupCatchUpAsync();
         _slack.History[Channel] = new[] { SlackEvents.HistoryMessage(_noNumber, "Opdracht 64: hier is hij", new[] { SlackEvents.File("zonder.jpg") }) };
 
         await RunAgainAsync();
@@ -103,7 +118,7 @@ public class SlackCatchUpIntegrationTests : IClassFixture<WebApplicationFactory<
     [Fact]
     public async Task ReviewTakenBackWhileAway_ShouldBeUndoneButADashboardOverrideKept()
     {
-        await CatchUp.Completion.WaitAsync(TimeSpan.FromSeconds(10));
+        await StartupCatchUpAsync();
         var missed = (await Submissions(_missed)).Single();
         await _app.GetAsync(sp => sp.GetRequiredService<ISubmissionWorkflowService>().OverrideStatusAsync(missed.Id, SubmissionStatus.Approved, "Slack lag eruit"));
         _slack.History[Channel] = new[]
@@ -123,7 +138,7 @@ public class SlackCatchUpIntegrationTests : IClassFixture<WebApplicationFactory<
     [Fact]
     public async Task ManualMode_ShouldSkipCatchingUp()
     {
-        await CatchUp.Completion.WaitAsync(TimeSpan.FromSeconds(10));
+        await StartupCatchUpAsync();
         var runtime = _app.Factory.Services.GetRequiredService<RuntimeSettingsService>();
         var later = SlackEvents.Ts(-100);
         _slack.History[Channel] = new[] { SlackEvents.HistoryMessage(later, "Opdracht 65", new[] { SlackEvents.File("handmatig.jpg") }) };
