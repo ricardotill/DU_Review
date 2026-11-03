@@ -586,8 +586,7 @@ public partial class RuntimeSettingsService
     {
         lock (_lock)
         {
-            _gameStartPosted[channelId] = postedAt;
-            Save();
+            SaveRecord(() => _gameStartPosted[channelId] = postedAt);
         }
 
         Changed?.Invoke();
@@ -604,8 +603,7 @@ public partial class RuntimeSettingsService
     {
         lock (_lock)
         {
-            _gameEndPosted[channelId] = postedAt;
-            Save();
+            SaveRecord(() => _gameEndPosted[channelId] = postedAt);
         }
 
         Changed?.Invoke();
@@ -729,11 +727,33 @@ public partial class RuntimeSettingsService
         {
             _logger.LogWarning("The settings were changed elsewhere at the same moment; the change is undone");
             TryLoadAfterFailedSave();
-            throw new RuntimeSettingsSaveException("de instellingen zijn net ergens anders gewijzigd. Kijk of je wijziging nog nodig is en probeer het opnieuw.");
+            throw new RuntimeSettingsSaveException("de instellingen zijn net ergens anders gewijzigd. Kijk of je wijziging nog nodig is en probeer het opnieuw.", changedElsewhere: true);
         }
 
         _version = saved.Value;
         _bus.Publish(ClusterTopic);
+    }
+
+    /// <summary>
+    /// Saves a record of something the app already did (a message posted): unlike a change by an admin, that must not be
+    /// lost because another instance saved other settings at the same moment, so it is applied again on the new settings.
+    /// Call while holding <c>_lock</c>.
+    /// </summary>
+    private void SaveRecord(Action apply)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            apply();
+            try
+            {
+                Save();
+                return;
+            }
+            catch (RuntimeSettingsSaveException ex) when (ex.ChangedElsewhere && attempt < 5)
+            {
+                // Save read the newer settings back; apply the record to those
+            }
+        }
     }
 
     private void TryLoadAfterFailedSave()

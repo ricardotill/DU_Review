@@ -355,14 +355,16 @@ public partial class RuntimeSettingsService
     {
         lock (_lock)
         {
-            if (!_adventurersPosted.TryGetValue(message, out var channels))
+            SaveRecord(() =>
             {
-                channels = new Dictionary<string, DateTimeOffset>(StringComparer.OrdinalIgnoreCase);
-                _adventurersPosted[message] = channels;
-            }
+                if (!_adventurersPosted.TryGetValue(message, out var channels))
+                {
+                    channels = new Dictionary<string, DateTimeOffset>(StringComparer.OrdinalIgnoreCase);
+                    _adventurersPosted[message] = channels;
+                }
 
-            channels[channelId] = at;
-            Save();
+                channels[channelId] = at;
+            });
         }
 
         Changed?.Invoke();
@@ -379,8 +381,7 @@ public partial class RuntimeSettingsService
         lock (_lock)
         {
             if (_unlockNotified.TryGetValue(groupId, out var current) && current == count) return;
-            _unlockNotified[groupId] = count;
-            Save();
+            SaveRecord(() => _unlockNotified[groupId] = count);
         }
     }
 

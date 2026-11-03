@@ -132,4 +132,8 @@ public sealed class DatabaseRuntimeSettingsStore(IServiceScopeFactory scopes, Ti
 }
 
 /// <summary>Saving the settings failed; the settings in memory are back to what is stored.</summary>
-public sealed class RuntimeSettingsSaveException(string message, Exception? inner = null) : IOException(message, inner);
+public sealed class RuntimeSettingsSaveException(string message, Exception? inner = null, bool changedElsewhere = false) : IOException(message, inner)
+{
+    /// <summary>Another instance saved first; trying again on the settings just read back can work.</summary>
+    public bool ChangedElsewhere { get; } = changedElsewhere;
+}

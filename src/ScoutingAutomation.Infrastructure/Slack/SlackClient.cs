@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ScoutingAutomation.Contracts.Configuration;
 using ScoutingAutomation.Contracts.Slack;
+using ScoutingAutomation.Infrastructure.Cluster;
 
 namespace ScoutingAutomation.Infrastructure.Slack;
 
@@ -93,6 +94,7 @@ public class SlackClient : ISlackClient
     /// </summary>
     private async Task<HttpResponseMessage> SendDownloadRequestAsync(string fileUrl, string token, CancellationToken ct)
     {
+        LeaderWork.ThrowIfFenced();
         for (var attempt = 1; ; attempt++)
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, fileUrl);
@@ -401,6 +403,7 @@ public class SlackClient : ISlackClient
     /// <exception cref="TimeoutException">Slack did not answer within <see cref="ApiTimeout"/>.</exception>
     private async Task<HttpResponseMessage> SendApiAsync(Func<HttpRequestMessage> create, bool read, CancellationToken ct)
     {
+        LeaderWork.ThrowIfFenced();
         for (var attempt = 1; ; attempt++)
         {
             using var request = create();

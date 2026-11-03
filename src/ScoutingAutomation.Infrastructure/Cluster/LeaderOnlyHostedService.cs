@@ -29,6 +29,7 @@ public sealed class LeaderOnlyHostedService<T> : IHostedService, IDisposable whe
         // As before for a single instance: the service starts with the app
         if (_leadership.IsLeader)
         {
+            LeaderWork.Enter(_leadership);
             await _inner.StartAsync(cancellationToken);
             _running = true;
         }
@@ -84,6 +85,7 @@ public sealed class LeaderOnlyHostedService<T> : IHostedService, IDisposable whe
                 if (_leadership.IsLeader && !_running)
                 {
                     _logger.LogInformation("Starting {Service}: this instance is the leader", typeof(T).Name);
+                    LeaderWork.Enter(_leadership);
                     await _inner.StartAsync(ct);
                     _running = true;
                 }

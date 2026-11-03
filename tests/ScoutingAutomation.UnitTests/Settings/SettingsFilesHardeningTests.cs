@@ -112,6 +112,23 @@ public class SettingsFilesHardeningTests : IDisposable
     }
 
     [Fact]
+    public void RecordOfAPostedMessage_ShouldNotBeLostWhenAnotherInstanceSavedFirst()
+    {
+        var store = new InMemoryRuntimeSettingsStore();
+        var first = TestRuntime.Create(new ScoutingSettings(), store);
+        var second = TestRuntime.Create(new ScoutingSettings(), store);
+        first.AddReviewer("U_EERSTE").Should().BeNull();
+        var group = Guid.NewGuid();
+
+        // The notice is already in Slack: its record must be kept, on top of the other instance's change
+        second.MarkUnlockNotified(group, 3);
+
+        var restarted = TestRuntime.Create(new ScoutingSettings(), store);
+        restarted.UnlockNotified(group).Should().Be(3);
+        restarted.AddedReviewers.Should().Equal("U_EERSTE");
+    }
+
+    [Fact]
     public void ManualMode_ShouldBeSharedAndKept()
     {
         var store = new InMemoryRuntimeSettingsStore();

@@ -8,6 +8,7 @@ using ScoutingAutomation.Contracts.Configuration;
 using ScoutingAutomation.Contracts.Slack;
 using ScoutingAutomation.Infrastructure.Slack.Events;
 using ScoutingAutomation.Infrastructure.Slack.Sync;
+using ScoutingAutomation.Infrastructure.Cluster;
 
 namespace ScoutingAutomation.Infrastructure.Slack.SocketMode;
 
@@ -154,6 +155,14 @@ public class SlackSocketModeService : BackgroundService
             {
                 _logger.LogWarning(ex, "Ignored unreadable Socket Mode message");
                 continue;
+            }
+
+            // Another instance took over: leave this event unacknowledged, so Slack sends it to the new leader
+            if (LeaderWork.IsFenced)
+            {
+                _logger.LogInformation("No longer the leader: closing this Socket Mode connection");
+                await socket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "another instance is the leader", ct);
+                return;
             }
 
             if (received.Acknowledgement is { } ack)
