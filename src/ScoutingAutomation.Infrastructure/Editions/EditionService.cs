@@ -119,12 +119,44 @@ public sealed class EditionService
             .ToList();
     }
 
+    // One change to the editions at a time, in the whole app: two admins starting and deleting the same draft, or
+    // adding the same channel twice, would otherwise both pass the checks
+    private static readonly SemaphoreSlim Changes = new(1, 1);
+
+    private static async Task<T> OneAtATimeAsync<T>(Func<Task<T>> change, CancellationToken ct)
+    {
+        await Changes.WaitAsync(ct);
+        try
+        {
+            return await change();
+        }
+        finally
+        {
+            Changes.Release();
+        }
+    }
+
+    /// <inheritdoc cref="CreateCoreAsync"/>
+    public Task<(Edition? Edition, string? Error)> CreateAsync(string? name, int year, bool copyGroups, CancellationToken ct = default) => OneAtATimeAsync(() => CreateCoreAsync(name, year, copyGroups, ct), ct);
+
+    /// <inheritdoc cref="SaveGroupCoreAsync"/>
+    public Task<string?> SaveGroupAsync(Guid editionId, GroupInput input, CancellationToken ct = default) => OneAtATimeAsync(() => SaveGroupCoreAsync(editionId, input, ct), ct);
+
+    /// <inheritdoc cref="RemoveGroupCoreAsync"/>
+    public Task<string?> RemoveGroupAsync(Guid groupId, CancellationToken ct = default) => OneAtATimeAsync(() => RemoveGroupCoreAsync(groupId, ct), ct);
+
+    /// <inheritdoc cref="DeleteCoreAsync"/>
+    public Task<string?> DeleteAsync(Guid editionId, CancellationToken ct = default) => OneAtATimeAsync(() => DeleteCoreAsync(editionId, ct), ct);
+
+    /// <inheritdoc cref="ActivateCoreAsync"/>
+    public Task<string?> ActivateAsync(Guid editionId, CancellationToken ct = default) => OneAtATimeAsync(() => ActivateCoreAsync(editionId, ct), ct);
+
     /// <summary>
     /// A new edition, not yet played: it gets the assignments of the active edition, and its groups too when asked
     /// (a group keeps its team and channels; adjust them before the game starts).
     /// </summary>
     /// <returns>The new edition, or why it could not be made.</returns>
-    public async Task<(Edition? Edition, string? Error)> CreateAsync(string? name, int year, bool copyGroups, CancellationToken ct = default)
+    private async Task<(Edition? Edition, string? Error)> CreateCoreAsync(string? name, int year, bool copyGroups, CancellationToken ct)
     {
         name = name?.Trim();
         if (string.IsNullOrEmpty(name)) return (null, "Geef de editie een naam.");
@@ -175,7 +207,7 @@ public sealed class EditionService
 
     /// <summary>Adds or changes a group of an edition that is not archived.</summary>
     /// <returns>Null when saved, otherwise why not.</returns>
-    public async Task<string?> SaveGroupAsync(Guid editionId, GroupInput input, CancellationToken ct = default)
+    private async Task<string?> SaveGroupCoreAsync(Guid editionId, GroupInput input, CancellationToken ct)
     {
         var edition = await _db.Editions.FirstOrDefaultAsync(e => e.Id == editionId, ct);
         if (edition == null) return "Editie niet gevonden.";
@@ -248,7 +280,7 @@ public sealed class EditionService
     /// Takes a group out of an edition. Refused while it has submissions: those would go with it, and open ones would
     /// never be reviewed.
     /// </summary>
-    public async Task<string?> RemoveGroupAsync(Guid groupId, CancellationToken ct = default)
+    private async Task<string?> RemoveGroupCoreAsync(Guid groupId, CancellationToken ct)
     {
         var group = await AllGroups.Include(g => g.Edition).FirstOrDefaultAsync(g => g.Id == groupId, ct);
         if (group == null) return "Groep niet gevonden.";
@@ -273,7 +305,7 @@ public sealed class EditionService
     }
 
     /// <summary>Removes an edition that was never played, with its groups and assignments.</summary>
-    public async Task<string?> DeleteAsync(Guid editionId, CancellationToken ct = default)
+    private async Task<string?> DeleteCoreAsync(Guid editionId, CancellationToken ct)
     {
         var edition = await _db.Editions.FirstOrDefaultAsync(e => e.Id == editionId, ct);
         if (edition == null) return "Editie niet gevonden.";
@@ -292,7 +324,7 @@ public sealed class EditionService
     /// Starts a prepared edition: the current one is archived with its final standing, and from now on Slack, the pages
     /// and the files are about the new one. Group accounts log in again, to get their group in the new edition.
     /// </summary>
-    public async Task<string?> ActivateAsync(Guid editionId, CancellationToken ct = default)
+    private async Task<string?> ActivateCoreAsync(Guid editionId, CancellationToken ct)
     {
         using var closed = await PauseSlackAsync(ct);
         if (closed == null) return Busy;

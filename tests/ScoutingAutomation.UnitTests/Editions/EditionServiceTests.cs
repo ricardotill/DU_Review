@@ -20,7 +20,8 @@ namespace ScoutingAutomation.UnitTests.Editions;
 public class EditionServiceTests : IDisposable
 {
     private readonly TempDirectory _temp = new();
-    private readonly ScoutingDbContext _db = TestDb.Create();
+    private readonly string _database = $"Editions_{Guid.NewGuid():N}";
+    private readonly ScoutingDbContext _db;
     private readonly AccountsDbContext _accounts = new(new DbContextOptionsBuilder<AccountsDbContext>().UseInMemoryDatabase($"Accounts_{Guid.NewGuid():N}").Options);
     private readonly ActiveEdition _active = new();
     private readonly SlackProcessingGate _gate = new();
@@ -32,6 +33,7 @@ public class EditionServiceTests : IDisposable
 
     public EditionServiceTests()
     {
+        _db = TestDb.Create(_database);
         _storage = new LocalFileStorageService(Options.Create(new ScoutingSettings { StorageRoot = _temp.Path }),
             NullLogger<LocalFileStorageService>.Instance, _active);
         _current = new Edition { Name = "DU 2026", Year = 2026, Status = EditionStatus.Active };
@@ -43,7 +45,9 @@ public class EditionServiceTests : IDisposable
         _active.Set(_current);
     }
 
-    private EditionService Service() => new(_db, _accounts, _active, _gate, _storage, new SubmissionRepository(_db), _changes,
+    private EditionService Service() => Service(_db);
+
+    private EditionService Service(ScoutingDbContext db) => new(db, _accounts, _active, _gate, _storage, new SubmissionRepository(db), _changes,
         _accountChanges, TimeProvider.System, NullLogger<EditionService>.Instance);
 
     private async Task<Edition> NextAsync(bool copyGroups = true)
@@ -226,6 +230,22 @@ public class EditionServiceTests : IDisposable
         (await _db.Groups.IgnoreQueryFilters().CountAsync()).Should().Be(1);
         (await _db.Assignments.IgnoreQueryFilters().CountAsync()).Should().Be(1);
         (await Service().DeleteAsync(_current.Id)).Should().Contain("nog niet gespeeld");
+    }
+
+    [Fact]
+    public async Task DeleteAndStartAtOnce_ShouldNeverLeaveTheGameWithoutAnActiveEdition()
+    {
+        var next = await NextAsync();
+        await using var first = TestDb.Create(_database);
+        await using var second = TestDb.Create(_database);
+
+        var results = await Task.WhenAll(
+            Task.Run(() => Service(first).ActivateAsync(next.Id)),
+            Task.Run(() => Service(second).DeleteAsync(next.Id)));
+
+        results.Count(r => r == null).Should().Be(1, "the second one sees what the first did");
+        await using var check = TestDb.Create(_database);
+        (await check.Editions.CountAsync(e => e.Status == EditionStatus.Active)).Should().Be(1);
     }
 
     [Fact]
