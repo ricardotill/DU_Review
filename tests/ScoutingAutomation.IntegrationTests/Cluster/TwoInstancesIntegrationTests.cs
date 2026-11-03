@@ -83,7 +83,7 @@ public sealed class TwoInstancesIntegrationTests(PostgresFixture postgres) : IAs
         var a = _a.Factory.Services.GetRequiredService<IClusterLeadership>();
         var b = _b.Factory.Services.GetRequiredService<IClusterLeadership>();
 
-        await PostgresClusterTests.WaitUntil(() => a.IsLeader || b.IsLeader);
+        await PostgresClusterTests.WaitUntil(() => a.IsLeader || b.IsLeader, seconds: 40);
         await Task.Delay(PostgresLeadership.DefaultCheckInterval);
         (a.IsLeader && b.IsLeader).Should().BeFalse();
     }

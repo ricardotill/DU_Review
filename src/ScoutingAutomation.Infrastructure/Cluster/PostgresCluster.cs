@@ -99,6 +99,11 @@ public sealed class PostgresLeadership(PostgresClusterConnections connections, I
 
     private volatile bool _isLeader;
 
+    private int CheckTimeoutSeconds => Math.Max(1, (int)Math.Ceiling(_checkInterval.TotalSeconds));
+
+    /// <summary>How long a new leader waits before it starts: longer than an old leader needs to notice it lost the lock.</summary>
+    public TimeSpan TakeoverDelay => _checkInterval + TimeSpan.FromSeconds(CheckTimeoutSeconds) + _checkInterval;
+
     public bool IsLeader => _isLeader;
 
     public event Action? Changed;
@@ -118,6 +123,12 @@ public sealed class PostgresLeadership(PostgresClusterConnections connections, I
                         take.Parameters.AddWithValue("key", PostgresClusterConnections.Key(ClusterLockNames.Leader));
                         if (await take.ExecuteScalarAsync(stoppingToken) is true)
                         {
+                            // A leader that lost its connection notices within two check intervals (the check below
+                            // times out after one) and then stops its Slack work. Waiting that long before starting
+                            // keeps the old and the new leader from talking to Slack at the same time.
+                            await Task.Delay(TakeoverDelay, stoppingToken);
+                            await using var still = new NpgsqlCommand("SELECT 1", connection);
+                            await still.ExecuteScalarAsync(stoppingToken);
                             logger.LogWarning("This instance is now the leader: it handles Slack and the scheduled messages");
                             SetLeader(true);
                         }
@@ -125,7 +136,7 @@ public sealed class PostgresLeadership(PostgresClusterConnections connections, I
                     else
                     {
                         // The lock lives as long as the session; a failing check means it may be gone
-                        await using var check = new NpgsqlCommand("SELECT 1", connection);
+                        await using var check = new NpgsqlCommand("SELECT 1", connection) { CommandTimeout = CheckTimeoutSeconds };
                         await check.ExecuteScalarAsync(stoppingToken);
                     }
 

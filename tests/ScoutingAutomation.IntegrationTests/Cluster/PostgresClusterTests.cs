@@ -1,3 +1,4 @@
+using Npgsql;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using ScoutingAutomation.Infrastructure.Cluster;
@@ -87,6 +88,39 @@ public class PostgresClusterTests(PostgresFixture postgres)
         await a.StopAsync(CancellationToken.None);
         a.IsLeader.Should().BeFalse();
         await WaitUntil(() => b.IsLeader);
+        await b.StopAsync(CancellationToken.None);
+    }
+
+    [SkippableFact]
+    public async Task NewLeader_ShouldOnlyStartAfterTheOldOneNoticedItLostTheLock()
+    {
+        var db = await postgres.NewDatabaseAsync();
+        await using var connectionsA = new PostgresClusterConnections(db);
+        await using var connectionsB = new PostgresClusterConnections(db);
+        var interval = TimeSpan.FromMilliseconds(200);
+        var a = new PostgresLeadership(connectionsA, NullLogger<PostgresLeadership>.Instance, interval);
+        var b = new PostgresLeadership(connectionsB, NullLogger<PostgresLeadership>.Instance, interval);
+        var bothLeader = false;
+        a.Changed += () => bothLeader |= a.IsLeader && b.IsLeader;
+        b.Changed += () => bothLeader |= a.IsLeader && b.IsLeader;
+
+        await a.StartAsync(CancellationToken.None);
+        await WaitUntil(() => a.IsLeader);
+        await b.StartAsync(CancellationToken.None);
+
+        // The connection that holds the lock dies on the server side; the old leader only finds out at its next check
+        await using (var admin = await connectionsA.Pooled.OpenConnectionAsync())
+        {
+            await using var kill = new NpgsqlCommand(
+                "SELECT pg_terminate_backend(pid) FROM pg_locks WHERE locktype = 'advisory' AND granted " +
+                "AND database = (SELECT oid FROM pg_database WHERE datname = current_database())", admin);
+            await kill.ExecuteScalarAsync();
+        }
+
+        await WaitUntil(() => b.IsLeader);
+        a.IsLeader.Should().BeFalse();
+        bothLeader.Should().BeFalse("the new leader waits until the old one has stepped down");
+        await a.StopAsync(CancellationToken.None);
         await b.StopAsync(CancellationToken.None);
     }
 
