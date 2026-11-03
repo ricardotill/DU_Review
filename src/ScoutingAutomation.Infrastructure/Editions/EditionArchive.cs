@@ -385,7 +385,9 @@ public sealed class EditionArchive
         // The standing points at this app's group ids
         edition.FinalStandingJson = RemapStanding(data.Edition.FinalStandingJson, groupIds);
 
-        await _db.SaveChangesAsync(ct);
+        // Everything is unpacked: the save is not cancelled any more, so a broken-off upload can never remove the files
+        // of rows that were committed after all
+        await _db.SaveChangesAsync(CancellationToken.None);
         return edition;
     }
 
