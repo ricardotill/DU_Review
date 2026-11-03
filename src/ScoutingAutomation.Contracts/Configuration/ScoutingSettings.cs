@@ -36,17 +36,12 @@ public class ScoutingSettings
     /// </summary>
     public DateTime? EventEnd { get; set; }
 
-    /// <summary>
-    /// Optional first access key, shared with everyone who may use the app. Without it, one is generated.
-    /// A key regenerated in the app (saved in <see cref="KeysFile"/>) always takes priority.
-    /// </summary>
-    public string? AccessKey { get; set; }
+    /// <summary>Accounts: the first admin, created at the first start.</summary>
+    public AccountSettings Accounts { get; set; } = new();
 
-    /// <summary>Optional first admin key. Without it, one is generated.</summary>
-    public string? AdminKey { get; set; }
+    /// <summary>The SMTP server for invitations and password reset mails.</summary>
+    public EmailSettings Email { get; set; } = new();
 
-    /// <summary>Where the current access and admin keys are saved. Keep this file private.</summary>
-    public string KeysFile { get; set; } = "./access-keys.json";
     // Lists are left empty here: the configuration binder appends to default items,
     // which would make it impossible to remove a value through appsettings.
     public List<string> SupportedExtensions { get; set; } = new();
@@ -307,4 +302,52 @@ public class SlackSettings
     /// Receive events over an outgoing WebSocket instead of HTTP, so no public HTTPS address is needed.
     /// </summary>
     public bool SocketMode { get; set; }
+}
+
+public class AccountSettings
+{
+    /// <summary>
+    /// The email address of the first admin. When no admin account exists at startup, one is made for this address;
+    /// without it (and without any admin) the app does not start.
+    /// </summary>
+    public string? BootstrapAdminEmail { get; set; }
+
+    /// <summary>
+    /// Optional password for that first admin. Without it, a link to choose one is written to the log (and mailed).
+    /// </summary>
+    public string? BootstrapAdminPassword { get; set; }
+}
+
+public enum SmtpSecurity
+{
+    /// <summary>Upgrade to TLS after connecting (usually port 587).</summary>
+    StartTls,
+
+    /// <summary>TLS from the start (usually port 465).</summary>
+    SslOnConnect,
+
+    /// <summary>No encryption: only for a mail server on the same machine or a test server.</summary>
+    None
+}
+
+public class EmailSettings
+{
+    /// <summary>The SMTP server; without it, mails are only written to the log.</summary>
+    public string? Host { get; set; }
+
+    public int Port { get; set; } = 587;
+
+    public SmtpSecurity Security { get; set; } = SmtpSecurity.StartTls;
+
+    public string? Username { get; set; }
+
+    public string? Password { get; set; }
+
+    /// <summary>The sender address, e.g. "noreply@du.example.nl".</summary>
+    public string? FromAddress { get; set; }
+
+    public string FromName { get; set; } = "DU Review";
+
+    /// <summary>Whether mails can be sent; otherwise they go to the log.</summary>
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(Host) && !string.IsNullOrWhiteSpace(FromAddress);
 }

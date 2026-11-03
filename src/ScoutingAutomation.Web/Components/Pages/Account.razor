@@ -1,0 +1,94 @@
+@page "/account"
+@attribute [GroupAccess]
+@attribute [BeamerAccess]
+@attribute [ExcludeFromInteractiveRouting]
+@inject UserManager<AppUser> Users
+@inject SignInManager<AppUser> SignIn
+
+<PageTitle>Mijn account - DU Review</PageTitle>
+
+<PageHeader Title="Mijn account" Subtitle="Je naam en wachtwoord. Je e-mailadres of rol wijzigen? Vraag een beheerder." />
+
+<div class="row g-4">
+    <div class="col-lg-6">
+        <div class="glass-panel p-4 h-100">
+            <h2 class="panel-title"><i class="bi bi-person-circle text-info"></i> Account</h2>
+            <dl class="small mb-0">
+                <dt class="text-secondary">E-mailadres</dt>
+                <dd class="text-white">@user?.Email</dd>
+                <dt class="text-secondary">Naam</dt>
+                <dd class="text-white mb-0">@user?.DisplayName</dd>
+            </dl>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="glass-panel p-4 h-100">
+            <h2 class="panel-title"><i class="bi bi-key-fill text-warning"></i> Wachtwoord wijzigen</h2>
+            @if (changed)
+            {
+                <div class="alert alert-success small" role="status">Je wachtwoord is gewijzigd. Op andere apparaten moet je opnieuw inloggen.</div>
+            }
+            <EditForm Model="Input" method="post" OnSubmit="ChangePasswordAsync" FormName="change-password">
+                <InputText type="password" class="form-control form-control-dark mb-2" @bind-Value="Input.Current"
+                           placeholder="Huidig wachtwoord" autocomplete="current-password" aria-label="Huidig wachtwoord" />
+                <InputText type="password" class="form-control form-control-dark mb-2" @bind-Value="Input.Password"
+                           placeholder="Nieuw wachtwoord (minstens 10 tekens)" autocomplete="new-password" aria-label="Nieuw wachtwoord" />
+                <InputText type="password" class="form-control form-control-dark mb-2" @bind-Value="Input.Repeat"
+                           placeholder="Nieuw wachtwoord, nog een keer" autocomplete="new-password" aria-label="Nieuw wachtwoord herhalen" />
+                @if (error != null)
+                {
+                    <div class="text-danger small mb-2" role="alert">@error</div>
+                }
+                <button type="submit" class="btn btn-scout-primary btn-sm">Wachtwoord wijzigen</button>
+            </EditForm>
+        </div>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm]
+    private PasswordInput Input { get; set; } = default!;
+
+    private AppUser? user;
+    private bool changed;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new();
+        user = await Users.GetUserAsync(HttpContext.User);
+    }
+
+    private async Task ChangePasswordAsync()
+    {
+        if (user == null) return;
+        if (Input.Password != Input.Repeat)
+        {
+            error = "De twee nieuwe wachtwoorden zijn niet hetzelfde.";
+            return;
+        }
+
+        var result = await Users.ChangePasswordAsync(user, Input.Current ?? "", Input.Password ?? "");
+        if (!result.Succeeded)
+        {
+            error = AccountService.Describe(result);
+            return;
+        }
+
+        // The new security stamp ends every other login; this browser gets a fresh one
+        await SignIn.RefreshSignInAsync(user);
+        Input = new();
+        changed = true;
+    }
+
+    private sealed class PasswordInput
+    {
+        public string? Current { get; set; }
+        public string? Password { get; set; }
+        public string? Repeat { get; set; }
+    }
+}

@@ -26,7 +26,7 @@
             en krijgt een inzending voor een opdracht die nog niet vrijgespeeld is een 🔒 en telt niet.
         </p>
         <div class="small text-white mb-2 unlock-pool">@(Runtime.UnlockPool.Count == 0 ? "Alleen tellen" : string.Join(", ", Runtime.UnlockPool))</div>
-        <AuthorizeView Roles="@KeyAuth.AdminRole">
+        <AuthorizeView Roles="@AppAuth.AdminRole">
             <form class="d-flex gap-2" @onsubmit="SavePool">
                 <input type="text" class="form-control form-control-dark form-control-sm pool-input" placeholder="bijv. 4, 9, 12, A" @bind="poolDraft" />
                 <button type="submit" class="btn btn-sm btn-scout-secondary text-nowrap"><i class="bi bi-check-lg me-1"></i> Opslaan</button>

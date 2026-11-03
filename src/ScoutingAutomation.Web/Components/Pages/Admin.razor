@@ -1,89 +1,26 @@
 @page "/admin"
 @attribute [ExcludeFromInteractiveRouting]
-@inject AccessKeyService Keys
-@inject LoginAttemptLimiter Limiter
-@inject NavigationManager Navigation
 
 <PageTitle>Beheer - DU Review</PageTitle>
 
-<PageHeader Title="Beheer" Subtitle="Beheerders kunnen opnieuw opbouwen uit Slack, juryleden beheren, de handmatige modus wisselen, statussen aanpassen en de sleutels (ook die van de groepen) wijzigen." />
+<PageHeader Title="Beheer" Subtitle="Beheerders maken de accounts voor jury, beamer en groepen, en beheren extra punten, puntencategorieën en vrijgegeven locaties." />
 
 @if (!IsAdmin)
 {
     <div class="glass-panel p-4 admin-card">
-        @if (leftAdmin)
-        {
-            <div class="alert alert-success small" role="status">Je hebt de beheermodus verlaten.</div>
-        }
-        <h2 class="panel-title"><i class="bi bi-shield-lock text-warning"></i> Naar beheermodus</h2>
-        <EditForm Model="EnterInput" method="post" OnSubmit="EnterAdminAsync" FormName="enter-admin">
-            <InputText type="password" class="form-control form-control-dark mb-2" @bind-Value="EnterInput.Key"
-                       placeholder="Beheerderssleutel" autocomplete="off" aria-label="Beheerderssleutel" />
-            @if (error != null)
-            {
-                <div class="text-danger small mb-2" role="alert">@error</div>
-            }
-            <button type="submit" class="btn btn-scout-primary">Naar beheermodus</button>
-        </EditForm>
+        <h2 class="panel-title"><i class="bi bi-shield-lock text-warning"></i> Alleen voor beheerders</h2>
+        <p class="text-secondary small mb-0">Je account is geen beheerdersaccount. Vraag een beheerder als je hier iets moet aanpassen.</p>
     </div>
 }
 else
 {
     <div class="row g-4">
-        <div class="col-lg-6">
-            <div class="glass-panel p-4 h-100">
-                <h2 class="panel-title"><i class="bi bi-key-fill text-info"></i> Toegangssleutel</h2>
-                <p class="text-secondary small">Deel deze sleutel met de jury en de organisatie. Iedereen met de sleutel kan de app bekijken.</p>
-                <code class="access-key d-block mb-3">@Keys.AccessKey</code>
-                @if (accessRegenerated)
-                {
-                    <div class="alert alert-success small" role="status">Nieuwe toegangssleutel gemaakt. Iedereen anders is uitgelogd; deel de nieuwe sleutel.</div>
-                }
-
-                <EditForm Model="RegenerateAccess" method="post" OnSubmit="RegenerateAccessKey" FormName="regenerate-access">
-                    <div class="form-check mb-2">
-                        <InputCheckbox class="form-check-input" id="confirmAccess" @bind-Value="RegenerateAccess.Confirm" />
-                        <label class="form-check-label text-white-50 small" for="confirmAccess">Ik begrijp dat iedereen anders wordt uitgelogd</label>
-                    </div>
-                    @if (accessError != null)
-                    {
-                        <div class="text-danger small mb-2" role="alert">@accessError</div>
-                    }
-                    <button type="submit" class="btn btn-outline-warning btn-sm"><i class="bi bi-arrow-repeat me-1"></i> Nieuwe toegangssleutel maken</button>
-                </EditForm>
-            </div>
+        <div class="col-12">
+            <AccountsPanel @rendermode="InteractiveServer" />
         </div>
 
-        <div class="col-lg-6">
-            <div class="glass-panel p-4 h-100">
-                <h2 class="panel-title"><i class="bi bi-shield-lock-fill text-warning"></i> Beheerderssleutel</h2>
-                <p class="text-secondary small">De beheerderssleutel wordt na het maken nooit meer getoond. Houd hem voor jezelf.</p>
-                @if (newAdminKey != null)
-                {
-                    <div class="alert alert-warning small" role="status">
-                        Nieuwe beheerderssleutel, alleen nu zichtbaar: <code class="access-key d-block my-1">@newAdminKey</code>
-                        Andere beheerders zijn uit de beheermodus gezet.
-                    </div>
-                }
-
-                <EditForm Model="RegenerateAdmin" method="post" OnSubmit="RegenerateAdminKey" FormName="regenerate-admin">
-                    <div class="form-check mb-2">
-                        <InputCheckbox class="form-check-input" id="confirmAdmin" @bind-Value="RegenerateAdmin.Confirm" />
-                        <label class="form-check-label text-white-50 small" for="confirmAdmin">Ik begrijp dat andere beheerders uit de beheermodus gaan</label>
-                    </div>
-                    @if (adminError != null)
-                    {
-                        <div class="text-danger small mb-2" role="alert">@adminError</div>
-                    }
-                    <button type="submit" class="btn btn-outline-warning btn-sm"><i class="bi bi-arrow-repeat me-1"></i> Nieuwe beheerderssleutel maken</button>
-                </EditForm>
-
-                <hr class="border-secondary border-opacity-25 my-4" />
-
-                <EditForm Model="Leave" method="post" OnSubmit="LeaveAdminAsync" FormName="leave-admin">
-                    <button type="submit" class="btn btn-scout-secondary btn-sm"><i class="bi bi-box-arrow-left me-1"></i> Beheermodus verlaten</button>
-                </EditForm>
-            </div>
+        <div class="col-12">
+            <MailPanel @rendermode="InteractiveServer" />
         </div>
 
         <div class="col-12">
@@ -97,10 +34,6 @@ else
         <div class="col-12">
             <LocationUnlocksPanel @rendermode="InteractiveServer" />
         </div>
-
-        <div class="col-12">
-            <GroupKeysPanel @rendermode="InteractiveServer" />
-        </div>
     </div>
 }
 
@@ -108,99 +41,5 @@ else
     [CascadingParameter]
     private HttpContext HttpContext { get; set; } = default!;
 
-    [SupplyParameterFromForm(FormName = "enter-admin")]
-    private KeyInput EnterInput { get; set; } = new();
-
-    [SupplyParameterFromForm(FormName = "regenerate-access")]
-    private ConfirmInput RegenerateAccess { get; set; } = new();
-
-    [SupplyParameterFromForm(FormName = "regenerate-admin")]
-    private ConfirmInput RegenerateAdmin { get; set; } = new();
-
-    [SupplyParameterFromForm(FormName = "leave-admin")]
-    private ConfirmInput Leave { get; set; } = new();
-
-    private string? error;
-    private string? accessError;
-    private string? adminError;
-    private bool accessRegenerated;
-    private bool leftAdmin;
-    private string? newAdminKey;
-
-    private bool IsAdmin => HttpContext.User.IsInRole(KeyAuth.AdminRole);
-
-    protected override void OnInitialized()
-    {
-        // A form posted without fields leaves its model unset
-        EnterInput ??= new();
-        RegenerateAccess ??= new();
-        RegenerateAdmin ??= new();
-        Leave ??= new();
-    }
-
-    private async Task EnterAdminAsync()
-    {
-        var client = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-        // Counted before the key is checked: attempts sent at the same moment cannot all get through
-        if (!Limiter.TryAttempt(client))
-        {
-            error = "Te veel verkeerde sleutels. Wacht een minuut en probeer het opnieuw.";
-            return;
-        }
-
-        if (!Keys.IsAdminKey(EnterInput.Key))
-        {
-            error = "Dit is niet de beheerderssleutel.";
-            return;
-        }
-
-        Limiter.Succeeded(client);
-        await KeyAuth.SignInAsync(HttpContext, Keys, admin: true);
-        Navigation.NavigateTo("admin");
-    }
-
-    private async Task RegenerateAccessKey()
-    {
-        // The form is only shown to admins, but anyone logged in could post it
-        if (!IsAdmin) return;
-        if (!RegenerateAccess.Confirm)
-        {
-            accessError = "Vink het vakje aan om te bevestigen.";
-            return;
-        }
-
-        Keys.RegenerateAccessKey();
-        // This browser stays logged in with the new key
-        await KeyAuth.SignInAsync(HttpContext, Keys, admin: true);
-        accessRegenerated = true;
-    }
-
-    private async Task RegenerateAdminKey()
-    {
-        if (!IsAdmin) return;
-        if (!RegenerateAdmin.Confirm)
-        {
-            adminError = "Vink het vakje aan om te bevestigen.";
-            return;
-        }
-
-        newAdminKey = Keys.RegenerateAdminKey();
-        await KeyAuth.SignInAsync(HttpContext, Keys, admin: true);
-    }
-
-    private async Task LeaveAdminAsync()
-    {
-        await KeyAuth.SignInAsync(HttpContext, Keys, admin: false);
-        leftAdmin = true;
-    }
-
-    private sealed class KeyInput
-    {
-        public string? Key { get; set; }
-    }
-
-    private sealed class ConfirmInput
-    {
-        public bool Confirm { get; set; }
-    }
+    private bool IsAdmin => HttpContext.User.IsInRole(AppAuth.AdminRole);
 }

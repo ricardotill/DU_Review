@@ -15,7 +15,7 @@
         <div class="col-lg-6">
             <div class="fw-semibold text-white small mb-1">Starttijd</div>
             <div class="small text-white mb-2 event-start">@Format(Runtime.EventStartGameTime)</div>
-            <AuthorizeView Roles="@KeyAuth.AdminRole">
+            <AuthorizeView Roles="@AppAuth.AdminRole">
                 <form class="d-flex gap-2 align-items-start" @onsubmit="SaveStart">
                     <input type="datetime-local" class="form-control form-control-dark form-control-sm start-input" aria-label="Starttijd" step="60" min="@MinTime" max="@MaxTime" @bind="startDraft" />
                     <button type="submit" class="btn btn-sm btn-scout-secondary text-nowrap save-start"><i class="bi bi-check-lg me-1"></i> Opslaan</button>
@@ -35,7 +35,7 @@
         <div class="col-lg-6">
             <div class="fw-semibold text-white small mb-1">Eindtijd</div>
             <div class="small text-white mb-2 event-end">@Format(Runtime.EventEndGameTime)</div>
-            <AuthorizeView Roles="@KeyAuth.AdminRole">
+            <AuthorizeView Roles="@AppAuth.AdminRole">
                 <form class="d-flex gap-2 align-items-start" @onsubmit="SaveEnd">
                     <input type="datetime-local" class="form-control form-control-dark form-control-sm end-input" aria-label="Eindtijd" step="60" min="@MinTime" max="@MaxTime" @bind="endDraft" />
                     <button type="submit" class="btn btn-sm btn-scout-secondary text-nowrap save-end"><i class="bi bi-check-lg me-1"></i> Opslaan</button>

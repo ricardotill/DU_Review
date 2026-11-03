@@ -3,7 +3,7 @@
     @if (Changed)
     {
         <i class="bi bi-pencil-square text-info me-1"></i><span>Aangepast in de app (appsettings: @Configured).</span>
-        <AuthorizeView Roles="@KeyAuth.AdminRole">
+        <AuthorizeView Roles="@AppAuth.AdminRole">
             <button type="button" class="btn btn-sm btn-link text-secondary p-0 align-baseline reset-setting" @onclick="Reset">Terug naar appsettings</button>
         </AuthorizeView>
     }

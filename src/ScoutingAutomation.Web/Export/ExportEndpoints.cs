@@ -18,7 +18,7 @@ public static class ExportEndpoints
 {
     public static void MapExportEndpoints(this IEndpointRouteBuilder api)
     {
-        var export = api.MapGroup("/export").RequireAuthorization(p => p.RequireRole(KeyAuth.AdminRole));
+        var export = api.MapGroup("/export").RequireAuthorization(p => p.RequireRole(AppAuth.AdminRole));
         export.MapGet("/scores.csv", ScoresCsvAsync);
         export.MapGet("/files.zip", FilesZipAsync);
     }

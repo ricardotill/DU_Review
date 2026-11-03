@@ -33,7 +33,7 @@ public class RoundsPanelTests : BunitContext
         Services.AddSingleton(options);
         _auth = AddAuthorization();
         _auth.SetAuthorized("Admin");
-        _auth.SetRoles(ScoutingAutomation.Web.Auth.KeyAuth.AdminRole, ScoutingAutomation.Web.Auth.KeyAuth.JuryRole);
+        _auth.SetRoles(ScoutingAutomation.Web.Auth.AppAuth.AdminRole, ScoutingAutomation.Web.Auth.AppAuth.JuryRole);
     }
 
     protected override void Dispose(bool disposing)
@@ -92,7 +92,7 @@ public class RoundsPanelTests : BunitContext
     {
         _runtime.SetRounds(RuntimeSettingsService.GenerateRounds(Day.AddHours(12), Day.AddHours(13), 30));
         _auth.SetAuthorized("Jury");
-        _auth.SetRoles(ScoutingAutomation.Web.Auth.KeyAuth.JuryRole);
+        _auth.SetRoles(ScoutingAutomation.Web.Auth.AppAuth.JuryRole);
 
         var cut = Render<RoundsPanel>();
 

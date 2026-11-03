@@ -34,7 +34,7 @@
 
     protected override async Task OnParametersSetAsync()
     {
-        link = AuthState != null && KeyAuth.IsGroup((await AuthState).User) ? null : "configuration";
+        link = AuthState != null && AppAuth.IsGroup((await AuthState).User) ? null : "configuration";
     }
 
     // Without a start or end time there is no game to show

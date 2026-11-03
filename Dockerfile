@@ -51,7 +51,6 @@ ENV ASPNETCORE_ENVIRONMENT=Production \
     ASPNETCORE_HTTP_PORTS=8080 \
     Scouting__StorageRoot=/data/storage \
     Scouting__RuntimeSettingsFile=/data/runtime-settings.json \
-    Scouting__KeysFile=/data/access-keys.json \
     Scouting__AssignmentPointsFile=/app/opdrachtenpunten.csv \
     ConnectionStrings__scoutingdb="Data Source=/data/scouting.db"
 

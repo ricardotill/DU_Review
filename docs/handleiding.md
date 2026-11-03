@@ -10,6 +10,6 @@ Er is een handleiding per rol:
 | --- | --- | --- |
 | [Groepen](handleiding-groepen.md) | De scouts | Een opdracht insturen, het opdrachtnummer, reacties van de bot, het dashboard van je groep |
 | [Jury](handleiding-jury.md) | Juryleden en wie het scorebord bedient | Beoordelen met emoji, de regels, alle pagina's van het dashboard, stand verbergen, berichten sturen |
-| [Organisatie](handleiding-beheer.md) | Wie de app opzet en beheert | Beheermodus en sleutels, de app starten (ook met Docker en een Cloudflare Tunnel), het draaiboek voor de speeldag, problemen oplossen |
+| [Organisatie](handleiding-beheer.md) | Wie de app opzet en beheert | Accounts en mail, de app starten (ook met Docker en een Cloudflare Tunnel), het draaiboek voor de speeldag, problemen oplossen |
 
 Het koppelen aan Slack staat in [Slack koppelen](slack-koppelen.md).

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using ScoutingAutomation.Contracts.Configuration;
 using ScoutingAutomation.Contracts.Slack;
 using ScoutingAutomation.Domain.Interfaces;
+using ScoutingAutomation.Infrastructure.Accounts;
 using ScoutingAutomation.Infrastructure.Data;
 using ScoutingAutomation.Infrastructure.Extensions;
 using ScoutingAutomation.Infrastructure.Settings;
@@ -19,6 +20,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Data.Sqlite;
 
@@ -36,7 +38,7 @@ string FromContentRoot(string path) => Path.GetFullPath(Path.Combine(builder.Env
 foreach (var (key, fallback) in new[]
          {
              ("Scouting:StorageRoot", "./scouting_storage"), ("Scouting:AssignmentPointsFile", "./opdrachtenpunten.csv"),
-             ("Scouting:RuntimeSettingsFile", "./runtime-settings.json"), ("Scouting:KeysFile", "./access-keys.json")
+             ("Scouting:RuntimeSettingsFile", "./runtime-settings.json")
          })
 {
     var value = builder.Configuration[key];
@@ -58,6 +60,7 @@ if (isAspire && !string.IsNullOrWhiteSpace(connectionString) && !connectionStrin
 {
     // PostgreSQL registered via Aspire component
     builder.AddNpgsqlDbContext<ScoutingDbContext>("scoutingdb");
+    builder.AddNpgsqlDbContext<AccountsDbContext>("scoutingdb");
 }
 else
 {
@@ -75,6 +78,7 @@ else
     {
         options.UseSqlite(sqliteConnection);
     });
+    builder.Services.AddDbContext<AccountsDbContext>(options => options.UseSqlite(sqliteConnection));
 }
 
 // Add Domain & Infrastructure services
@@ -95,31 +99,51 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     }
 });
 
-// One shared access key, plus an admin key and a key per group: see Auth/KeyAuth.cs
-builder.Services.AddAuthentication(KeyAuth.Scheme)
-    .AddCookie(options =>
+// Accounts (ASP.NET Identity): admins make every account, there is no registration. See Auth/AppAuth.cs
+builder.Services.AddIdentity<AppUser, IdentityRole<Guid>>(options =>
     {
-        options.Cookie.Name = "du_login";
-        options.Cookie.HttpOnly = true;
-        options.Cookie.SameSite = SameSiteMode.Lax;
-        options.LoginPath = "/login";
-        // Reached by a group that opens a jury page; a jury member without admin mode is not sent here
-        options.AccessDeniedPath = "/geen-toegang";
-        options.ExpireTimeSpan = TimeSpan.FromDays(30);
-        options.SlidingExpiration = true;
-        options.Events.OnValidatePrincipal = KeyAuth.ValidatePrincipalAsync;
-    });
-// Every page and endpoint is for the jury, unless marked [GroupAccess]: see Auth/GroupAccessHandler.cs
+        options.User.RequireUniqueEmail = true;
+        // Long beats complicated: a length, no forced digits or symbols
+        options.Password.RequiredLength = 10;
+        options.Password.RequireDigit = false;
+        options.Password.RequireLowercase = false;
+        options.Password.RequireUppercase = false;
+        options.Password.RequireNonAlphanumeric = false;
+        options.Password.RequiredUniqueChars = 4;
+        options.Lockout.MaxFailedAccessAttempts = 5;
+        options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
+        options.Lockout.AllowedForNewUsers = true;
+    })
+    .AddEntityFrameworkStores<AccountsDbContext>()
+    .AddErrorDescriber<DutchIdentityErrorDescriber>()
+    .AddClaimsPrincipalFactory<AccountClaimsFactory>()
+    .AddDefaultTokenProviders();
+// Invitation and password links
+builder.Services.Configure<DataProtectionTokenProviderOptions>(options => options.TokenLifespan = AccountService.LinkLifetime);
+// A blocked account or a changed password ends the login on the next request after this
+builder.Services.Configure<SecurityStampValidatorOptions>(options => options.ValidationInterval = TimeSpan.FromMinutes(1));
+builder.Services.ConfigureApplicationCookie(options =>
+{
+    options.Cookie.Name = "du_login";
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SameSite = SameSiteMode.Lax;
+    options.LoginPath = "/login";
+    // Reached by a group or the beamer that opens a jury page
+    options.AccessDeniedPath = "/geen-toegang";
+    options.ExpireTimeSpan = TimeSpan.FromDays(30);
+    options.SlidingExpiration = true;
+});
+// Every page and endpoint is for the jury, unless marked [GroupAccess] or [BeamerAccess]: see Auth/GroupAccessHandler.cs
 builder.Services.AddAuthorization(options =>
 {
-    options.DefaultPolicy = new AuthorizationPolicyBuilder(KeyAuth.Scheme)
+    options.DefaultPolicy = new AuthorizationPolicyBuilder(AppAuth.Scheme)
         .RequireAuthenticatedUser()
         .AddRequirements(new StaffOrGroupPageRequirement())
         .Build();
 });
 builder.Services.AddSingleton<IAuthorizationHandler, GroupAccessHandler>();
 builder.Services.AddCascadingAuthenticationState();
-builder.Services.AddScoped<AuthenticationStateProvider, KeyAuthenticationStateProvider>();
+builder.Services.AddScoped<AuthenticationStateProvider, AccountAuthenticationStateProvider>();
 
 var app = builder.Build();
 
@@ -129,8 +153,12 @@ if (!GameTime.Configure(scoutingSettings.TimeZone))
     app.Logger.LogWarning("Unknown time zone '{TimeZone}' in Scouting:TimeZone: using the server's time zone {Local}", scoutingSettings.TimeZone, TimeZoneInfo.Local.Id);
 }
 
-app.Logger.LogInformation("Database {Database}; storage {Storage}, settings {Settings}, keys {Keys}, assignment points {Points}",
-    databaseDescription, scoutingSettings.StorageRoot, scoutingSettings.RuntimeSettingsFile, scoutingSettings.KeysFile, scoutingSettings.AssignmentPointsFile);
+app.Logger.LogInformation("Database {Database}; storage {Storage}, settings {Settings}, assignment points {Points}",
+    databaseDescription, scoutingSettings.StorageRoot, scoutingSettings.RuntimeSettingsFile, scoutingSettings.AssignmentPointsFile);
+if (!scoutingSettings.Email.IsConfigured)
+{
+    app.Logger.LogWarning("No SMTP server set (Scouting:Email): invitations and password mails are not sent; admins can copy the links instead");
+}
 
 if (scoutingSettings.Slack.SimulationMode && !app.Environment.IsDevelopment())
 {
@@ -173,6 +201,7 @@ using (var scope = app.Services.CreateScope())
     {
         var initializer = scope.ServiceProvider.GetRequiredService<DatabaseInitializer>();
         await initializer.InitializeAsync();
+        await scope.ServiceProvider.GetRequiredService<AccountsInitializer>().InitializeAsync();
     }
     catch (StartupConfigurationException ex)
     {
@@ -289,8 +318,12 @@ api.MapGet("/files/{id:guid}", async (
     IFileStorageService fileStorage) =>
 {
     var submission = await repository.GetByIdAsync(id);
-    // A group only gets its own files; another group's file looks the same as one that does not exist
-    if (submission == null || (KeyAuth.GroupId(request.HttpContext.User) is { } ownGroup && submission.GroupId != ownGroup))
+    var user = request.HttpContext.User;
+    // A group only gets its own files, the beamer no rejected ones (the slideshow skips them); a file it may not
+    // have looks the same as one that does not exist
+    if (submission == null
+        || (AppAuth.GroupId(user) is { } ownGroup && submission.GroupId != ownGroup)
+        || (AppAuth.IsBeamer(user) && submission.Status == ScoutingAutomation.Domain.Enums.SubmissionStatus.Rejected))
     {
         return Results.NotFound();
     }
@@ -306,7 +339,7 @@ api.MapGet("/files/{id:guid}", async (
     var http = request.HttpContext;
     http.Response.Headers.ContentSecurityPolicy = "sandbox; default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'";
     return Results.File(stream, SafeContentType.For(submission.FileName), submission.FileName, enableRangeProcessing: true);
-}).RequireAuthorization().WithMetadata(new GroupAccessAttribute());
+}).RequireAuthorization().WithMetadata(new GroupAccessAttribute(), new BeamerAccessAttribute());
 
 api.MapExportEndpoints();
 app.MapPublicMapEndpoints();
@@ -319,7 +352,9 @@ app.MapPost("/logout", async (HttpContext http) =>
         return Results.BadRequest();
     }
 
-    await http.SignOutAsync(KeyAuth.Scheme);
+    await http.SignOutAsync(AppAuth.Scheme);
+    // The other cookies AddIdentity sets up (external login, two-factor) are never used; signing out of them is harmless
+    await http.SignOutAsync(IdentityConstants.ExternalScheme);
     return Results.Redirect("/login");
 }).WithMetadata(new RequireAntiforgeryTokenAttribute());
 

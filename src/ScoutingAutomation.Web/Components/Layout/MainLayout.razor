@@ -14,7 +14,7 @@
             <div class="top-tags">
                 <GameStatusBadge />
                 @* Slack and modes are jury business; a group only sees where the game stands *@
-                <AuthorizeView Roles="@KeyAuth.JuryRole">
+                <AuthorizeView Roles="@AppAuth.JuryRole">
                     @if (ScoutingOptions.Value.Slack.SimulationMode)
                     {
                         <span class="top-tag badge-pending" title="Er gaan geen berichten naar Slack">
@@ -39,14 +39,14 @@
                             <i class="bi bi-hand-index-thumb"></i> Handmatige modus
                         </a>
                     }
-                    <AuthorizeView Roles="@KeyAuth.AdminRole" Context="admin">
-                        <a href="admin" class="top-tag badge-awesome" title="Beheermodus: acties voor beheerders zijn beschikbaar">
+                    <AuthorizeView Roles="@AppAuth.AdminRole" Context="admin">
+                        <a href="admin" class="top-tag badge-awesome" title="Beheerder: acties voor beheerders zijn beschikbaar">
                             <i class="bi bi-shield-lock-fill"></i> Beheer
                         </a>
                     </AuthorizeView>
                 </AuthorizeView>
             </div>
-            <AuthorizeView Roles="@KeyAuth.JuryRole">
+            <AuthorizeView Roles="@AppAuth.JuryRole">
                 <NotificationSettings />
             </AuthorizeView>
         </div>
@@ -70,7 +70,7 @@
 </div>
 
 @* Toasts announce every group's uploads: for the jury only *@
-<AuthorizeView Roles="@KeyAuth.JuryRole">
+<AuthorizeView Roles="@AppAuth.JuryRole">
     <ToastHost />
 </AuthorizeView>
 

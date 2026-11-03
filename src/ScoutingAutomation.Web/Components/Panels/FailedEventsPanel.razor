@@ -13,7 +13,7 @@
             Mislukte events
             <span class="badge @(failures.Count > 0 ? "badge-rejected" : "badge-approved") ms-1">@failures.Count</span>
         </h2>
-        <AuthorizeView Roles="@KeyAuth.AdminRole">
+        <AuthorizeView Roles="@AppAuth.AdminRole">
             <button class="btn btn-sm btn-scout-secondary retry-all" disabled="@(busy || failures.Count == 0)" @onclick="RetryAll">
                 <i class="bi bi-arrow-clockwise me-1"></i> Alles opnieuw
             </button>
@@ -67,7 +67,7 @@
                             <td class="text-white-50 small event-detail">@f.Error</td>
                             <td class="text-white-50">@f.Attempts</td>
                             <td class="text-end text-nowrap">
-                                <AuthorizeView Roles="@KeyAuth.AdminRole" Context="admin">
+                                <AuthorizeView Roles="@AppAuth.AdminRole" Context="admin">
                                     <button class="btn btn-sm btn-scout-secondary retry-one" disabled="@busy" @onclick="() => Retry(f.Id)">Opnieuw</button>
                                     <button class="btn btn-sm btn-outline-secondary dismiss-one" disabled="@busy" @onclick="() => Dismiss(f.Id)"
                                             title="Niet meer tonen, bijvoorbeeld een emoji op een bericht zonder bestand">Negeren</button>

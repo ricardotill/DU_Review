@@ -1,0 +1,77 @@
+@inject IServiceScopeFactory ScopeFactory
+@inject IOptions<ScoutingSettings> Options
+
+@* Shows whether mails can leave the app, and lets an admin check it with a test mail. *@
+<AuthorizeView Roles="@AppAuth.AdminRole">
+    <div class="glass-panel p-4 mail-panel">
+        <h2 class="panel-title"><i class="bi bi-envelope-fill text-info"></i> Mail</h2>
+        @if (Settings.IsConfigured)
+        {
+            <p class="text-secondary small">
+                Mails gaan via <code>@Settings.Host:@Settings.Port</code> (@Settings.Security) vanaf <code>@Settings.FromAddress</code>.
+                Stuur een testmail om te zien of dat werkt.
+            </p>
+            <div class="d-flex gap-2 align-items-center">
+                <input type="email" class="form-control form-control-dark form-control-sm test-address" style="max-width: 280px" aria-label="Adres voor de testmail"
+                       placeholder="E-mailadres" @bind="to" />
+                <button type="button" class="btn btn-sm btn-scout-secondary send-test" disabled="@sending" @onclick="SendTestAsync">
+                    <i class="bi bi-send me-1"></i> Testmail sturen
+                </button>
+            </div>
+            @if (result != null)
+            {
+                <div class="small mt-2 @(failed ? "text-danger" : "text-success")" role="status">@result</div>
+            }
+        }
+        else
+        {
+            <p class="text-warning small mb-0">
+                Er is geen mailserver ingesteld. Uitnodigingen en wachtwoordlinks worden niet gemaild; kopieer ze in de lijst hierboven.
+                Zet de SMTP-gegevens in <code>.env</code> (zie de handleiding voor beheer, "Mail").
+            </p>
+        }
+    </div>
+</AuthorizeView>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private EmailSettings Settings => Options.Value.Email;
+
+    private string? to;
+    private string? result;
+    private bool failed;
+    private bool sending;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // The admin's own address is the obvious one to test with
+        if (AuthState != null && AppAuth.UserId((await AuthState).User) is { } id)
+        {
+            await using var scope = ScopeFactory.CreateAsyncScope();
+            to = (await scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>().FindByIdAsync(id.ToString()))?.Email;
+        }
+    }
+
+    private async Task SendTestAsync()
+    {
+        if (string.IsNullOrWhiteSpace(to)) return;
+        sending = true;
+        var problem = await AdminActions.RunTaskAsync(AuthState, async () =>
+        {
+            await using var scope = ScopeFactory.CreateAsyncScope();
+            try
+            {
+                await scope.ServiceProvider.GetRequiredService<AccountService>().SendTestMailAsync(to.Trim());
+                return null;
+            }
+            catch (AccountMailException ex)
+            {
+                return ex.Message;
+            }
+        });
+        failed = problem != null;
+        result = problem ?? $"Testmail verstuurd naar {to}.";
+        sending = false;
+    }
+}

@@ -3,18 +3,20 @@ using RouteData = Microsoft.AspNetCore.Components.RouteData;
 
 namespace ScoutingAutomation.Web.Auth;
 
-/// <summary>Part of the default policy: the jury may open everything, a group only what is marked for it.</summary>
+/// <summary>Part of the default policy: the jury may open everything, a group and the beamer only what is marked for them.</summary>
 public sealed class StaffOrGroupPageRequirement : IAuthorizationRequirement;
 
 /// <summary>
-/// Lets a group login through only on pages and endpoints with <see cref="GroupAccessAttribute"/>, so a page added
-/// later stays closed to groups unless it says otherwise.
+/// Lets a group login through only on pages and endpoints with <see cref="GroupAccessAttribute"/>, and the beamer only
+/// on those with <see cref="BeamerAccessAttribute"/>, so a page added later stays closed to them unless it says otherwise.
 /// </summary>
 public sealed class GroupAccessHandler : AuthorizationHandler<StaffOrGroupPageRequirement>
 {
     protected override Task HandleRequirementAsync(AuthorizationHandlerContext context, StaffOrGroupPageRequirement requirement)
     {
-        if (context.User.IsInRole(KeyAuth.JuryRole) || (KeyAuth.IsGroup(context.User) && AllowsGroups(context.Resource)))
+        if (context.User.IsInRole(AppAuth.JuryRole)
+            || (AppAuth.IsGroup(context.User) && Allows<GroupAccessAttribute>(context.Resource))
+            || (context.User.IsInRole(AppAuth.BeamerRole) && Allows<BeamerAccessAttribute>(context.Resource)))
         {
             context.Succeed(requirement);
         }
@@ -22,13 +24,13 @@ public sealed class GroupAccessHandler : AuthorizationHandler<StaffOrGroupPageRe
         return Task.CompletedTask;
     }
 
-    private static bool AllowsGroups(object? resource) => resource switch
+    private static bool Allows<TAttribute>(object? resource) where TAttribute : Attribute => resource switch
     {
         // A page opened in the live connection (AuthorizeRouteView)
-        RouteData route => route.PageType.IsDefined(typeof(GroupAccessAttribute), inherit: false),
+        RouteData route => route.PageType.IsDefined(typeof(TAttribute), inherit: false),
         // A request: the page or endpoint it goes to, or the live connection itself, whose pages are checked above
         HttpContext http => http.GetEndpoint() is { } endpoint
-            && (endpoint.Metadata.GetMetadata<GroupAccessAttribute>() != null || IsBlazorHub(http.Request.Path)),
+            && (endpoint.Metadata.GetMetadata<TAttribute>() != null || IsBlazorHub(http.Request.Path)),
         _ => false
     };
 

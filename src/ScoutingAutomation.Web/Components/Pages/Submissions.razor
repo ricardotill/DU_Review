@@ -255,7 +255,7 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        ownGroup = AuthState == null ? null : KeyAuth.GroupId((await AuthState).User);
+        ownGroup = AuthState == null ? null : AppAuth.GroupId((await AuthState).User);
         if (GroupFromQuery.HasValue && !IsGroup)
         {
             selectedGroupId = GroupFromQuery.Value.ToString();

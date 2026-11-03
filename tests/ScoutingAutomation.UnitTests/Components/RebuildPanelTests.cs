@@ -24,7 +24,7 @@ public class RebuildPanelTests : BunitContext
         // The panel is only shown to admins, and starting a rebuild is checked on the server too
         _auth = AddAuthorization();
         _auth.SetAuthorized("Admin");
-        _auth.SetRoles(ScoutingAutomation.Web.Auth.KeyAuth.AdminRole);
+        _auth.SetRoles(ScoutingAutomation.Web.Auth.AppAuth.AdminRole);
     }
 
     [Fact]
@@ -38,7 +38,7 @@ public class RebuildPanelTests : BunitContext
         cut.Find("button").Click();
 
         _service.StartedWith.Should().BeNull();
-        cut.Find(".start-error").TextContent.Should().Contain("beheermodus");
+        cut.Find(".start-error").TextContent.Should().Contain("Alleen voor beheerders");
     }
 
     [Fact]

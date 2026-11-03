@@ -36,7 +36,7 @@ else
                 <i class="bi bi-megaphone"></i>
                 <span>Bericht sturen</span>
             </a>
-            <AuthorizeView Roles="@KeyAuth.AdminRole">
+            <AuthorizeView Roles="@AppAuth.AdminRole">
                 <a href="/api/export/files.zip?status=approved&group=@group.Id" download class="btn btn-scout-secondary d-flex align-items-center gap-2" title="Goedgekeurde en awesome bestanden van deze groep">
                     <i class="bi bi-file-earmark-zip"></i>
                     <span>Downloaden</span>
@@ -215,7 +215,7 @@ else
         }
     </div>
 
-    <AuthorizeView Roles="@KeyAuth.AdminRole">
+    <AuthorizeView Roles="@AppAuth.AdminRole">
         <div class="mt-4">
             <RebuildPanel Group="group" />
         </div>

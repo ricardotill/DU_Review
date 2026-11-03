@@ -180,7 +180,7 @@ else
                 }
             </div>
 
-            <AuthorizeView Roles="@KeyAuth.AdminRole">
+            <AuthorizeView Roles="@AppAuth.AdminRole">
                 <!-- Emergency status override, hidden by default: reviews belong in Slack -->
                 <details class="override-panel">
                     <summary class="text-secondary small">Status handmatig aanpassen…</summary>
@@ -278,7 +278,7 @@ else
 
     protected override async Task OnParametersSetAsync()
     {
-        if (!loaded) ownGroup = AuthState == null ? null : KeyAuth.GroupId((await AuthState).User);
+        if (!loaded) ownGroup = AuthState == null ? null : AppAuth.GroupId((await AuthState).User);
         await ReloadAsync();
     }
 

@@ -2,7 +2,7 @@
 
 Laatst bijgewerkt: 6 oktober 2026
 
-Deze handleiding is voor wie DU Review opzet en op de speeldag beheert: de app starten, Slack koppelen, sleutels, instellingen, en wat te doen bij een storing. Hoe de jury beoordeelt en wat de pagina's van het dashboard doen, staat in de [handleiding voor de jury](handleiding-jury.md); wat groepen moeten weten in de [handleiding voor groepen](handleiding-groepen.md).
+Deze handleiding is voor wie DU Review opzet en op de speeldag beheert: de app starten, Slack koppelen, accounts, instellingen, en wat te doen bij een storing. Hoe de jury beoordeelt en wat de pagina's van het dashboard doen, staat in de [handleiding voor de jury](handleiding-jury.md); wat groepen moeten weten in de [handleiding voor groepen](handleiding-groepen.md).
 
 ## Zo werkt het
 
@@ -19,29 +19,49 @@ Het koppelen van Slack (de Slack-app, rechten, kanalen) staat in [Slack koppelen
 
 ## Beheer in de app
 
-Beheertaken doe je in beheermodus. Daarvoor heb je de aparte beheerderssleutel nodig; de gewone toegangssleutel is genoeg om te kijken.
+Beheertaken doe je met een **beheerdersaccount**. Een juryaccount is genoeg om te kijken. Wat elke soort account mag, staat in de [README](../README.md#toegang).
 
-### Beheermodus
+### De eerste beheerder
 
-- **Aan:** ga naar **Beheer** en vul de beheerderssleutel in. Inloggen met de beheerderssleutel op het loginscherm kan ook.
-- **Uit:** klik op **Beheermodus verlaten**.
-- Zolang beheermodus aan staat, staat **Beheer** bovenaan de pagina.
+- Bij de eerste start maakt de app een beheerder voor het adres in `Scouting:Accounts:BootstrapAdminEmail`. Bij Docker zet je dat als `BOOTSTRAP_ADMIN_EMAIL` in `.env`; bij `run-gameday.sh` in de user secrets:
 
-### Sleutels
+  ```bash
+  dotnet user-secrets set "Scouting:Accounts:BootstrapAdminEmail" "jij@example.nl" --project src/ScoutingAutomation.Web
+  ```
 
-- Bij de eerste start maakt de app een toegangssleutel en een beheerderssleutel aan. Ze staan eenmalig in het logboek en worden bewaard in `access-keys.json`.
-- **Sleutel kwijt?** Bij een volgende start staan de sleutels niet meer in het logboek. Je leest ze dan uit `access-keys.json`, op de computer waar de app draait:
+- Die beheerder krijgt een mail met een link om een wachtwoord te kiezen. Zonder mailserver staat de link in het logboek (`docker compose logs app | grep wachtwoord-instellen`). De link is 3 dagen geldig.
+- Is er geen beheerder en geen adres ingesteld, dan start de app niet en zegt het logboek wat er mist.
+- **Wachtwoord kwijt?** Gebruik **Wachtwoord vergeten?** op het loginscherm, of laat een andere beheerder op **Beheer** > **Accounts** een link maken. Maak daarom altijd een tweede beheerder aan.
 
-  | Gestart met | Commando |
-  |---|---|
-  | `run-gameday.sh` | `cat ~/du-app/access-keys.json` |
-  | Docker Compose | `docker compose exec app cat /data/access-keys.json` |
-  | `dotnet run` | `cat src/ScoutingAutomation.Web/access-keys.json` |
+### Accounts
 
-  Wie dit bestand kan lezen, heeft beheerderstoegang. Deel het dus nooit.
-- Op de pagina **Beheer** maak je een nieuwe sleutel aan. Iedereen die met de oude sleutel is ingelogd, wordt direct uitgelogd. Jij blijft ingelogd.
-- Een nieuwe beheerderssleutel wordt maar één keer getoond. Schrijf hem meteen op.
-- **Groepssleutels**: op **Beheer** > **Groepssleutels** maak je in één keer sleutels voor alle groepen. Per groep kun je een nieuwe sleutel maken of de sleutel intrekken; dat logt alleen die groep uit.
+Op **Beheer** > **Accounts**:
+
+- **Account maken**: naam, e-mailadres en soort (jury, beheerder, groep of beamer). Bij een groep kies je ook welke groep. De app mailt een uitnodiging met een link om een wachtwoord te kiezen.
+- **Link mailen** stuurt een nieuwe link om een wachtwoord te kiezen. Zonder mailserver heet de knop **Link maken** en toont hij de link, zodat je hem zelf kunt doorsturen (bijvoorbeeld in het Slack-kanaal van een groep). Een link werkt één keer en is 3 dagen geldig.
+- Met **Wijzigen** pas je naam, soort of groep aan. **Blokkeren** houdt iemand buiten zonder het account weg te halen; **Verwijderen** haalt het weg. Wie geblokkeerd, verwijderd of van soort veranderd is, wordt binnen een minuut uitgelogd.
+- Bij de lijst staat welke groepen nog geen account hebben (**Nog geen account: …**).
+- Je kunt jezelf niet blokkeren of verwijderen, en er blijft altijd minstens één beheerder.
+- Maak voor de beamer één account van de soort **Beamer**: dat ziet alleen het scorebord en de diavoorstelling, ook als iemand anders achter de laptop kruipt.
+
+### Mail
+
+De app mailt uitnodigingen en links voor **Wachtwoord vergeten?**. Stel de mailserver in met `Scouting:Email`, bij Docker met deze regels in `.env`:
+
+| Regel | Betekenis |
+|---|---|
+| `SMTP_HOST` | De mailserver, bijvoorbeeld `smtp.example.nl`. Leeg: de app mailt niets. |
+| `SMTP_PORT` | Standaard `587`. |
+| `SMTP_SECURITY` | `StartTls` (poort 587, standaard), `SslOnConnect` (poort 465) of `None`. |
+| `SMTP_USERNAME`, `SMTP_PASSWORD` | Inloggegevens van de mailserver. |
+| `SMTP_FROM` | Het afzenderadres. |
+| `PUBLIC_URL` | Het adres van de app van buiten, bijvoorbeeld `https://du.jouwdomein.nl`. De links in de mails beginnen hiermee. |
+
+Op **Beheer** > **Mail** zie je of mail is ingesteld en stuur je een testmail. Zonder mailserver werkt alles ook: maak de links dan met **Link maken** en stuur ze zelf door.
+
+### Van sleutels naar accounts
+
+Kom je van een versie met sleutels (toegangssleutel, beheerderssleutel, groepssleutels)? Die werken niet meer. Bij de eerste start van de nieuwe versie krijgt de database de tabellen voor accounts erbij; inzendingen, punten en instellingen blijven staan. Zet `BOOTSTRAP_ADMIN_EMAIL` voor je de nieuwe versie start, kies je wachtwoord via de link, en maak dan de accounts voor de jury, de groepen en de beamer. `access-keys.json` mag weg.
 
 ### Juryleden
 
@@ -51,7 +71,7 @@ Een member-ID vind je in Slack via het profiel van iemand: **⋮** → **Copy me
 
 ### Beoordelingsregels
 
-Op **Configuratie**, onder **Beoordelingsregels** (alleen in beheermodus):
+Op **Configuratie**, onder **Beoordelingsregels** (alleen voor beheerders):
 
 - **Nieuwe poging na goedkeuring weigeren.** Aan: een groep kan een opdracht die al goedgekeurd of awesome is niet opnieuw insturen. Uit: opnieuw insturen mag altijd, en de beste beoordeling telt. De standaard staat in `appsettings.json` (`Scouting:BlockAttemptsAfterApproval`).
 - **Herinnering voor de jury.** Na hoeveel minuten wachten de bot de jury herinnert. Leeg betekent geen herinneringen. Het jurykanaal stel je in `appsettings.json` in (`Scouting:ReviewReminder:ChannelId`).
@@ -72,7 +92,7 @@ De aanpassing komt in de beoordelingsgeschiedenis. Slack blijft leidend: zet een
 
 ### Extra punten en puntencategorieën
 
-Op **Beheer** (alleen in beheermodus):
+Op **Beheer** (alleen voor beheerders):
 
 - **Extra punten**: vul per groep de punten per categorie in en klik op **Opslaan**. Ze tellen direct mee in de score en de stand.
 - **Puntencategorieën**: voeg een categorie toe (bijvoorbeeld een fotowedstrijd), wijzig de naam met het potlood, of haal er een weg met de prullenbak. De sleutel wordt uit de naam gemaakt als je hem leeg laat, en blijft daarna altijd hetzelfde.
@@ -88,13 +108,13 @@ Het Avonturiers-deel staat standaard uit. Zo zet je het op:
 3. Zet `Scouting:PublicUrl` op het adres waarop de app van buiten bereikbaar is (bijvoorbeeld het adres van de [Cloudflare Tunnel](#via-internet-cloudflare-tunnel)). Zonder dat adres staat er "(de kaartlink volgt)" in plaats van de kaartlink.
 4. Herstart de app. In het menu staat nu **Avonturiers**.
 
-**Locaties** (**Avonturiers → Locaties**, beheermodus): klik op de kaart om een locatie te plaatsen, vul nummer, naam en eventueel een hint in, en sla op. Een hele lijst importeer je uit een GeoJSON-, GPX- of CSV-bestand, bijvoorbeeld uit Google My Maps of uMap (maximaal 5 MB). Het nummer komt uit een kolom `nummer` of vooraan de naam (`7 Molen`). Een CSV heeft de kolommen `nummer;naam;lat;lon;hint`; puntkomma's en decimale komma's van Nederlandse Excel mogen. Een import vult aan en past bestaande nummers aan; hij verwijdert niets. Wat niet gelezen kon worden, staat in een lijst onder de knop.
+**Locaties** (**Avonturiers → Locaties**, beheerders): klik op de kaart om een locatie te plaatsen, vul nummer, naam en eventueel een hint in, en sla op. Een hele lijst importeer je uit een GeoJSON-, GPX- of CSV-bestand, bijvoorbeeld uit Google My Maps of uMap (maximaal 5 MB). Het nummer komt uit een kolom `nummer` of vooraan de naam (`7 Molen`). Een CSV heeft de kolommen `nummer;naam;lat;lon;hint`; puntkomma's en decimale komma's van Nederlandse Excel mogen. Een import vult aan en past bestaande nummers aan; hij verwijdert niets. Wat niet gelezen kon worden, staat in een lijst onder de knop.
 
 **Vrijgespeelde locaties** (**Beheer**): per groep een vinkje per locatie. Alleen aangevinkte locaties staan op de kaart van die groep. Zet **Jury waarschuwen** aan als de jury een 🚧 moet krijgen bij een check-in op een locatie die niet is vrijgespeeld.
 
 **Opdrachten vrijspelen** (**Configuratie → Avonturiers**): laat de lijst leeg om alleen te tellen. Vul je de opdrachten in volgorde in, dan noemt de bot steeds de volgende opdracht en weigert hij (🔒) een inzending voor een opdracht uit de lijst die nog niet is vrijgespeeld. Daar pas je ook de teksten van de bot aan.
 
-**Rondes** (**Avonturiers → Rondes**, beheermodus): vul begin en einde in en klik op **Genereer rondes** voor rondes van `RoundMinutes` minuten (standaard 30) met thema N in ronde N. Pas daarna per ronde de thema's of de openingstekst aan en klik op **Opslaan**. Rondes mogen niet overlappen en een thema hoort bij één ronde. Onder **Berichten per ronde** zie je per ronde wat de bot al geplaatst heeft, en stuur je een bericht met de hand, met een foto of opnieuw naar alle groepen.
+**Rondes** (**Avonturiers → Rondes**, beheerders): vul begin en einde in en klik op **Genereer rondes** voor rondes van `RoundMinutes` minuten (standaard 30) met thema N in ronde N. Pas daarna per ronde de thema's of de openingstekst aan en klik op **Opslaan**. Rondes mogen niet overlappen en een thema hoort bij één ronde. Onder **Berichten per ronde** zie je per ronde wat de bot al geplaatst heeft, en stuur je een bericht met de hand, met een foto of opnieuw naar alle groepen.
 
 **Startinformatie en eindlocatie** (**Avonturiers → Rondes**): de tekst, het tijdstip waarop de bot hem zelf plaatst, of nu sturen met eventueel een foto (bijvoorbeeld een plattegrond). In de tekst: `{group}`, `{map}`, `{time}`, `{approved}` en `{rejected}`.
 
@@ -118,7 +138,7 @@ Slack stuurt elk bericht en elke emoji maar één keer. Draaide de app even niet
 
 ### Opnieuw opbouwen uit Slack
 
-Hiermee bouw je alle inzendingen opnieuw op uit de Slack-berichten. Gebruik het als er iets flink mis is gegaan, bijvoorbeeld als berichten zijn verwijderd of aangepast terwijl de app niet draaide. Het werkt alleen in beheermodus.
+Hiermee bouw je alle inzendingen opnieuw op uit de Slack-berichten. Gebruik het als er iets flink mis is gegaan, bijvoorbeeld als berichten zijn verwijderd of aangepast terwijl de app niet draaide. Het werkt alleen als beheerder.
 
 1. Ga naar **Configuratie**, onderaan staat **Opnieuw opbouwen uit Slack**. Voor één groep staat dezelfde knop op de groepspagina.
 2. Kies vanaf welk tijdstip berichten meetellen (standaard vandaag 00:00).
@@ -169,8 +189,8 @@ Start in de map van de repository:
 Het script doet het volgende:
 
 1. Het bouwt een Release-versie van de app in `~/du-app`.
-2. De eerste keer neemt het `access-keys.json` en `runtime-settings.json` over uit de projectmap. Zo blijven de sleutels, juryleden en regels hetzelfde. Staan ze al in `~/du-app`, dan blijven die staan.
-3. Het haalt de Slack-tokens uit de user secrets. Ontbreekt de BotToken of de AppToken, dan stopt het script met een melding. De app start dan niet.
+2. De eerste keer neemt het `runtime-settings.json` over uit de projectmap. Zo blijven de juryleden en regels hetzelfde. Staan ze al in `~/du-app`, dan blijven die staan.
+3. Het haalt de Slack-tokens en het adres van de eerste beheerder (zie [De eerste beheerder](#de-eerste-beheerder)) uit de user secrets. Ontbreekt de BotToken of de AppToken, dan stopt het script met een melding. De app start dan niet.
 4. Het start de app met SQLite. De database `scouting_dev.db` staat in `~/du-app`. Het puntenbestand `opdrachtenpunten.csv` leest de app uit de repository, dus een aanpassing daarin geldt na een herstart.
 5. Zolang de app draait, gaat de Mac niet in de slaapstand en blijft het scherm aan.
 
@@ -203,7 +223,8 @@ Het image van de app hoef je niet zelf te bouwen: GitHub bouwt het bij elke rele
    - `POSTGRES_PASSWORD`: een zelfgekozen, lang wachtwoord voor de database.
    - `SLACK_BOT_TOKEN` (`xoxb-...`) en `SLACK_APP_TOKEN` (`xapp-...`): de tokens uit [Slack koppelen](slack-koppelen.md).
    - Optioneel `PORT`, de poort op deze computer (standaard `5231`).
-   - Optioneel `ACCESS_KEY` en `ADMIN_KEY`, als je de sleutels zelf wilt kiezen. Dat werkt alleen bij de allereerste start.
+   - `BOOTSTRAP_ADMIN_EMAIL`: jouw e-mailadres. Daarvoor maakt de app bij de eerste start het eerste beheerdersaccount.
+   - `PUBLIC_URL` en de `SMTP_`-regels, voor mails over accounts (zie [Mail](#mail)). Zonder mailserver kan het ook.
 
    `.env` bevat geheimen en staat niet in Git. Ontbreekt een verplichte waarde, dan start Docker Compose niet en noemt het de ontbrekende waarde.
 
@@ -222,13 +243,13 @@ Het image van de app hoef je niet zelf te bouwen: GitHub bouwt het bij elke rele
 
    De app wacht tot de database klaar is. Wil je een eigen aanpassing draaien die nog niet is uitgebracht? Bouw het image dan zelf met `docker compose up -d --build` (dat duurt een paar minuten).
 
-6. Zoek de sleutels op. Bij de eerste start maakt de app een toegangssleutel en een beheerderssleutel aan:
+6. Kies je wachtwoord via de link in de mail. Zonder mailserver staat de link in het logboek:
 
    ```bash
-   docker compose logs app | grep "Generated"
+   docker compose logs app | grep wachtwoord-instellen
    ```
 
-   Kwijt na een herstart? Zie **Sleutel kwijt?** bij [Sleutels](#sleutels).
+   Maak daarna op **Beheer** > **Accounts** de accounts voor de jury, de groepen en de beamer.
 
 7. Open <http://localhost:5231>, of in het netwerk het adres van de computer, zoals `http://192.168.1.20:5231`. Controleer bovenaan de pagina de Slack-status: **Verbonden met Slack**.
 
@@ -241,7 +262,7 @@ docker compose exec -T app sh -c 'cat > /data/runtime-settings.json' < src/Scout
 docker compose restart app
 ```
 
-Gebruik dit commando en niet `docker compose cp`: met `cp` hoort het bestand bij een andere gebruiker, en dan kan de app het niet lezen. Voor sleutels uit een eerdere `access-keys.json` werkt het op dezelfde manier, met `/data/access-keys.json`.
+Gebruik dit commando en niet `docker compose cp`: met `cp` hoort het bestand bij een andere gebruiker, en dan kan de app het niet lezen.
 
 **Dagelijks gebruik**
 
@@ -273,10 +294,10 @@ Haalt de server nieuwe images automatisch op (bijvoorbeeld met Watchtower), zet 
 **Waar staat alles?**
 
 - De database staat in het Docker-volume `db-data`.
-- De bestanden, `runtime-settings.json` en `access-keys.json` staan in het volume `app-data`, in de container onder `/data`. De bestanden van de groepen staan in `/data/storage`.
-- De sleutels voor de inlogcookies staan in het volume `app-keys`. Daardoor blijft iedereen ingelogd na een herstart.
+- De accounts staan in de database. De bestanden en `runtime-settings.json` staan in het volume `app-data`, in de container onder `/data`. De bestanden van de groepen staan in `/data/storage`.
+- De sleutels voor de inlogcookies en de wachtwoordlinks staan in het volume `app-keys`. Daardoor blijft iedereen ingelogd na een herstart.
 - Het puntenbestand komt direct uit de repository: `src/ScoutingAutomation.Web/opdrachtenpunten.csv`.
-- Andere instellingen, zoals de start- en eindtijd, pas je aan in de app (beheermodus). Of je zet ze in `docker-compose.yml` onder `environment`, met `__` in plaats van `:`, bijvoorbeeld `Scouting__EventStart: "2026-10-03T09:00"`. Een waarde die je in de app hebt aangepast, gaat altijd voor.
+- Andere instellingen, zoals de start- en eindtijd, pas je aan in de app (als beheerder). Of je zet ze in `docker-compose.yml` onder `environment`, met `__` in plaats van `:`, bijvoorbeeld `Scouting__EventStart: "2026-10-03T09:00"`. Een waarde die je in de app hebt aangepast, gaat altijd voor.
 
 Volumes blijven bewaard bij `docker compose down`, maar `docker compose down -v` wist ze, met de database en alle bestanden. Gebruik `-v` dus nooit op de speeldag.
 
@@ -364,7 +385,7 @@ Gebruik `--profile tunnel` ook bij `docker compose down` en `docker compose up -
 
 **Waarom de app de tunnel moet vertrouwen**
 
-De tunnel geeft het echte adres van de bezoeker door, en dat het verzoek via HTTPS binnenkwam. De app gebruikt dat voor de grens op verkeerde sleutels en om het login-cookie alleen via HTTPS te versturen. Dat doorgeven vertrouwt de app alleen van een proxy die hij kent:
+De tunnel geeft het echte adres van de bezoeker door, en dat het verzoek via HTTPS binnenkwam. De app gebruikt dat voor de grens op mislukte logins en om het login-cookie alleen via HTTPS te versturen. Dat doorgeven vertrouwt de app alleen van een proxy die hij kent:
 
 - `cloudflared` op dezelfde computer als de app (`run-gameday.sh`): vertrouwd, er hoeft niets ingesteld.
 - `cloudflared` in Docker Compose: de container heeft een vast adres (`172.29.53.10`), en de app vertrouwt dat adres via `ForwardedHeaders__KnownNetworks__0` in `docker-compose.yml`. Ook hier hoef je niets in te stellen.
@@ -374,7 +395,7 @@ Klopt dit niet, dan werkt de app nog steeds, maar ziet hij voor iedereen het adr
 
 **Extra afschermen (optioneel)**
 
-De app vraagt altijd om een sleutel. Wil je het dashboard daarnaast alleen voor bekende mensen openzetten, dan kan dat met **Cloudflare Access** (Zero Trust > Access > Applications), bijvoorbeeld met een eenmalige code per e-mail. Voor groepen is dat meestal een extra drempel die niet nodig is.
+De app vraagt altijd om een account. Wil je het dashboard daarnaast alleen voor bekende mensen openzetten, dan kan dat met **Cloudflare Access** (Zero Trust > Access > Applications), bijvoorbeeld met een eenmalige code per e-mail. Voor groepen is dat meestal een extra drempel die niet nodig is.
 
 ### Voor ontwikkelen: .NET Aspire
 
@@ -400,14 +421,16 @@ Doe de generale repetitie een paar dagen vóór het spel, op dezelfde server en 
 - [ ] De puntencategorieën kloppen (**Beheer** > **Puntencategorieën**, of `Scouting:BonusCategories`).
 - [ ] De tijdzone (`Scouting:TimeZone`) staat op `Europe/Amsterdam`.
 - [ ] De starttijd (`Scouting:EventStart`) staat op het begin van het spel, bijvoorbeeld `"2026-10-03T09:00"`. Berichten van daarvoor tellen niet mee. Een testbericht van vóór de starttijd verschijnt dus niet op het dashboard. Op de starttijd plaatst de bot het startbericht in elk groepskanaal.
-- [ ] Controleer de tekst van het startbericht: **Configuratie** > **Startbericht in Slack** > **Voorbeeld**. Pas hem zo nodig aan met het potlood (in beheermodus).
-- [ ] De eindtijd (`Scouting:EventEnd`, of **Configuratie** > **Speeltijd** in beheermodus) staat op het einde van het spel. Inzendingen vanaf dat moment tellen niet; de bot reageert met :alarm_clock:. Op de eindtijd plaatst de bot het eindbericht in elk groepskanaal.
+- [ ] Controleer de tekst van het startbericht: **Configuratie** > **Startbericht in Slack** > **Voorbeeld**. Pas hem zo nodig aan met het potlood (als beheerder).
+- [ ] De eindtijd (`Scouting:EventEnd`, of **Configuratie** > **Speeltijd** als beheerder) staat op het einde van het spel. Inzendingen vanaf dat moment tellen niet; de bot reageert met :alarm_clock:. Op de eindtijd plaatst de bot het eindbericht in elk groepskanaal.
 - [ ] Controleer de tekst van het eindbericht: **Configuratie** > **Eindbericht in Slack** > **Voorbeeld**.
 - [ ] Er is genoeg schijfruimte: reken op enkele GB voor video's.
 - [ ] Generale repetitie: vier mensen plaatsen tegelijk, één met een grote video (200 MB of meer). Twee juryleden zetten verschillende emoji's op één bericht. Iemand bewerkt een bericht en iemand verwijdert er een. Herstart de app halverwege en controleer dat niets ontbreekt.
 - [ ] Gebruik je een [Cloudflare Tunnel](#via-internet-cloudflare-tunnel)? Open het HTTPS-adres op een telefoon via 4G (niet via de wifi), log in en controleer dat het dashboard live bijwerkt.
-- [ ] Toegangssleutel en beheerderssleutel staan veilig genoteerd.
-- [ ] Elke groep heeft een groepssleutel (**Beheer** > **Groepssleutels**), klaar om uit te delen.
+- [ ] Elk jurylid heeft een account en heeft ingelogd. Er zijn minstens twee beheerders.
+- [ ] Elke groep heeft een account (**Beheer** > **Accounts** toont welke groepen er nog geen hebben), en het wachtwoord is gekozen.
+- [ ] Er is één beamer-account, en de beamer is daarmee ingelogd.
+- [ ] Werkt mail? Stuur een testmail op **Beheer** > **Mail**. Zo niet, weet dan hoe je met **Link maken** een link doorstuurt.
 - [ ] Speel je met Avonturiers? Elke groep heeft een Avonturiers-kanaal met de bot erin, `Scouting:PublicUrl` staat goed, de locaties staan op **Avonturiers → Locaties**, de vrijgespeelde locaties op **Beheer**, en de rondes en de tijden van startinformatie en eindlocatie op **Avonturiers → Rondes**. Open een kaartlink van een groep op een telefoon via 4G.
 - [ ] Wil je de stand aan het eind verbergen? Plan de periode op **Stand voor groepen**, en kies of de beamer meedoet.
 
@@ -418,10 +441,9 @@ Doe de generale repetitie een paar dagen vóór het spel, op dezelfde server en 
 - [ ] **Handmatige modus** staat uit (geen melding bovenaan).
 - [ ] Plaats in elk kanaal een testbericht met een foto en `Opdracht 1` (in een Avonturiers-kanaal `Locatie 1`). Controleer dat het op het dashboard verschijnt, en verwijder het daarna in Slack.
 - [ ] Gebruik je een tunnel? Controleer dat hij draait (Cloudflare-dashboard: **Healthy**) en geef groepen alleen het HTTPS-adres.
-- [ ] Deel de toegangssleutel met de jury en de mensen bij het scorebord.
-- [ ] Geef elke groep haar eigen groepssleutel. Deel nooit de toegangssleutel met een groep: daarmee zie je alles.
+- [ ] Iedereen weet zijn inlog. Een groep logt alleen in met haar eigen groepsaccount, nooit met een juryaccount: daarmee zie je alles.
 - [ ] Zet de diavoorstelling of het dashboard klaar op de beamer.
-- [ ] Na de starttijd: elk groepskanaal heeft het startbericht. Op **Configuratie** > **Startbericht in Slack** staat per groep **Geplaatst om …**. Mist er een, of is er geen starttijd ingesteld, klik dan in beheermodus op **Startbericht nu sturen**.
+- [ ] Na de starttijd: elk groepskanaal heeft het startbericht. Op **Configuratie** > **Startbericht in Slack** staat per groep **Geplaatst om …**. Mist er een, of is er geen starttijd ingesteld, klik dan als beheerder op **Startbericht nu sturen**.
 - [ ] Na de eindtijd: elk groepskanaal heeft het eindbericht (**Configuratie** > **Eindbericht in Slack**), en bovenaan de app staat **Spel afgelopen**.
 
 ### Uitleg aan de groepen (twee minuten)
@@ -432,7 +454,7 @@ Alles voor de groepen staat in de [handleiding voor groepen](handleiding-groepen
 - Meerdere foto's in één bericht mag.
 - Zet de bot een ❓, bewerk dan je bericht en zet het juiste nummer erin.
 - Zet de bot een ⚠️, lees de uitleg in de thread.
-- Met jullie groepssleutel zie je in de app jullie score, de stand en jullie inzendingen.
+- Met jullie groepsaccount zie je in de app jullie score, de stand en jullie inzendingen.
 
 ### Uitleg aan de jury (twee minuten)
 
@@ -460,7 +482,7 @@ Alles voor de jury staat in de [handleiding voor de jury](handleiding-jury.md). 
 ### Na afloop
 
 - Maak een kopie van de map `scouting_storage` voordat je iets opruimt.
-- Download de uitslag en de bestanden via **Exporteren** op het **Dashboard** (beheermodus): de scores als CSV, en de awesome of alle goedgekeurde bestanden als ZIP. Per groep kan dat ook met **Downloaden** op de pagina van de groep.
+- Download de uitslag en de bestanden via **Exporteren** op het **Dashboard** (als beheerder): de scores als CSV, en de awesome of alle goedgekeurde bestanden als ZIP. Per groep kan dat ook met **Downloaden** op de pagina van de groep.
 - Gebruik de favorieten en de diavoorstelling voor de prijsuitreiking.
 
 ## Problemen oplossen
@@ -476,7 +498,7 @@ Begin altijd bij de Slack-status bovenaan de pagina en het logboek van de app. D
 | De status is anders dan het laatste emoji | Dat klopt als juryleden het oneens zijn: de beste beoordeling telt. Haal de emoji weg die niet meer moet tellen. |
 | Bovenaan staat een rode melding **Slack: fout** of **Slack: verbinden** | De app heeft geen verbinding met Slack. Controleer het internet van de server en het logboek. Na herstel haalt de app vanzelf in wat hij miste. |
 | De app is herstart of was een tijd weg | Wacht op **Verbonden met Slack**. De app haalt de berichten van vandaag vanzelf in. Ontbreekt er daarna nog iets, gebruik dan **Opnieuw opbouwen uit Slack**. |
-| Iemand kan niet meer inloggen | Is de toegangssleutel net vernieuwd? Geef de nieuwe sleutel. Na 30 foute pogingen binnen een minuut even wachten. |
+| Iemand kan niet meer inloggen | Gebruik **Wachtwoord vergeten?**, of maak op **Beheer** > **Accounts** een link. Is het account geblokkeerd? Na 5 verkeerde wachtwoorden staat een account 15 minuten op slot; na 30 foute pogingen binnen een minuut moet het adres even wachten. |
 | Een handmatige aanpassing is verdwenen | Er is opnieuw opgebouwd uit Slack, of een jurylid heeft daarna een emoji gezet. Slack is leidend; zet de emoji in Slack. |
 | Een video speelt niet af in het dashboard | Download het bestand via de detailpagina; niet elke browser speelt elk videoformaat af. |
 | Een bestand staat in `_deleted` | Het bericht of bestand is in Slack verwijderd. Zet het terug door het opnieuw in Slack te plaatsen. |

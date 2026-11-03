@@ -1,0 +1,336 @@
+@implements IDisposable
+@inject IServiceScopeFactory ScopeFactory
+@inject AccountChangeNotifier Notifier
+@inject NavigationManager Navigation
+@inject IOptions<ScoutingSettings> Options
+
+@* Admins make every account: jury members, the beamer and the groups. A new account chooses its password through a link. *@
+<AuthorizeView Roles="@AppAuth.AdminRole">
+    <div class="glass-panel p-4 accounts">
+        <h2 class="panel-title"><i class="bi bi-people-fill text-success"></i> Accounts</h2>
+        <p class="text-secondary small">
+            Maak een account voor elk jurylid, één voor de beamer en een of meer per groep. Een nieuw account kiest zelf een wachtwoord via een link
+            (@AccountService.LinkLifetimeText geldig).
+            @if (canSendMail)
+            {
+                <span>De link wordt gemaild.</span>
+            }
+            else
+            {
+                <span class="text-warning">Er is geen mailserver ingesteld: kopieer de link en stuur hem zelf door.</span>
+            }
+        </p>
+
+        <EditForm Model="newAccount" OnValidSubmit="CreateAsync" FormName="new-account" Context="form" class="row g-2 align-items-end mb-3 new-account">
+            <div class="col-md-3">
+                <label class="form-label text-secondary small fw-semibold mb-1" for="newEmail">E-mailadres</label>
+                <InputText id="newEmail" type="email" class="form-control form-control-dark form-control-sm" @bind-Value="newAccount.Email" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label text-secondary small fw-semibold mb-1" for="newName">Naam</label>
+                <InputText id="newName" class="form-control form-control-dark form-control-sm" @bind-Value="newAccount.Name" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label text-secondary small fw-semibold mb-1" for="newKind">Soort</label>
+                <InputSelect id="newKind" class="form-select form-select-dark form-select-sm" @bind-Value="newAccount.Kind">
+                    @foreach (var kind in Kinds)
+                    {
+                        <option value="@kind">@kind.Label()</option>
+                    }
+                </InputSelect>
+            </div>
+            <div class="col-md-2">
+                @if (newAccount.Kind == AccountKind.Group)
+                {
+                    <label class="form-label text-secondary small fw-semibold mb-1" for="newGroup">Groep</label>
+                    <InputSelect id="newGroup" class="form-select form-select-dark form-select-sm" @bind-Value="newAccount.GroupId">
+                        <option value="">Kies…</option>
+                        @foreach (var g in groups)
+                        {
+                            <option value="@g.Id">@g.Name</option>
+                        }
+                    </InputSelect>
+                }
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-scout-primary btn-sm w-100 create-account"><i class="bi bi-person-plus me-1"></i> Account maken</button>
+            </div>
+        </EditForm>
+
+        @if (error != null)
+        {
+            <div class="text-danger small mb-2" role="alert">@error</div>
+        }
+
+        @if (link != null)
+        {
+            <div class="alert alert-info small password-link" role="status">
+                @linkNote
+                <code class="access-key d-block mt-1 text-break">@link</code>
+            </div>
+        }
+
+        @if (groupsWithoutAccount.Count > 0)
+        {
+            <p class="text-secondary small groups-without-account">
+                <i class="bi bi-info-circle me-1"></i> Nog geen account: @string.Join(", ", groupsWithoutAccount.Select(g => g.Name)).
+            </p>
+        }
+
+        <div class="table-responsive">
+            <table class="custom-table">
+                <thead>
+                    <tr>
+                        <th>Naam</th>
+                        <th>E-mailadres</th>
+                        <th>Soort</th>
+                        <th>Status</th>
+                        <th>Laatst ingelogd</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var account in accounts)
+                    {
+                        <tr @key="account.Id" class="account-row">
+                            @if (editing?.Id == account.Id)
+                            {
+                                <td><input class="form-control form-control-dark form-control-sm" aria-label="Naam" @bind="editing.Name" /></td>
+                                <td class="text-white-50 small">@account.Email</td>
+                                <td>
+                                    <select class="form-select form-select-dark form-select-sm mb-1" aria-label="Soort" @bind="editing.Kind">
+                                        @foreach (var kind in Kinds)
+                                        {
+                                            <option value="@kind">@kind.Label()</option>
+                                        }
+                                    </select>
+                                    @if (editing.Kind == AccountKind.Group)
+                                    {
+                                        <select class="form-select form-select-dark form-select-sm" aria-label="Groep" @bind="editing.GroupId">
+                                            <option value="">Kies…</option>
+                                            @foreach (var g in groups)
+                                            {
+                                                <option value="@g.Id">@g.Name</option>
+                                            }
+                                        </select>
+                                    }
+                                </td>
+                                <td colspan="2"></td>
+                                <td class="text-end text-nowrap">
+                                    <button type="button" class="btn btn-sm btn-scout-primary save-account" @onclick="SaveAsync">Opslaan</button>
+                                    <button type="button" class="btn btn-sm btn-link text-secondary" @onclick="() => editing = null">Annuleren</button>
+                                </td>
+                            }
+                            else
+                            {
+                                <td class="text-white">@account.DisplayName</td>
+                                <td class="text-white-50 small">@account.Email</td>
+                                <td class="small">
+                                    @account.Kind.Label()
+                                    @if (account.Kind == AccountKind.Group)
+                                    {
+                                        <span class="text-secondary">· @GroupName(account.GroupId)</span>
+                                    }
+                                </td>
+                                <td class="small">
+                                    @if (account.IsDisabled)
+                                    {
+                                        <span class="badge bg-danger">Geblokkeerd</span>
+                                    }
+                                    else if (!account.HasPassword)
+                                    {
+                                        <span class="badge bg-warning text-dark">Nog geen wachtwoord</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-success">Actief</span>
+                                    }
+                                </td>
+                                <td class="small text-secondary">@(account.LastLoginAt is { } at ? GameTime.ToGameTime(at).ToString("d MMM HH:mm") : "nooit")</td>
+                                <td class="text-end text-nowrap">
+                                    <button type="button" class="btn btn-sm btn-outline-info send-link" title="@(canSendMail ? "Link mailen om een wachtwoord te kiezen" : "Link maken om een wachtwoord te kiezen")"
+                                            disabled="@account.IsDisabled" @onclick="() => SendLinkAsync(account)">
+                                        <i class="bi bi-envelope me-1"></i> @(canSendMail ? "Link mailen" : "Link maken")
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-link text-info edit-account" title="Wijzigen" aria-label="@($"{account.DisplayName} wijzigen")" @onclick="() => Edit(account)">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-link text-warning toggle-account" title="@(account.IsDisabled ? "Deblokkeren" : "Blokkeren")"
+                                            aria-label="@($"{account.DisplayName} {(account.IsDisabled ? "deblokkeren" : "blokkeren")}")" @onclick="() => ToggleAsync(account)">
+                                        <i class="bi @(account.IsDisabled ? "bi-unlock" : "bi-slash-circle")"></i>
+                                    </button>
+                                    @if (confirmDelete == account.Id)
+                                    {
+                                        <button type="button" class="btn btn-sm btn-danger confirm-delete" @onclick="() => DeleteAsync(account)">Echt verwijderen</button>
+                                    }
+                                    else
+                                    {
+                                        <button type="button" class="btn btn-sm btn-link text-danger delete-account" title="Verwijderen" aria-label="@($"{account.DisplayName} verwijderen")" @onclick="() => confirmDelete = account.Id">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    }
+                                </td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</AuthorizeView>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private static readonly AccountKind[] Kinds = [AccountKind.Jury, AccountKind.Admin, AccountKind.Beamer, AccountKind.Group];
+
+    private IReadOnlyList<AccountInfo> accounts = [];
+    private IReadOnlyList<Group> groups = [];
+    private List<Group> groupsWithoutAccount = [];
+    private NewAccount newAccount = new();
+    private EditAccount? editing;
+    private Guid? confirmDelete;
+    private bool canSendMail;
+    private string? error;
+    private string? link;
+    private string? linkNote;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Notifier.Changed += OnAccountChanged;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var scope = ScopeFactory.CreateAsyncScope();
+        var service = scope.ServiceProvider.GetRequiredService<AccountService>();
+        canSendMail = service.CanSendMail;
+        accounts = await service.ListAsync();
+        groups = (await scope.ServiceProvider.GetRequiredService<IGroupRepository>().GetAllAsync()).OrderBy(g => g.Name).ToList();
+        var withAccount = accounts.Where(a => a.Kind == AccountKind.Group).Select(a => a.GroupId).ToHashSet();
+        groupsWithoutAccount = groups.Where(g => !withAccount.Contains(g.Id)).ToList();
+    }
+
+    private string GroupName(Guid? id) => groups.FirstOrDefault(g => g.Id == id)?.Name ?? "onbekende groep";
+
+    private string BaseUri => BaseUrl.Of(Options.Value, Navigation.BaseUri);
+
+    private async Task<Guid> ActingUserAsync() => AuthState == null ? Guid.Empty : AppAuth.UserId((await AuthState).User) ?? Guid.Empty;
+
+    private async Task CreateAsync()
+    {
+        link = null;
+        error = await AdminActions.RunTaskAsync(AuthState, async () =>
+        {
+            await using var scope = ScopeFactory.CreateAsyncScope();
+            var service = scope.ServiceProvider.GetRequiredService<AccountService>();
+            var (user, problem) = await service.CreateAsync(newAccount.Email, newAccount.Name, newAccount.Kind, newAccount.GroupId);
+            if (user == null) return problem;
+
+            await ShowLinkAsync(service, user.Id, user.Email!);
+            newAccount = new() { Kind = newAccount.Kind };
+            return null;
+        });
+        await LoadAsync();
+    }
+
+    private async Task SendLinkAsync(AccountInfo account)
+    {
+        link = null;
+        error = await AdminActions.RunTaskAsync(AuthState, async () =>
+        {
+            await using var scope = ScopeFactory.CreateAsyncScope();
+            await ShowLinkAsync(scope.ServiceProvider.GetRequiredService<AccountService>(), account.Id, account.Email);
+            return null;
+        });
+    }
+
+    // Mails the link when a mail server is set, and always shows it: the admin can pass it on if the mail does not arrive
+    private async Task ShowLinkAsync(AccountService service, Guid id, string email)
+    {
+        try
+        {
+            link = await service.SendInvitationAsync(id, BaseUri);
+            linkNote = service.CanSendMail
+                ? $"Link gemaild naar {email}. Komt de mail niet aan? Stuur deze link zelf door:"
+                : $"Stuur deze link zelf door naar {email}:";
+        }
+        catch (AccountMailException ex)
+        {
+            await using var scope = ScopeFactory.CreateAsyncScope();
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>();
+            var user = await users.FindByIdAsync(id.ToString());
+            link = user == null ? null : await service.CreatePasswordLinkAsync(user, BaseUri);
+            linkNote = $"{ex.Message} Stuur deze link zelf door naar {email}:";
+        }
+    }
+
+    private void Edit(AccountInfo account)
+    {
+        confirmDelete = null;
+        editing = new EditAccount { Id = account.Id, Name = account.DisplayName, Kind = account.Kind, GroupId = account.GroupId };
+    }
+
+    private async Task SaveAsync()
+    {
+        if (editing == null) return;
+        var acting = await ActingUserAsync();
+        error = await AdminActions.RunTaskAsync(AuthState, async () =>
+        {
+            await using var scope = ScopeFactory.CreateAsyncScope();
+            return await scope.ServiceProvider.GetRequiredService<AccountService>()
+                .UpdateAsync(editing.Id, acting, editing.Name, editing.Kind, editing.GroupId);
+        });
+        if (error == null) editing = null;
+        await LoadAsync();
+    }
+
+    private async Task ToggleAsync(AccountInfo account)
+    {
+        var acting = await ActingUserAsync();
+        error = await AdminActions.RunTaskAsync(AuthState, async () =>
+        {
+            await using var scope = ScopeFactory.CreateAsyncScope();
+            return await scope.ServiceProvider.GetRequiredService<AccountService>().SetDisabledAsync(account.Id, acting, !account.IsDisabled);
+        });
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync(AccountInfo account)
+    {
+        confirmDelete = null;
+        var acting = await ActingUserAsync();
+        error = await AdminActions.RunTaskAsync(AuthState, async () =>
+        {
+            await using var scope = ScopeFactory.CreateAsyncScope();
+            return await scope.ServiceProvider.GetRequiredService<AccountService>().DeleteAsync(account.Id, acting);
+        });
+        await LoadAsync();
+    }
+
+    // Another admin's change shows here too
+    private void OnAccountChanged(Guid _) => InvokeAsync(async () =>
+    {
+        await LoadAsync();
+        StateHasChanged();
+    });
+
+    public void Dispose() => Notifier.Changed -= OnAccountChanged;
+
+    private sealed class NewAccount
+    {
+        public string? Email { get; set; }
+        public string? Name { get; set; }
+        public AccountKind Kind { get; set; } = AccountKind.Jury;
+        public Guid? GroupId { get; set; }
+    }
+
+    private sealed class EditAccount
+    {
+        public Guid Id { get; set; }
+        public string? Name { get; set; }
+        public AccountKind Kind { get; set; }
+        public Guid? GroupId { get; set; }
+    }
+}

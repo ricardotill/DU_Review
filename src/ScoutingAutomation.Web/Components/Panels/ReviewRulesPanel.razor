@@ -13,7 +13,7 @@
                 Staat dit aan, dan kan een groep een opdracht die al goedgekeurd of awesome is niet opnieuw insturen.
                 De bot reageert dan met <code>:@(ScoutingOptions.Value.SlackFeedback.AlreadyCompleted?.Reaction?.Trim(':') ?? "lock"):</code> en een uitleg, en het bestand wordt niet opgeslagen.
             </p>
-            <AuthorizeView Roles="@KeyAuth.AdminRole">
+            <AuthorizeView Roles="@AppAuth.AdminRole">
                 <Authorized>
                     <div class="form-check form-switch mb-1">
                         <input class="form-check-input" type="checkbox" role="switch" id="blockAttempts"
@@ -55,7 +55,7 @@
                 <dt>Na</dt>
                 <dd>@(Runtime.ReviewReminderMinutes is { } minutes ? $"{minutes} minuten" : "uit")</dd>
             </dl>
-            <AuthorizeView Roles="@KeyAuth.AdminRole">
+            <AuthorizeView Roles="@AppAuth.AdminRole">
                 <form class="d-flex gap-2 align-items-start reminder-form" @onsubmit="SaveMinutes">
                     <input type="number" min="1" max="@RuntimeSettingsService.MaxReminderMinutes" class="form-control form-control-dark form-control-sm reminder-minutes"
                            placeholder="uit" aria-label="Minuten tot herinnering" @bind="minutesDraft" />

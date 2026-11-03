@@ -17,15 +17,17 @@
 
 <div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()" style="background: #0f141c; border-right: 1px solid var(--border-color);">
     <nav class="nav flex-column p-2 gap-1">
-        <div class="nav-item">
-            <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="" Match="NavLinkMatch.All">
-                <i class="bi bi-grid-1x2-fill text-emerald" style="color: #10b981;"></i>
-                <span class="nav-label fw-medium">Dashboard</span>
-            </NavLink>
-        </div>
+        <AuthorizeView Roles="@($"{AppAuth.JuryRole},{AppAuth.GroupRole}")">
+            <div class="nav-item">
+                <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="" Match="NavLinkMatch.All">
+                    <i class="bi bi-grid-1x2-fill text-emerald" style="color: #10b981;"></i>
+                    <span class="nav-label fw-medium">Dashboard</span>
+                </NavLink>
+            </div>
+        </AuthorizeView>
 
         @* Groups only see their own dashboard and uploads; the pages below are closed to them anyway *@
-        <AuthorizeView Roles="@KeyAuth.JuryRole">
+        <AuthorizeView Roles="@AppAuth.JuryRole">
             <Authorized>
                 <span class="nav-section">Beoordelen</span>
 
@@ -155,19 +157,36 @@
                 </div>
             </Authorized>
             <NotAuthorized>
-                <div class="nav-item">
-                    <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="submissions">
-                        <i class="bi bi-folder2-open" style="color: #38bdf8;"></i>
-                        <span class="nav-label fw-medium">Onze inzendingen</span>
-                    </NavLink>
-                </div>
+                <AuthorizeView Roles="@AppAuth.GroupRole" Context="group">
+                    <div class="nav-item">
+                        <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="submissions">
+                            <i class="bi bi-folder2-open" style="color: #38bdf8;"></i>
+                            <span class="nav-label fw-medium">Onze inzendingen</span>
+                        </NavLink>
+                    </div>
+                </AuthorizeView>
+                @* The beamer screen only shows the scoreboard and the slideshow *@
+                <AuthorizeView Roles="@AppAuth.BeamerRole" Context="beamer">
+                    <div class="nav-item">
+                        <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="scoreboard">
+                            <i class="bi bi-trophy-fill" style="color: #fbbf24;"></i>
+                            <span class="nav-label fw-medium">Scorebord</span>
+                        </NavLink>
+                    </div>
+                    <div class="nav-item">
+                        <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="slideshow">
+                            <i class="bi bi-images" style="color: #38bdf8;"></i>
+                            <span class="nav-label fw-medium">Diavoorstelling</span>
+                        </NavLink>
+                    </div>
+                </AuthorizeView>
             </NotAuthorized>
         </AuthorizeView>
     </nav>
 
     <div class="mt-auto p-3 text-muted d-flex justify-content-between align-items-center" style="font-size: 0.75rem; border-top: 1px solid var(--border-color);">
-        <AuthorizeView Roles="@KeyAuth.GroupRole">
-            <Authorized><span class="text-truncate" title="Ingelogd als groep">@context.User.Identity?.Name</span></Authorized>
+        <AuthorizeView>
+            <Authorized><a href="account" class="text-truncate text-muted account-link" title="Mijn account"><i class="bi bi-person-circle me-1"></i>@context.User.Identity?.Name</a></Authorized>
             <NotAuthorized><span>Destination Unknown regiospel</span></NotAuthorized>
         </AuthorizeView>
         <form method="post" action="logout">

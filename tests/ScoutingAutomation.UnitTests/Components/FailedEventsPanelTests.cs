@@ -69,7 +69,7 @@ public class FailedEventsPanelTests : BunitContext
     [Fact]
     public void CatchUp_ByAnAdmin_ShouldBeRequested()
     {
-        _auth.SetRoles(ScoutingAutomation.Web.Auth.KeyAuth.AdminRole);
+        _auth.SetRoles(ScoutingAutomation.Web.Auth.AppAuth.AdminRole);
         var cut = Render<FailedEventsPanel>();
 
         cut.Find(".run-catch-up").Click();

@@ -1,19 +1,23 @@
 @page "/geen-toegang"
 @attribute [GroupAccess]
+@attribute [BeamerAccess]
 
 <PageTitle>Geen toegang - DU Review</PageTitle>
 
 <div class="glass-panel empty-state">
     <i class="bi bi-shield-lock"></i>
     <h1 class="h4 text-white">Geen toegang</h1>
-    <AuthorizeView Roles="@KeyAuth.JuryRole">
+    <AuthorizeView Roles="@AppAuth.JuryRole">
         <Authorized>
-            <p class="mb-3">Dit kan alleen in beheermodus.</p>
-            <a href="admin" class="btn btn-scout-secondary">Naar Beheer</a>
+            <p class="mb-3">Dit kan alleen een beheerder.</p>
+            <a href="" class="btn btn-scout-secondary">Naar het dashboard</a>
         </Authorized>
         <NotAuthorized>
             <p class="mb-3">Deze pagina is alleen voor de jury.</p>
-            <a href="" class="btn btn-scout-secondary">Naar het dashboard</a>
+            <AuthorizeView Roles="@AppAuth.BeamerRole" Context="beamer">
+                <Authorized><a href="scoreboard" class="btn btn-scout-secondary">Naar het scorebord</a></Authorized>
+                <NotAuthorized><a href="" class="btn btn-scout-secondary">Naar het dashboard</a></NotAuthorized>
+            </AuthorizeView>
         </NotAuthorized>
     </AuthorizeView>
 </div>

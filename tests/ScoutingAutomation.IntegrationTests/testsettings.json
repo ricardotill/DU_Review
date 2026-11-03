@@ -10,8 +10,10 @@
     "StorageRoot": "./scouting_storage",
     "AssignmentPointsFile": "./opdrachtenpunten.csv",
     "ManualMode": false,
-    "AccessKey": "TEST-ACCESS-KEY",
-    "AdminKey": "TEST-ADMIN-KEY",
+    "Accounts": {
+      "BootstrapAdminEmail": "admin@du.test",
+      "BootstrapAdminPassword": "test-admin-wachtwoord"
+    },
     "SupportedExtensions": [ ".jpg", ".jpeg", ".png", ".gif", ".mp4", ".mov", ".m4a", ".mp3", ".pdf", ".doc", ".docx" ],
     "SupportedMimeTypePrefixes": [ "image/", "audio/", "video/" ],
     "SlackFeedback": {

@@ -3,10 +3,6 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
-using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
-using ScoutingAutomation.Contracts.Configuration;
-using ScoutingAutomation.Infrastructure.Access;
 using ScoutingAutomation.Web.Auth;
 using ScoutingAutomation.Web.Components.Pages;
 using Xunit;
@@ -14,124 +10,103 @@ using ComponentRouteData = Microsoft.AspNetCore.Components.RouteData;
 
 namespace ScoutingAutomation.UnitTests.Web;
 
-/// <summary>Group logins: what they are, when they stop working, and which pages they may open.</summary>
-public class GroupAuthTests : IDisposable
+/// <summary>Group and beamer logins: what they are, and which pages they may open.</summary>
+public class GroupAuthTests
 {
-    private readonly TempDirectory _temp = new();
-    private readonly AccessKeyService _keys;
     private readonly Guid _groupId = Guid.NewGuid();
 
-    public GroupAuthTests()
-    {
-        _keys = new AccessKeyService(Options.Create(new ScoutingSettings { KeysFile = Path.Combine(_temp.Path, "keys.json") }), NullLogger<AccessKeyService>.Instance);
-        _keys.EnsureGroupKeys(["C1", "C2"]);
-    }
+    private static ClaimsPrincipal Login(params Claim[] claims) =>
+        new(new ClaimsIdentity(claims.Append(new Claim(ClaimTypes.NameIdentifier, Guid.NewGuid().ToString())), AppAuth.Scheme));
 
-    public void Dispose() => _temp.Dispose();
+    private ClaimsPrincipal Group() => Login(new Claim(ClaimTypes.Role, AppAuth.GroupRole), new Claim(AppAuth.GroupIdClaim, _groupId.ToString()));
 
-    private ClaimsPrincipal Group() => KeyAuth.CreateGroupPrincipal(_keys, _groupId, "C1", "De Wolven");
+    private static ClaimsPrincipal Jury() => Login(new Claim(ClaimTypes.Role, AppAuth.JuryRole));
+
+    private static ClaimsPrincipal Admin() => Login(new Claim(ClaimTypes.Role, AppAuth.AdminRole), new Claim(ClaimTypes.Role, AppAuth.JuryRole));
+
+    private static ClaimsPrincipal Beamer() => Login(new Claim(ClaimTypes.Role, AppAuth.BeamerRole));
 
     [Fact]
-    public void GroupPrincipal_ShouldBeAGroupAndNeverJuryOrAdmin()
+    public void Group_ShouldBeAGroupWithItsGroupAndNeverJuryOrAdmin()
     {
         var group = Group();
 
-        KeyAuth.IsGroup(group).Should().BeTrue();
-        KeyAuth.GroupId(group).Should().Be(_groupId);
-        group.IsInRole(KeyAuth.JuryRole).Should().BeFalse();
-        group.IsInRole(KeyAuth.AdminRole).Should().BeFalse();
-        group.Identity!.Name.Should().Be("De Wolven");
+        AppAuth.IsGroup(group).Should().BeTrue();
+        AppAuth.GroupId(group).Should().Be(_groupId);
+        AppAuth.IsBeamer(group).Should().BeFalse();
+        group.IsInRole(AppAuth.JuryRole).Should().BeFalse();
     }
 
     [Fact]
-    public void JuryAndAdmin_ShouldHaveTheJuryRoleAndNoGroup()
+    public void JuryAdminAndBeamer_ShouldHaveNoGroup()
     {
-        var jury = KeyAuth.CreatePrincipal(_keys, admin: false);
-        var admin = KeyAuth.CreatePrincipal(_keys, admin: true);
-
-        jury.IsInRole(KeyAuth.JuryRole).Should().BeTrue();
-        admin.IsInRole(KeyAuth.JuryRole).Should().BeTrue();
-        KeyAuth.GroupId(jury).Should().BeNull();
-        KeyAuth.GroupId(admin).Should().BeNull();
+        AppAuth.GroupId(Jury()).Should().BeNull();
+        AppAuth.GroupId(Admin()).Should().BeNull();
+        AppAuth.GroupId(Beamer()).Should().BeNull();
+        AppAuth.IsBeamer(Beamer()).Should().BeTrue();
+        AppAuth.IsBeamer(Jury()).Should().BeFalse();
     }
 
     [Fact]
-    public void Revalidate_ShouldEndAGroupLoginOnlyWhenItsOwnKeyChanges()
+    public void GroupClaim_WithoutTheGroupRole_ShouldNotMakeAGroup()
     {
-        var group = Group();
+        var forged = Login(new Claim(ClaimTypes.Role, AppAuth.JuryRole), new Claim(AppAuth.GroupIdClaim, _groupId.ToString()));
 
-        KeyAuth.Revalidate(group, _keys).Should().BeSameAs(group);
-
-        _keys.RegenerateAccessKey();
-        _keys.RegenerateAdminKey();
-        _keys.RegenerateGroupKey("C2");
-        KeyAuth.Revalidate(group, _keys).Should().BeSameAs(group);
-
-        _keys.RegenerateGroupKey("C1");
-        KeyAuth.Revalidate(group, _keys).Should().BeNull();
+        AppAuth.GroupId(forged).Should().BeNull();
     }
+
+    [Theory]
+    [InlineData(null, "/")]
+    [InlineData("", "/")]
+    [InlineData("/groups", "/groups")]
+    [InlineData("/submissions?group=1", "/submissions?group=1")]
+    [InlineData("groups", "/")]
+    [InlineData("https://evil.example", "/")]
+    [InlineData("//evil.example", "/")]
+    [InlineData("/\\evil.example", "/")]
+    public void SafeReturnUrl_ShouldOnlyAllowLocalPaths(string? returnUrl, string expected) =>
+        AppAuth.SafeReturnUrl(returnUrl).Should().Be(expected);
 
     [Fact]
-    public void Revalidate_ShouldEndAGroupLoginWhenItsKeyIsRemoved()
+    public void StartPage_ShouldSendGroupsHomeAndTheBeamerToTheScoreboard()
     {
-        var group = Group();
-
-        _keys.RemoveGroupKey("C1");
-
-        KeyAuth.Revalidate(group, _keys).Should().BeNull();
+        AppAuth.StartPage(Jury(), "/queue").Should().Be("/queue");
+        AppAuth.StartPage(Group(), "/queue").Should().Be("/", "a jury page would only say no access");
+        AppAuth.StartPage(Beamer(), "/queue").Should().Be("/scoreboard");
     }
 
-    [Fact]
-    public void Revalidate_ShouldGiveAJuryLoginFromBeforeTheJuryRoleThatRole()
+    public static TheoryData<Type, bool, bool> Pages => new()
     {
-        var old = new ClaimsPrincipal(new ClaimsIdentity(
-            [new Claim(ClaimTypes.Name, "Jury"), new Claim("du:access", _keys.AccessStamp)], KeyAuth.Scheme));
-
-        var validated = KeyAuth.Revalidate(old, _keys);
-
-        validated!.IsInRole(KeyAuth.JuryRole).Should().BeTrue();
-        validated.IsInRole(KeyAuth.AdminRole).Should().BeFalse();
-    }
-
-    [Fact]
-    public void Revalidate_ShouldRefuseAForgedGroupClaimOnAJuryLogin()
-    {
-        // A group role without a matching group stamp is no login at all
-        var forged = new ClaimsPrincipal(new ClaimsIdentity(
-            [new Claim(ClaimTypes.Role, KeyAuth.GroupRole), new Claim(KeyAuth.GroupIdClaim, _groupId.ToString())], KeyAuth.Scheme));
-
-        KeyAuth.Revalidate(forged, _keys).Should().BeNull();
-    }
-
-    public static TheoryData<Type, bool> Pages => new()
-    {
-        { typeof(Home), true },
-        { typeof(Submissions), true },
-        { typeof(SubmissionDetail), true },
-        { typeof(AccessDenied), true },
-        { typeof(GroupDetail), false },
-        { typeof(Groups), false },
-        { typeof(Queue), false },
-        { typeof(Assignments), false },
-        { typeof(AssignmentDetail), false },
-        { typeof(Messages), false },
-        { typeof(Scoreboard), false },
-        { typeof(Slideshow), false },
-        { typeof(Standing), false },
-        { typeof(Events), false },
-        { typeof(Configuration), false },
-        { typeof(Admin), false },
-        { typeof(SlackSimulator), false }
+        // Page, groups allowed, beamer allowed
+        { typeof(Home), true, false },
+        { typeof(Submissions), true, false },
+        { typeof(SubmissionDetail), true, false },
+        { typeof(AccessDenied), true, true },
+        { typeof(Account), true, true },
+        { typeof(GroupDetail), false, false },
+        { typeof(Groups), false, false },
+        { typeof(Queue), false, false },
+        { typeof(Assignments), false, false },
+        { typeof(AssignmentDetail), false, false },
+        { typeof(Messages), false, false },
+        { typeof(Scoreboard), false, true },
+        { typeof(Slideshow), false, true },
+        { typeof(Standing), false, false },
+        { typeof(Events), false, false },
+        { typeof(Configuration), false, false },
+        { typeof(Admin), false, false },
+        { typeof(SlackSimulator), false, false }
     };
 
     [Theory]
     [MemberData(nameof(Pages))]
-    public async Task Handler_ShouldLetGroupsOnlyOpenMarkedPages(Type page, bool groupsAllowed)
+    public async Task Handler_ShouldLetGroupsAndTheBeamerOnlyOpenMarkedPages(Type page, bool groupsAllowed, bool beamerAllowed)
     {
         var route = new ComponentRouteData(page, new Dictionary<string, object?>());
 
         (await AuthorizeAsync(Group(), route)).Should().Be(groupsAllowed);
-        (await AuthorizeAsync(KeyAuth.CreatePrincipal(_keys, admin: false), route)).Should().BeTrue();
+        (await AuthorizeAsync(Beamer(), route)).Should().Be(beamerAllowed);
+        (await AuthorizeAsync(Jury(), route)).Should().BeTrue();
     }
 
     [Fact]
@@ -146,7 +121,9 @@ public class GroupAuthTests : IDisposable
         (await AuthorizeAsync(Group(), hub)).Should().BeTrue();
         (await AuthorizeAsync(Group(), new DefaultHttpContext())).Should().BeFalse("no endpoint, no access");
         (await AuthorizeAsync(Group(), null)).Should().BeFalse("an AuthorizeView without roles is for the jury");
-        (await AuthorizeAsync(KeyAuth.CreatePrincipal(_keys, admin: false), unmarked)).Should().BeTrue();
+        (await AuthorizeAsync(Beamer(), marked)).Should().BeFalse("marked for groups, not for the beamer");
+        (await AuthorizeAsync(Beamer(), Request("/api/files/x", new BeamerAccessAttribute()))).Should().BeTrue();
+        (await AuthorizeAsync(Jury(), unmarked)).Should().BeTrue();
     }
 
     private static HttpContext Request(string path, params object[] metadata)

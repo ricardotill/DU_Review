@@ -36,9 +36,17 @@ services:
       Scouting__Slack__AppToken: ${SLACK_APP_TOKEN:?Set SLACK_APP_TOKEN in .env}
       Scouting__Slack__SocketMode: "true"
       Scouting__Slack__SimulationMode: "false"
-      # Only used while access-keys.json does not exist yet; empty means the app generates a key
-      Scouting__AccessKey: ${ACCESS_KEY:-}
-      Scouting__AdminKey: ${ADMIN_KEY:-}
+      # The first admin, made at the first start (see docs/handleiding-beheer.md, "Accounts")
+      Scouting__Accounts__BootstrapAdminEmail: ${BOOTSTRAP_ADMIN_EMAIL:-}
+      # The address of the app from outside, for the links in mails, e.g. https://du.example.nl
+      Scouting__PublicUrl: ${PUBLIC_URL:-}
+      # Mail server for invitations and password resets; without SMTP_HOST mails only go to the log
+      Scouting__Email__Host: ${SMTP_HOST:-}
+      Scouting__Email__Port: ${SMTP_PORT:-587}
+      Scouting__Email__Security: ${SMTP_SECURITY:-StartTls}
+      Scouting__Email__Username: ${SMTP_USERNAME:-}
+      Scouting__Email__Password: ${SMTP_PASSWORD:-}
+      Scouting__Email__FromAddress: ${SMTP_FROM:-}
       # Trust X-Forwarded-For/-Proto from the cloudflared container only (fixed address below)
       ForwardedHeaders__KnownNetworks__0: 172.29.53.10/32
     networks:

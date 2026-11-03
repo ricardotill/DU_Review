@@ -8,7 +8,7 @@
 @implements IDisposable
 
 @* Points earned outside Slack, entered by hand: one field per category in use, per group. *@
-<AuthorizeView Roles="@KeyAuth.AdminRole">
+<AuthorizeView Roles="@AppAuth.AdminRole">
     <div class="glass-panel p-4 bonus-points">
         <h2 class="panel-title"><i class="bi bi-trophy text-warning"></i> Extra punten</h2>
         <p class="text-secondary small">

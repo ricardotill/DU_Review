@@ -33,7 +33,7 @@ public abstract class PageTestBase : BunitContext
         JSInterop.Mode = JSRuntimeMode.Loose;
         Auth = AddAuthorization();
         Auth.SetAuthorized("Admin");
-        Auth.SetRoles(ScoutingAutomation.Web.Auth.KeyAuth.AdminRole, ScoutingAutomation.Web.Auth.KeyAuth.JuryRole);
+        Auth.SetRoles(ScoutingAutomation.Web.Auth.AppAuth.AdminRole, ScoutingAutomation.Web.Auth.AppAuth.JuryRole);
         // Resolved lazily so tests can adjust Settings before rendering
         Services.AddSingleton<IOptions<ScoutingSettings>>(_ => Options.Create(Settings));
 
@@ -41,7 +41,6 @@ public abstract class PageTestBase : BunitContext
         {
             StorageRoot = _temp.Path,
             RuntimeSettingsFile = Path.Combine(_temp.Path, "runtime-settings.json"),
-            KeysFile = Path.Combine(_temp.Path, "access-keys.json"),
             SupportedExtensions = new List<string> { ".jpg", ".png", ".pdf" },
             SupportedMimeTypePrefixes = new List<string> { "image/", "video/", "audio/" },
             Reviewers = new List<string> { "U_JURY" },
@@ -63,15 +62,15 @@ public abstract class PageTestBase : BunitContext
     protected void LogInAsJury()
     {
         Auth.SetAuthorized("Jury");
-        Auth.SetRoles(ScoutingAutomation.Web.Auth.KeyAuth.JuryRole);
+        Auth.SetRoles(ScoutingAutomation.Web.Auth.AppAuth.JuryRole);
     }
 
     /// <summary>A login with the key of <paramref name="group"/>, which must be in the database by the time a page renders.</summary>
     protected void LogInAsGroup(Group group)
     {
         Auth.SetAuthorized(group.Name);
-        Auth.SetRoles(ScoutingAutomation.Web.Auth.KeyAuth.GroupRole);
-        Auth.SetClaims(new System.Security.Claims.Claim(ScoutingAutomation.Web.Auth.KeyAuth.GroupIdClaim, group.Id.ToString()));
+        Auth.SetRoles(ScoutingAutomation.Web.Auth.AppAuth.GroupRole);
+        Auth.SetClaims(new System.Security.Claims.Claim(ScoutingAutomation.Web.Auth.AppAuth.GroupIdClaim, group.Id.ToString()));
     }
 
     protected string StorageRoot => _temp.Path;

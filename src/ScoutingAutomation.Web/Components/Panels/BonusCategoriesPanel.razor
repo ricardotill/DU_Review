@@ -4,7 +4,7 @@
 @inject IOptions<ScoutingSettings> ScoutingOptions
 
 @* The point categories entered by hand, managed while the game runs. Removing one hides its points but keeps them. *@
-<AuthorizeView Roles="@KeyAuth.AdminRole">
+<AuthorizeView Roles="@AppAuth.AdminRole">
     <div class="glass-panel p-4 bonus-categories">
         <h2 class="panel-title"><i class="bi bi-tags text-warning"></i> Puntencategorieën</h2>
         <p class="text-secondary small">

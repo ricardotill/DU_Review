@@ -2,19 +2,21 @@
 @layout LoginLayout
 @attribute [AllowAnonymous]
 @attribute [ExcludeFromInteractiveRouting]
-@inject AccessKeyService Keys
+@inject SignInManager<AppUser> SignIn
+@inject UserManager<AppUser> Users
 @inject LoginAttemptLimiter Limiter
 @inject NavigationManager Navigation
-@inject IGroupRepository Groups
 @inject ILogger<Login> Logger
 
 <PageTitle>Inloggen - DU Review</PageTitle>
 
-<h1 class="h5 text-white text-center mb-3">Vul de toegangssleutel in</h1>
+<h1 class="h5 text-white text-center mb-3">Inloggen</h1>
 
 <EditForm Model="Input" method="post" OnSubmit="LogInAsync" FormName="login">
-    <InputText type="password" class="form-control form-control-dark mb-2" @bind-Value="Input.Key"
-               placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="current-password" aria-label="Toegangssleutel" autofocus />
+    <InputText type="email" class="form-control form-control-dark mb-2" @bind-Value="Input.Email"
+               placeholder="E-mailadres" autocomplete="username" aria-label="E-mailadres" autofocus />
+    <InputText type="password" class="form-control form-control-dark mb-2" @bind-Value="Input.Password"
+               placeholder="Wachtwoord" autocomplete="current-password" aria-label="Wachtwoord" />
     @if (error != null)
     {
         <div class="text-danger small mb-2" role="alert">@error</div>
@@ -22,7 +24,8 @@
     <button type="submit" class="btn btn-scout-primary w-100">Inloggen</button>
 </EditForm>
 
-<p class="text-muted small text-center mt-3 mb-0">Jury: vraag de organisatie om de toegangssleutel. Groepen: gebruik de groepssleutel die jullie van de organisatie kregen.</p>
+<p class="text-center small mt-3 mb-1"><a href="wachtwoord-vergeten">Wachtwoord vergeten?</a></p>
+<p class="text-muted small text-center mb-0">Nog geen account? Vraag de organisatie om er een voor je te maken.</p>
 
 @code {
     [CascadingParameter]
@@ -32,62 +35,77 @@
     private string? ReturnUrl { get; set; }
 
     [SupplyParameterFromForm]
-    private LoginInput Input { get; set; } = new();
+    private LoginInput Input { get; set; } = default!;
 
     private string? error;
 
-    // Already logged in, for example after a key change in another tab of this browser
+    private const string WrongLogin = "Dit e-mailadres of wachtwoord klopt niet.";
+
+    // Already logged in, for example in another tab of this browser
     private bool AlreadyLoggedIn => HttpMethods.IsGet(HttpContext.Request.Method) && HttpContext.User.Identity?.IsAuthenticated == true;
 
     protected override void OnInitialized()
     {
-        if (AlreadyLoggedIn) Navigation.NavigateTo(KeyAuth.SafeReturnUrl(ReturnUrl));
+        Input ??= new();
+        if (AlreadyLoggedIn) Navigation.NavigateTo(AppAuth.StartPage(HttpContext.User, ReturnUrl));
     }
 
     private async Task LogInAsync()
     {
         var client = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-        // Counted before the key is checked: attempts sent at the same moment cannot all get through
+        // Counted before the password is checked: attempts sent at the same moment cannot all get through.
+        // Per address, on top of the lockout per account, so guessing across many accounts is slowed down too.
         if (!Limiter.TryAttempt(client))
         {
-            error = "Te veel verkeerde sleutels. Wacht een minuut en probeer het opnieuw.";
+            error = "Te veel mislukte pogingen. Wacht een minuut en probeer het opnieuw.";
             return;
         }
 
-        var admin = Keys.IsAdminKey(Input.Key);
-        if (admin || Keys.IsAccessKey(Input.Key))
+        var user = string.IsNullOrWhiteSpace(Input.Email) ? null : await Users.FindByEmailAsync(Input.Email.Trim());
+        if (user == null || user.IsDisabled)
         {
-            Limiter.Succeeded(client);
-            await KeyAuth.SignInAsync(HttpContext, Keys, admin);
-            Navigation.NavigateTo(KeyAuth.SafeReturnUrl(ReturnUrl));
+            // The same answer as a wrong password: the page does not tell which addresses have an account
+            error = WrongLogin;
             return;
         }
 
-        // A key of a group that is no longer in the settings does not log in
-        if (Keys.FindGroupChannel(Input.Key) is { } channel && await Groups.GetBySlackChannelIdAsync(channel) is { } group)
+        var result = await SignIn.PasswordSignInAsync(user, Input.Password ?? "", isPersistent: true, lockoutOnFailure: true);
+        if (result.IsLockedOut)
         {
-            Limiter.Succeeded(client);
-            WarnIfPlainHttp(group.Name);
-            await KeyAuth.SignInAsync(HttpContext, KeyAuth.CreateGroupPrincipal(Keys, group.Id, group.SlackChannelId, group.Name));
-            // A return link from a jury page would only lead to "no access": a group starts on its dashboard
-            Navigation.NavigateTo("/");
+            error = "Te veel verkeerde wachtwoorden voor dit account. Probeer het over een kwartier opnieuw, of kies een nieuw wachtwoord via \"Wachtwoord vergeten\".";
             return;
         }
 
-        error = "Deze sleutel klopt niet.";
+        if (!result.Succeeded)
+        {
+            error = WrongLogin;
+            return;
+        }
+
+        Limiter.Succeeded(client);
+        user.LastLoginAt = DateTimeOffset.UtcNow;
+        await Users.UpdateAsync(user);
+        WarnIfPlainHttp(user);
+
+        // A group starts on its dashboard and the beamer on the scoreboard; a return link only leads jury pages
+        var roles = await Users.GetRolesAsync(user);
+        var principal = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(
+            roles.Select(r => new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Role, r)), AppAuth.Scheme));
+        Navigation.NavigateTo(AppAuth.StartPage(principal, ReturnUrl));
     }
 
-    // Groups should use the HTTPS address: over plain HTTP the key and the login cookie cross the venue Wi-Fi readable
-    private void WarnIfPlainHttp(string groupName)
+    // Groups should use the HTTPS address: over plain HTTP the password and the login cookie cross the venue Wi-Fi readable
+    private void WarnIfPlainHttp(AppUser user)
     {
         var remote = HttpContext.Connection.RemoteIpAddress;
         if (HttpContext.Request.IsHttps || remote == null || System.Net.IPAddress.IsLoopback(remote)) return;
 
-        Logger.LogWarning("Group {Group} logged in over plain HTTP from {RemoteIp}; give groups the HTTPS address", groupName, remote);
+        Logger.LogWarning("{Account} logged in over plain HTTP from {RemoteIp}; use the HTTPS address", user.Email, remote);
     }
 
     private sealed class LoginInput
     {
-        public string? Key { get; set; }
+        public string? Email { get; set; }
+        public string? Password { get; set; }
     }
 }
