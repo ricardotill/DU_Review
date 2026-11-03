@@ -63,6 +63,7 @@ public static class ServiceCollectionExtensions
         // Editions: the one being played, and making and switching editions
         services.AddSingleton<ScoutingAutomation.Infrastructure.Editions.ActiveEdition>();
         services.AddScoped<ScoutingAutomation.Infrastructure.Editions.EditionService>();
+        services.AddScoped<ScoutingAutomation.Infrastructure.Editions.EditionArchive>();
 
         // Avonturiers: check-ins, theme rounds, broadcasts and the maps
         services.AddScoped<ILocationRepository, LocationRepository>();

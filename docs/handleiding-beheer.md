@@ -77,6 +77,8 @@ Elk jaar is een editie met eigen groepen, opdrachten en inzendingen; alleen de a
 
 Een groep met inzendingen kan niet uit een editie worden gehaald. Groepen in de actieve editie wijzigen kan altijd; de app pauzeert Slack daarvoor heel even. `Groups` in `appsettings.json` gebruikt de app alleen voor een installatie zonder groepen.
 
+**Een editie bewaren of verhuizen**: kies bij een editie **Exporteren**. Je krijgt één ZIP met alle gegevens en bestanden van die editie. Zet die met **Editie importeren** (onderaan **Beheer**) terug in een andere installatie, of later in dezelfde; hij komt erbij als gearchiveerde editie en de actieve editie blijft zoals hij is. Bestaat er al een editie met die naam, hernoem die dan eerst. Een grote ZIP importeer je via het lokale adres (`http://localhost:5231`, of de server zelf), niet via de Cloudflare-tunnel: die laat op het gratis plan maar ongeveer 100 MB door.
+
 ### Van één spel naar edities
 
 Vanaf deze versie hoort alles bij een **editie** (een jaar van het spel); zie de [README](../README.md#edities). Bij de eerste start wordt een bestaande database de eerste editie, genoemd naar het jaar van de eerste inzending ("DU 2025"). Groepen, opdrachten, locaties, inzendingen en punten blijven staan en groepsaccounts blijven werken.
@@ -503,6 +505,7 @@ Alles voor de jury staat in de [handleiding voor de jury](handleiding-jury.md). 
 ### Na afloop
 
 - Maak een kopie van de map `scouting_storage` voordat je iets opruimt.
+- Exporteer de editie op **Beheer** > **Edities** (**Exporteren**) en bewaar de ZIP op een tweede plek: daarmee zet je de hele editie, met foto's, later terug.
 - Download de uitslag en de bestanden via **Exporteren** op het **Dashboard** (als beheerder): de scores als CSV, en de awesome of alle goedgekeurde bestanden als ZIP. Per groep kan dat ook met **Downloaden** op de pagina van de groep.
 - Gebruik de favorieten en de diavoorstelling voor de prijsuitreiking.
 
