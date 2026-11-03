@@ -342,6 +342,7 @@ api.MapGet("/files/{id:guid}", async (
 }).RequireAuthorization().WithMetadata(new GroupAccessAttribute(), new BeamerAccessAttribute());
 
 api.MapExportEndpoints();
+api.MapEditionEndpoints();
 app.MapPublicMapEndpoints();
 
 app.MapPost("/logout", async (HttpContext http) =>

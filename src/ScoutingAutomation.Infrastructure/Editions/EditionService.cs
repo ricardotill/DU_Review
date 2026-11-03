@@ -123,7 +123,7 @@ public sealed class EditionService
     // adding the same channel twice, would otherwise both pass the checks
     private static readonly SemaphoreSlim Changes = new(1, 1);
 
-    private static async Task<T> OneAtATimeAsync<T>(Func<Task<T>> change, CancellationToken ct)
+    internal static async Task<T> OneAtATimeAsync<T>(Func<Task<T>> change, CancellationToken ct)
     {
         await Changes.WaitAsync(ct);
         try
@@ -168,9 +168,7 @@ public sealed class EditionService
             return (null, $"Er is al een editie {name}.");
         }
 
-        var folders = editions.Select(e => e.StorageFolder).OfType<string>().ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var folder = $"{EditionsFolderName}/{LocalFileStorageService.FolderName(name)}";
-        for (var i = 2; folders.Contains(folder); i++) folder = $"{EditionsFolderName}/{LocalFileStorageService.FolderName(name)}-{i}";
+        var folder = NewStorageFolder(editions, name);
 
         var edition = new Edition
         {
@@ -203,6 +201,15 @@ public sealed class EditionService
         await _db.SaveChangesAsync(ct);
         _logger.LogInformation("Created edition {Edition}", name);
         return (edition, null);
+    }
+
+    /// <summary>"_edities/{name}", with a number when another edition has that folder already.</summary>
+    internal static string NewStorageFolder(IEnumerable<Edition> editions, string name)
+    {
+        var folders = editions.Select(e => e.StorageFolder).OfType<string>().ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var folder = $"{EditionsFolderName}/{LocalFileStorageService.FolderName(name)}";
+        for (var i = 2; folders.Contains(folder); i++) folder = $"{EditionsFolderName}/{LocalFileStorageService.FolderName(name)}-{i}";
+        return folder;
     }
 
     /// <summary>Adds or changes a group of an edition that is not archived.</summary>

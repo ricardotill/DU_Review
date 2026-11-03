@@ -276,6 +276,14 @@ De bestanden van de eerste editie staan in `scouting_storage/` zoals altijd; elk
 
 Op **Eerdere edities** ziet een groep de gearchiveerde edities waaraan haar team meedeed, met haar plaats en punten in de eindstand; de jury ziet daar alle eindstanden.
 
+### Editie exporteren en importeren
+
+Op **Beheer** > **Edities** zet **Exporteren** een editie in één ZIP-bestand (`{editie}.du-editie.zip`): groepen met hun team, opdrachten, locaties, inzendingen met beoordelingen, extra punten, vrijgespeelde opdrachten, de eindstand en alle bestanden (foto's en video's). Van de actieve editie gaat de stand van dat moment mee. Ontbreekt een bestand op schijf, dan gaat de rest gewoon mee en staat het in het logboek.
+
+**Editie importeren** (op **Beheer**) zet zo'n ZIP terug als een **nieuwe, gearchiveerde** editie, in deze of een andere installatie; een editie in voorbereiding blijft in voorbereiding. De actieve editie verandert niet. De bestanden komen in een eigen map onder `_edities/`. Teams blijven hetzelfde team: bestaat het team al, dan ziet de groep de editie bij **Eerdere edities**. Een editie met dezelfde naam als een bestaande wordt geweigerd; hernoem die eerst. Een kapot of onbekend bestand wordt geweigerd zonder dat er iets verandert.
+
+Een export kan groot zijn. Cloudflare laat op een gratis tunnel uploads tot ongeveer 100 MB door; importeer een grotere editie via het lokale adres van de app (bijvoorbeeld `http://localhost:5231`). De app neemt uploads tot 20 GB aan.
+
 De groepen staan sinds edities in de database. `Groups` in `appsettings.json` vult alleen een editie die nog geen groepen heeft (een nieuwe installatie); daarna past de app het niet meer toe.
 
 Een database van voor edities wordt bij de eerste start één editie, genoemd naar het jaar van de eerste inzending. Elke groep wordt een team met hetzelfde id, zodat groepsaccounts blijven werken; inzendingen, punten, locaties en instellingen blijven staan. Bij SQLite staat vooraf een kopie van de database in `scouting_storage/_backup/pre-editions-{tijdstip}.db`; bij PostgreSQL maak je zelf eerst een back-up (`pg_dump`).
@@ -348,7 +356,7 @@ docker compose --profile tunnel up -d --build   # met CLOUDFLARE_TUNNEL_TOKEN in
 cloudflared tunnel --url http://localhost:5231  # snel testen: tijdelijk trycloudflare.com-adres, zonder account
 ```
 
-Voor zes groepen en de jury is een gratis tunnel ruim genoeg; WebSockets (voor het live dashboard) werken, en bestanden komen via Slack binnen, dus de uploadgrens van Cloudflare speelt geen rol. Gebruik op de speeldag een vaste tunnel met eigen domein: een snelle tunnel krijgt bij elke start een nieuw adres. Stap voor stap staat in de [handleiding](docs/handleiding-beheer.md#via-internet-cloudflare-tunnel).
+Voor zes groepen en de jury is een gratis tunnel ruim genoeg; WebSockets (voor het live dashboard) werken, en bestanden komen via Slack binnen, dus de uploadgrens van Cloudflare speelt alleen een rol bij [Editie importeren](#editie-exporteren-en-importeren). Gebruik op de speeldag een vaste tunnel met eigen domein: een snelle tunnel krijgt bij elke start een nieuw adres. Stap voor stap staat in de [handleiding](docs/handleiding-beheer.md#via-internet-cloudflare-tunnel).
 
 Om zonder Slack te testen, zet je **simulatiemodus** aan met `Scouting:Slack:SimulationMode` = `true`, bijvoorbeeld in `appsettings.Development.json`. Er gaat dan niets naar Slack, en je kunt alles testen via de pagina **Slack-simulator**. Zonder die instelling staat simulatiemodus uit.
 

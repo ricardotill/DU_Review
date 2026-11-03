@@ -15,8 +15,33 @@
 else
 {
     <div class="row g-4">
-        <div class="col-12">
+        <div class="col-12" id="edities">
             <EditionsPanel @rendermode="InteractiveServer" />
+        </div>
+
+        <div class="col-12">
+            @* A plain form: a ZIP of gigabytes goes to the server as a normal upload, not through the live connection *@
+            <div class="glass-panel p-4 edition-import">
+                <h2 class="panel-title"><i class="bi bi-box-arrow-in-down text-info"></i> Editie importeren</h2>
+                <p class="text-secondary small">
+                    Een ZIP van <strong>Exporteren</strong> (uit deze of een andere installatie) wordt een nieuwe editie, met de groepen, inzendingen,
+                    beoordelingen, punten en bestanden. Een gespeelde editie komt binnen als gearchiveerd; de actieve editie verandert niet.
+                    Groepen die hier al een team hebben, zien de editie onder <strong>Eerdere edities</strong>.
+                </p>
+                @if (ImportError != null)
+                {
+                    <div class="text-danger small mb-2 import-error" role="alert">@ImportError</div>
+                }
+                @if (Imported != null)
+                {
+                    <div class="alert alert-success small import-done" role="status">@Imported is geïmporteerd.</div>
+                }
+                <form method="post" action="/api/editions/import" enctype="multipart/form-data" class="d-flex flex-wrap gap-2 align-items-center">
+                    <AntiforgeryToken />
+                    <input type="file" name="file" accept=".zip" class="form-control form-control-dark form-control-sm w-auto" aria-label="ZIP-bestand van een editie" required />
+                    <button type="submit" class="btn btn-scout-primary btn-sm"><i class="bi bi-upload me-1"></i> Importeren</button>
+                </form>
+            </div>
         </div>
 
         <div class="col-12">
@@ -46,4 +71,10 @@ else
     private HttpContext HttpContext { get; set; } = default!;
 
     private bool IsAdmin => HttpContext.User.IsInRole(AppAuth.AdminRole);
+
+    [SupplyParameterFromQuery(Name = "importfout")]
+    private string? ImportError { get; set; }
+
+    [SupplyParameterFromQuery(Name = "geimporteerd")]
+    private string? Imported { get; set; }
 }

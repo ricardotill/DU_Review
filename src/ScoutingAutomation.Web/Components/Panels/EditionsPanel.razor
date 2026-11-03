@@ -67,7 +67,13 @@
         @if (selected != null)
         {
             <div class="edition-detail border-top border-secondary pt-3">
-                <h3 class="h6 text-white mb-2">@selected.Name <span class="badge @StatusClass(selected.Status) ms-1">@StatusLabel(selected.Status)</span></h3>
+                <h3 class="h6 text-white mb-2 d-flex flex-wrap align-items-center gap-2">
+                    @selected.Name <span class="badge @StatusClass(selected.Status)">@StatusLabel(selected.Status)</span>
+                    <a class="btn btn-sm btn-outline-info ms-auto export-edition" href="/api/editions/@selected.Id/export.zip" download
+                       title="Alles van deze editie, met de bestanden, als één ZIP">
+                        <i class="bi bi-box-arrow-down me-1"></i> Exporteren
+                    </a>
+                </h3>
 
                 @if (selected.Status == EditionStatus.Draft)
                 {
