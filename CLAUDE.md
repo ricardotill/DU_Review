@@ -30,6 +30,8 @@ dotnet test tests/ScoutingAutomation.UnitTests --filter "FullyQualifiedName~Slac
 ./run-gameday.sh
 ```
 
+CI (`.github/workflows/ci.yml`) builds and tests every push and PR with `TZ=Europe/Amsterdam`, then builds the Docker image for linux/amd64 and linux/arm64 and pushes it to `ghcr.io/ricardotill/du_review` on `main` (`main`, `sha-*`) and on `v*` tags (`1.4.0`, `1.4`, `latest`). The production server pulls `latest` automatically, so only a tagged release goes live. The Dockerfile cross-compiles (`--platform=$BUILDPLATFORM`, `dotnet publish -a $TARGETARCH`); keep it that way so arm64 needs no emulated .NET build.
+
 The Web build runs `npm ci` and copies Bootstrap / Bootstrap Icons into `wwwroot/lib` (MSBuild targets in `ScoutingAutomation.Web.csproj`), so Node/npm must be installed.
 
 To test without Slack set `Scouting:Slack:SimulationMode=true` (e.g. `appsettings.Development.json`) and use the Slack-simulator page. Reset local state by deleting `scouting_dev.db*` and the group folders in `scouting_storage/`.

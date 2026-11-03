@@ -314,10 +314,11 @@ dotnet run --project src/ScoutingAutomation.AppHost
 
 ```bash
 cp .env.example .env   # vul POSTGRES_PASSWORD, SLACK_BOT_TOKEN en SLACK_APP_TOKEN in
-docker compose up -d --build
+docker login ghcr.io   # eenmalig, met een GitHub-token met read:packages
+docker compose pull && docker compose up -d
 ```
 
-De app draait dan op <http://localhost:5231>. Gegevens staan in Docker-volumes; zie de [handleiding](docs/handleiding-beheer.md#met-docker-compose-productie) voor sleutels, back-ups en het overnemen van instellingen.
+Het image komt uit de GitHub Container Registry (`ghcr.io/ricardotill/du_review`, `amd64` en `arm64`); GitHub Actions test elke wijziging en publiceert bij elke release (`v*`-tag) een nieuwe `latest`. Zelf bouwen kan met `docker compose up -d --build`. De app draait dan op <http://localhost:5231>. Gegevens staan in Docker-volumes; zie de [handleiding](docs/handleiding-beheer.md#met-docker-compose-productie) voor sleutels, back-ups en het overnemen van instellingen.
 
 ### Via internet: Cloudflare Tunnel
 
