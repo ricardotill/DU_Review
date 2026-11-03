@@ -3,7 +3,7 @@
 # CI (.github/workflows/ci.yml) builds it for linux/amd64 and linux/arm64 and pushes it to ghcr.io/ricardotill/du_review.
 
 # Node for the build machine, not the target: npm only fetches Bootstrap and the fonts
-FROM --platform=$BUILDPLATFORM node:22-slim AS node
+FROM --platform=$BUILDPLATFORM node:26-slim AS node
 
 # The build stage always runs on the machine's own platform and cross-compiles for the target one,
 # so an arm64 image needs no slow emulation; only the final stage is per architecture.
