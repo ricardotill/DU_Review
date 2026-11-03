@@ -66,7 +66,7 @@ else
                     Zet het opdrachtnummer erin, zoals <code>Opdracht 4</code>, <code>#4</code> of <code>A4</code>.
                     @if (Runtime.AdventurersEnabled)
                     {
-                        <span>In een Avonturiers-kanaal: <code>Locatie 7</code>, <code>L7</code> of <code>#7</code> voor een check-in, <code>Thema 3</code> of <code>T3</code> voor een thema.</span>
+                        <span>In een Avonturiers-kanaal: <code>Locatie 7</code>, <code>L7</code> of <code>#7</code> voor een check-in, <code>Opdracht 3</code>, <code>Thema 3</code> of <code>T3</code> voor een half-uur opdracht.</span>
                     }
                 </div>
             </div>
@@ -86,7 +86,7 @@ else
                         @if (Runtime.AdventurersEnabled)
                         {
                             <li><a class="dropdown-item" href="javascript:void(0)" @onclick='() => SetPreset("checkin.jpg", "Locatie 7, iedereen staat erop!")'>📍 Check-in (Avonturiers)</a></li>
-                            <li><a class="dropdown-item" href="javascript:void(0)" @onclick='() => SetPreset("thema.jpg", "Thema 3")'>📸 Thema (Avonturiers)</a></li>
+                            <li><a class="dropdown-item" href="javascript:void(0)" @onclick='() => SetPreset("halfuur.jpg", "Opdracht 3")'>📸 Half-uur opdracht (Avonturiers)</a></li>
                         }
                     </ul>
                 </div>

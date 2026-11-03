@@ -19,6 +19,12 @@ public class Assignment : IEditionScoped
     public int AwesomePoints { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
+    /// <summary>
+    /// When the jury last changed the title, description or points in the app; null when they come from the points
+    /// file. An edited assignment keeps its values when the app starts again.
+    /// </summary>
+    public DateTimeOffset? EditedAt { get; set; }
+
     public int PointsFor(SubmissionStatus status) => status switch
     {
         SubmissionStatus.Awesome => AwesomePoints,

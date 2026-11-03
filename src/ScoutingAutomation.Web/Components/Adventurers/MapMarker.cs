@@ -10,10 +10,11 @@ public sealed record MapPhoto(string Url, string Caption, bool IsImage, string? 
 
 /// <summary>One location on a map, as map.js draws it. Serialised in camelCase for the browser.</summary>
 public sealed record MapMarker(double Lat, double Lng, int Number, string Name, string? Hint, string Color,
-    IReadOnlyList<string> Lines, IReadOnlyList<MapPhoto> Photos)
+    IReadOnlyList<string> Lines, IReadOnlyList<MapPhoto> Photos, bool Super = false)
 {
-    public static MapMarker For(Location location, string color, IReadOnlyList<string> lines, IReadOnlyList<MapPhoto>? photos = null) =>
-        new(location.Latitude, location.Longitude, location.Number, location.Name, location.Hint, color, lines, photos ?? Array.Empty<MapPhoto>());
+    /// <param name="super">A super location ('supercoördinaat'): the map shows a star.</param>
+    public static MapMarker For(Location location, string color, IReadOnlyList<string> lines, IReadOnlyList<MapPhoto>? photos = null, bool super = false) =>
+        new(location.Latitude, location.Longitude, location.Number, location.Name, location.Hint, color, lines, photos ?? Array.Empty<MapPhoto>(), super);
 
     /// <summary>The line under a location's name: its status and when the group last posted there.</summary>
     public static string StatusLine(LocationState state) => state.LastPostAt is { } at

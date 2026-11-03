@@ -8,8 +8,11 @@ using ScoutingAutomation.Web.Components.Adventurers;
 
 namespace ScoutingAutomation.Web.Adventurers;
 
-/// <summary>What a group's own map shows: only its unlocked locations, coloured by its own check-ins.</summary>
-public sealed record PublicMapData(string Group, IReadOnlyList<MapMarker> Markers, object Tiles, string Updated);
+/// <summary>
+/// What a group's own map shows: only its open locations (1 through its number), coloured by its own check-ins.
+/// Before the Avonturiers start <see cref="StartsAt"/> holds the time of day and there are no markers.
+/// </summary>
+public sealed record PublicMapData(string Group, IReadOnlyList<MapMarker> Markers, object Tiles, string Updated, string? StartsAt = null);
 
 /// <summary>
 /// The map a group opens through the link in Slack: no login, the secret token in the link is the key.
@@ -27,23 +30,31 @@ public static class PublicMap
         var group = groups.FirstOrDefault(g => Matches(g.MapToken, token));
         if (group == null) return null;
 
-        var locations = services.GetRequiredService<ILocationRepository>();
-        var unlocked = (await locations.GetUnlocksAsync(group.Id, ct)).Select(u => u.LocationNumber).ToHashSet();
-        var shown = (await locations.GetAllAsync(ct)).Where(l => unlocked.Contains(l.Number)).ToList();
+        var options = runtime.AdventurersOptions;
+        var tiles = new { tileUrl = options.MapTileUrl, attribution = options.MapAttribution };
+        var now = services.GetRequiredService<TimeProvider>().GetUtcNow();
+        var updated = $"Bijgewerkt om {now.ToGameTime():HH:mm:ss}";
+        // Nothing of the locations before the Avonturiers start
+        if (runtime.AdventurersStartAt is { } start && now < start)
+        {
+            return new PublicMapData(group.Name, Array.Empty<MapMarker>(), tiles, updated, start.ToGameTime().ToString("HH:mm"));
+        }
+
+        var open = services.GetRequiredService<AssignmentUnlockService>().OpenLocationsOf(group);
+        var shown = (await services.GetRequiredService<ILocationRepository>().GetAllAsync(ct)).Where(l => l.Number <= open).ToList();
         var submissions = await services.GetRequiredService<ISubmissionRepository>()
             .SearchSubmissionsAsync(new Domain.Models.SubmissionFilter { GroupId = group.Id, Kind = Domain.Enums.SubmissionKind.CheckIn }, ct);
 
+        var super = runtime.SuperLocations;
         var markers = shown
             .Select(location =>
             {
                 var state = AdventurersMap.StateOf(submissions, group.Id, location.Number);
-                return MapMarker.For(location, state.Status.Color(), new[] { MapMarker.StatusLine(state) });
+                return MapMarker.For(location, state.Status.Color(), new[] { MapMarker.StatusLine(state) }, super: super.Contains(location.Number));
             })
             .ToList();
 
-        var options = runtime.AdventurersOptions;
-        var now = services.GetRequiredService<TimeProvider>().GetUtcNow().ToGameTime();
-        return new PublicMapData(group.Name, markers, new { tileUrl = options.MapTileUrl, attribution = options.MapAttribution }, $"Bijgewerkt om {now:HH:mm:ss}");
+        return new PublicMapData(group.Name, markers, tiles, updated);
     }
 
     // The same time whatever part of the token is right, so it cannot be guessed piece by piece

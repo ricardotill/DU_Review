@@ -1,0 +1,30 @@
+@* The pictures of an assignment as a row of thumbnails; a click shows one large. Served by /api/assignment-images,
+   which only gives a group the pictures of assignments open to it. *@
+@if (Images.Count > 0)
+{
+    <div class="assignment-images d-flex flex-wrap gap-2 @Class">
+        @foreach (var image in Images)
+        {
+            <button type="button" class="assignment-image-thumb" title="@image.FileName" @onclick="() => shown = image">
+                <img src="@Url(image)" alt="@image.FileName" loading="lazy" />
+            </button>
+        }
+    </div>
+}
+@if (shown != null)
+{
+    <div class="assignment-lightbox" role="dialog" aria-label="@shown.FileName" @onclick="() => shown = null">
+        <img src="@Url(shown)" alt="@shown.FileName" />
+        <button type="button" class="assignment-lightbox-close" aria-label="Sluiten"><i class="bi bi-x-lg"></i></button>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<AssignmentImage> Images { get; set; } = Array.Empty<AssignmentImage>();
+
+    [Parameter] public string? Class { get; set; }
+
+    private AssignmentImage? shown;
+
+    public static string Url(AssignmentImage image) => $"/api/assignment-images/{image.Id}";
+}

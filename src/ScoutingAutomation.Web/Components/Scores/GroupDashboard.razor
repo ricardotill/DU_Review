@@ -164,7 +164,11 @@ else
                                 </td>
                                 <td class="text-center text-white-50">@result.Uploads.Count</td>
                                 <td class="text-white-50 small">@result.Uploads[0].CreatedAt.ToGameTime().ToString("g")</td>
-                                <td class="text-end">
+                                <td class="text-end text-nowrap">
+                                    @if (result.Uploads.FirstOrDefault(u => u.Id == result.CountingSubmissionId) is { } counting)
+                                    {
+                                        <SlackMessageLinks ChannelId="@counting.SlackChannelId" MessageTs="@counting.SlackMessageId" Compact="true" />
+                                    }
                                     <a href="submissions/@result.CountingSubmissionId" class="btn btn-sm btn-scout-secondary" title="Open de inzending die telt" aria-label="Inzending openen">
                                         <i class="bi bi-chevron-right"></i>
                                     </a>

@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.IO.Compression;
+using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -14,8 +16,9 @@ namespace ScoutingAutomation.Infrastructure.Adventurers;
 public sealed record LocationImportResult(IReadOnlyList<Location> Locations, IReadOnlyList<string> Problems);
 
 /// <summary>
-/// Reads locations from a GeoJSON, GPX or CSV file, e.g. exported from Google My Maps, uMap or a spreadsheet.
-/// The number comes from a number field, or else from the first number in the name ("Locatie 7 Molen" is 7, "Molen").
+/// Reads locations from a KML, KMZ, GeoJSON, GPX or CSV file, e.g. a layer exported from Google My Maps, uMap or a
+/// spreadsheet. The number comes from a number field, or else from the first number in the name ("15 Opdracht" is 15,
+/// "Opdracht"); the description becomes the hint.
 /// </summary>
 public static partial class LocationImport
 {
@@ -24,11 +27,59 @@ public static partial class LocationImport
 
     public const int MaxNumber = 9999;
 
+    /// <summary>The most a KMZ may unpack to: a small zip must not fill the memory.</summary>
+    public const long MaxUnpackedBytes = 20 * 1024 * 1024;
+
     private static readonly string[] NumberKeys = { "number", "nummer", "nr", "no", "locatie", "location", "id" };
     private static readonly string[] NameKeys = { "name", "naam", "title", "titel" };
     private static readonly string[] HintKeys = { "hint", "description", "omschrijving", "beschrijving", "desc", "tip" };
     private static readonly string[] LatitudeKeys = { "latitude", "lat", "breedtegraad", "y" };
     private static readonly string[] LongitudeKeys = { "longitude", "lon", "lng", "long", "lengtegraad", "x" };
+
+    /// <summary>
+    /// Reads the file as it was uploaded. A KMZ (Google My Maps' default export) is a zip with the KML inside; anything
+    /// else is text.
+    /// </summary>
+    public static LocationImportResult ParseFile(string fileName, byte[] data)
+    {
+        var isZip = data.Length >= 4 && data[0] == 'P' && data[1] == 'K' && data[2] == 3 && data[3] == 4;
+        if (!isZip) return Parse(fileName, Decode(data));
+
+        try
+        {
+            using var zip = new ZipArchive(new MemoryStream(data), ZipArchiveMode.Read);
+            // My Maps calls it doc.kml; otherwise the first KML in the archive
+            var kml = zip.Entries.FirstOrDefault(e => e.FullName.Equals("doc.kml", StringComparison.OrdinalIgnoreCase))
+                ?? zip.Entries.FirstOrDefault(e => e.FullName.EndsWith(".kml", StringComparison.OrdinalIgnoreCase));
+            if (kml == null) return Failed("Het KMZ-bestand bevat geen KML-bestand.");
+
+            using var entry = kml.Open();
+            using var unpacked = new MemoryStream();
+            var buffer = new byte[81920];
+            int read;
+            // Counted while reading: the size the zip claims can lie
+            while ((read = entry.Read(buffer, 0, buffer.Length)) > 0)
+            {
+                if (unpacked.Length + read > MaxUnpackedBytes) return Failed($"Het KMZ-bestand is uitgepakt groter dan {MaxUnpackedBytes / 1024 / 1024} MB.");
+                unpacked.Write(buffer, 0, read);
+            }
+
+            return Parse("doc.kml", Decode(unpacked.ToArray()));
+        }
+        catch (InvalidDataException ex)
+        {
+            return Failed($"Het KMZ-bestand kon niet uitgepakt worden: {ex.Message}");
+        }
+    }
+
+    /// <summary>UTF-8 unless a byte order mark says otherwise; Excel and My Maps both write UTF-8.</summary>
+    private static string Decode(byte[] data)
+    {
+        using var reader = new StreamReader(new MemoryStream(data), Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+        return reader.ReadToEnd();
+    }
+
+    private static LocationImportResult Failed(string problem) => new(Array.Empty<Location>(), new[] { problem });
 
     /// <summary>Reads the file; the extension decides the format, or the content when the extension is unknown.</summary>
     public static LocationImportResult Parse(string fileName, string content)
@@ -40,18 +91,117 @@ public static partial class LocationImport
             return extension switch
             {
                 ".geojson" or ".json" => ParseGeoJson(trimmed),
-                ".gpx" or ".xml" => ParseGpx(trimmed),
+                ".gpx" => ParseGpx(trimmed),
+                ".kml" => ParseKml(trimmed),
+                ".xml" or ".kmz" when IsKml(trimmed) => ParseKml(trimmed),
+                ".xml" => ParseGpx(trimmed),
                 ".csv" or ".txt" => ParseCsv(trimmed),
                 _ when trimmed.StartsWith('{') => ParseGeoJson(trimmed),
+                _ when trimmed.StartsWith('<') && IsKml(trimmed) => ParseKml(trimmed),
                 _ when trimmed.StartsWith('<') => ParseGpx(trimmed),
                 _ => ParseCsv(trimmed)
             };
         }
         catch (Exception ex) when (ex is JsonException or XmlException or FormatException)
         {
-            return new LocationImportResult(Array.Empty<Location>(), new[] { $"Het bestand kon niet gelezen worden: {ex.Message}" });
+            return Failed($"Het bestand kon niet gelezen worden: {ex.Message}");
         }
     }
+
+    private static bool IsKml(string content) => content.Contains("<kml", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Reads XML without a DTD: KML and GPX never need one, and a DTD could expand into something huge.
+    /// </summary>
+    private static XDocument LoadXml(string content)
+    {
+        var settings = new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null };
+        using var reader = XmlReader.Create(new StringReader(content), settings);
+        return XDocument.Load(reader, LoadOptions.None);
+    }
+
+    /// <summary>
+    /// A KML file, as Google My Maps exports a layer (or a whole map: every layer is read). Each placemark with a point
+    /// is a location: the number and name from its name ("15 Opdracht"), the hint from its description. Columns of the
+    /// layer's table come along as extended data, so a column "nummer" or "hint" works too.
+    /// </summary>
+    public static LocationImportResult ParseKml(string content)
+    {
+        var document = LoadXml(content);
+        var builder = new Builder();
+        var placemarks = document.Descendants().Where(e => e.Name.LocalName == "Placemark").ToList();
+        if (placemarks.Count == 0) builder.Problem("Het KML-bestand heeft geen punten (Placemark).");
+
+        var index = 0;
+        foreach (var placemark in placemarks)
+        {
+            index++;
+            string? Child(string name) => placemark.Elements().FirstOrDefault(e => e.Name.LocalName == name)?.Value;
+            var name = Child("name")?.Trim();
+            var where = $"Punt {index}" + (string.IsNullOrWhiteSpace(name) ? "" : $" ({name})");
+
+            var point = placemark.Descendants().FirstOrDefault(e => e.Name.LocalName == "Point");
+            var coordinates = point?.Elements().FirstOrDefault(e => e.Name.LocalName == "coordinates")?.Value;
+            if (coordinates == null)
+            {
+                builder.Problem($"{where}: geen punt (lijnen en vlakken worden overgeslagen).");
+                continue;
+            }
+
+            // "lon,lat[,height]"; KML puts the longitude first, like GeoJSON
+            var parts = coordinates.Trim().Split(new[] { ' ', '\t', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)
+                .FirstOrDefault()?.Split(',') ?? Array.Empty<string>();
+            if (parts.Length < 2
+                || !double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var longitude)
+                || !double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var latitude)
+                || !double.IsFinite(latitude) || !double.IsFinite(longitude))
+            {
+                builder.Problem($"{where}: geen geldige coördinaten.");
+                continue;
+            }
+
+            var properties = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var data in placemark.Descendants().Where(e => e.Name.LocalName is "Data" or "SimpleData"))
+            {
+                var key = (string?)data.Attribute("name");
+                var value = data.Name.LocalName == "Data"
+                    ? data.Elements().FirstOrDefault(e => e.Name.LocalName == "value")?.Value
+                    : data.Value;
+                if (!string.IsNullOrWhiteSpace(key) && !string.IsNullOrWhiteSpace(value)) properties.TryAdd(key.Trim(), value);
+            }
+
+            var description = PlainText(Child("description"));
+            // My Maps writes the table columns into the description as well ("hint: ..."): then the column is the hint
+            var hint = Pick(properties, HintKeys) is { } column ? PlainText(column) : description;
+            builder.Add(where, Pick(properties, NumberKeys), name, hint, latitude, longitude);
+        }
+
+        return builder.Result();
+    }
+
+    /// <summary>
+    /// A My Maps description is HTML: line breaks become new lines, tags (such as a photo) are dropped and entities
+    /// decoded. The hint is shown as text, so nothing of it can run.
+    /// </summary>
+    public static string? PlainText(string? html)
+    {
+        if (string.IsNullOrWhiteSpace(html)) return null;
+
+        var text = LineBreak().Replace(html, "\n");
+        text = Tag().Replace(text, "");
+        text = WebUtility.HtmlDecode(text);
+        var lines = text.Split('\n').Select(l => l.Trim());
+        return string.Join("\n", lines).Trim('\n', ' ') is { Length: > 0 } result ? MultipleBlankLines().Replace(result, "\n\n") : null;
+    }
+
+    [GeneratedRegex(@"<\s*br\s*/?\s*>|</\s*(p|div|li)\s*>", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex LineBreak();
+
+    [GeneratedRegex(@"<[^>]*>", RegexOptions.CultureInvariant)]
+    private static partial Regex Tag();
+
+    [GeneratedRegex(@"\n{3,}", RegexOptions.CultureInvariant)]
+    private static partial Regex MultipleBlankLines();
 
     public static LocationImportResult ParseGeoJson(string content)
     {
@@ -111,7 +261,7 @@ public static partial class LocationImport
 
     public static LocationImportResult ParseGpx(string content)
     {
-        var document = XDocument.Parse(content, LoadOptions.None);
+        var document = LoadXml(content);
         var builder = new Builder();
         var points = document.Descendants().Where(e => e.Name.LocalName == "wpt").ToList();
         if (points.Count == 0) builder.Problem("Het GPX-bestand heeft geen waypoints (wpt); routes en tracks worden niet gelezen.");
@@ -270,6 +420,10 @@ public static partial class LocationImport
 
             if (string.IsNullOrWhiteSpace(name)) name = $"Locatie {number}";
             hint = string.IsNullOrWhiteSpace(hint) ? null : hint.Trim();
+            if (hint?.Length > ScoutingDbContext.MaxLocationHintLength)
+            {
+                Problem($"{where}: de beschrijving is langer dan {ScoutingDbContext.MaxLocationHintLength} tekens en is ingekort.");
+            }
             _locations[number] = new Location
             {
                 Number = number,

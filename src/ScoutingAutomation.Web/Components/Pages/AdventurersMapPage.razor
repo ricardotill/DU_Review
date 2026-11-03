@@ -92,6 +92,7 @@ else
         if (overview == null) return Array.Empty<MapMarker>();
 
         var result = new List<MapMarker>();
+        var super = Runtime.SuperLocations;
         foreach (var location in overview.Locations)
         {
             if (groupId is { } id)
@@ -99,11 +100,11 @@ else
                 var group = overview.Groups.FirstOrDefault(g => g.Id == id);
                 var state = AdventurersMap.StateOf(overview.Submissions, id, location.Number);
                 var lines = new List<string> { MapMarker.StatusLine(state) };
-                if (!overview.UnlocksOf(id).Contains(location.Number)) lines.Add("Niet vrijgespeeld voor deze groep");
+                if (!overview.IsLocationOpen(id, location.Number)) lines.Add("Nog niet open voor deze groep");
                 var photos = state.Submission == null
                     ? Array.Empty<MapPhoto>()
                     : new[] { MapMarker.PhotoOf(state.Submission, $"{group?.Name}: {state.Status.Label()}") };
-                result.Add(MapMarker.For(location, state.Status.Color(), lines, photos));
+                result.Add(MapMarker.For(location, state.Status.Color(), lines, photos, super.Contains(location.Number)));
                 continue;
             }
 
@@ -123,7 +124,7 @@ else
                 .Where(s => s.State.Submission != null)
                 .Select(s => MapMarker.PhotoOf(s.State.Submission!, $"{s.Group.Name}: {s.State.Status.Label()}"))
                 .ToList();
-            result.Add(MapMarker.For(location, color, summary, groupPhotos));
+            result.Add(MapMarker.For(location, color, summary, groupPhotos, super.Contains(location.Number)));
         }
 
         return result;

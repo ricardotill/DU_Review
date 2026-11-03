@@ -66,13 +66,14 @@ else
                 <div class="glass-panel p-4">
                     <h2 class="panel-title"><i class="bi bi-upload text-info"></i> Importeren</h2>
                     <p class="text-secondary small mb-2">
-                        Een GeoJSON-, GPX- of CSV-bestand, bijvoorbeeld uit Google My Maps of uMap. Het nummer komt uit een kolom
-                        <code>nummer</code> of vooraan de naam (<code>7 Molen</code>, <code>Locatie 7 - Molen</code>). Een CSV heeft kolommen
-                        <code>nummer;naam;lat;lon;hint</code>. Bestaande locaties met hetzelfde nummer worden vervangen.
+                        Een KML- of KMZ-bestand uit Google My Maps (laag exporteren), of een GeoJSON-, GPX- of CSV-bestand. Het nummer komt
+                        vooraan de naam (<code>15 Opdracht</code>, <code>Locatie 7 - Molen</code>) of uit een kolom <code>nummer</code>; de
+                        beschrijving wordt de hint. Een CSV heeft kolommen <code>nummer;naam;lat;lon;hint</code>. Bestaande locaties met hetzelfde
+                        nummer worden vervangen.
                     </p>
                     <label class="btn btn-sm btn-scout-secondary @(importing ? "disabled" : "")">
                         <i class="bi bi-file-earmark-arrow-up me-1"></i> Bestand kiezen
-                        <InputFile class="d-none" accept=".geojson,.json,.gpx,.csv,.txt" OnChange="Import" disabled="@importing" />
+                        <InputFile class="d-none" accept=".kml,.kmz,.geojson,.json,.gpx,.csv,.txt" OnChange="Import" disabled="@importing" />
                     </label>
                     @if (importResult != null)
                     {
@@ -108,7 +109,7 @@ else
                                     <span class="text-white">@location.Name</span>
                                     @if (!string.IsNullOrWhiteSpace(location.Hint))
                                     {
-                                        <div class="text-secondary">@location.Hint</div>
+                                        <div class="text-secondary" style="white-space: pre-line">@location.Hint</div>
                                     }
                                 </span>
                                 <AuthorizeView Roles="@AppAuth.AdminRole">
@@ -158,7 +159,8 @@ else
     {
         if (!Runtime.AdventurersEnabled) return;
         locations = await services.GetRequiredService<LocationService>().GetAllAsync();
-        markers = locations.Select(l => MapMarker.For(l, LocationStatus.Open.Color(), Array.Empty<string>())).ToList();
+        var super = Runtime.SuperLocations;
+        markers = locations.Select(l => MapMarker.For(l, LocationStatus.Open.Color(), Array.Empty<string>(), super: super.Contains(l.Number))).ToList();
     }
 
     private void New()

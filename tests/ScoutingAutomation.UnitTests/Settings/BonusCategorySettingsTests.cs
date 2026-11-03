@@ -115,4 +115,132 @@ public class BonusCategorySettingsTests : IDisposable
 
         runtime.BonusCategories.Should().ContainSingle().Which.Name.Should().Be("Quiz");
     }
+
+    private RuntimeSettingsService WithAdventurers(List<BonusCategoryConfig>? configured) =>
+        TestRuntime.For(Options.Create(new ScoutingSettings
+        {
+            RuntimeSettingsFile = File,
+            BonusCategories = configured,
+            Adventurers = new AdventurersSettings { Enabled = true }
+        }));
+
+    [Fact]
+    public void AdventurersOn_ShouldAlwaysHaveTheirCategoryFirst()
+    {
+        var runtime = WithAdventurers(new List<BonusCategoryConfig> { new() { Key = "quiz", Name = "Quiz" } });
+
+        Keys(runtime).Should().Equal("avonturiers", "quiz");
+        runtime.IsFixedBonusCategory("avonturiers").Should().BeTrue();
+        runtime.IsFixedBonusCategory("quiz").Should().BeFalse();
+    }
+
+    [Fact]
+    public void AdventurersOn_TheirCategory_ShouldNotBeRemovedButCanBeRenamed()
+    {
+        var runtime = WithAdventurers(new List<BonusCategoryConfig> { new() { Key = "quiz", Name = "Quiz" } });
+
+        runtime.RemoveBonusCategory("avonturiers").Should().BeFalse();
+        runtime.RenameBonusCategory("avonturiers", "Lopers", "Lp").Should().BeNull();
+        runtime.RemoveBonusCategory("quiz").Should().BeTrue();
+
+        Keys(runtime).Should().Equal("avonturiers");
+        runtime.BonusCategories[0].Name.Should().Be("Lopers");
+    }
+
+    [Fact]
+    public void AdventurersOff_TheirCategory_ShouldBeAnOrdinaryOne()
+    {
+        var runtime = Create();
+
+        runtime.IsFixedBonusCategory("avonturiers").Should().BeFalse();
+        runtime.RemoveBonusCategory("avonturiers").Should().BeTrue();
+        Keys(runtime).Should().Equal("reisbureau");
+    }
+
+    [Fact]
+    public void MaxPoints_SetInTheApp_ShouldWinSurviveARestartAndReset()
+    {
+        var runtime = WithAdventurers(null);
+        runtime.ThemeMaxPoints.Should().Be(14);
+
+        runtime.SetMaxPoints(20, 10).Should().BeNull();
+        runtime.SetMaxPoints(-1, 10).Should().NotBeNull();
+        runtime.SetMaxPoints(20, 1001).Should().NotBeNull();
+
+        var restarted = WithAdventurers(null);
+        (restarted.ThemeMaxPoints, restarted.FinalMaxPoints, restarted.IsMaxPointsChanged).Should().Be((20, 10, true));
+
+        restarted.ResetMaxPoints();
+        (restarted.ThemeMaxPoints, restarted.FinalMaxPoints, restarted.IsMaxPointsChanged).Should().Be((14, 14, false));
+    }
+
+    [Fact]
+    public void SuperLocations_SetInTheApp_ShouldWinSurviveARestartAndReset()
+    {
+        var runtime = WithAdventurers(null);
+        runtime.SuperLocations.Should().BeEmpty("they are off by default");
+
+        runtime.SetSuperLocations(true, new[] { 20, 10, 10 }).Should().BeNull();
+        runtime.SetSuperLocations(true, new[] { 0 }).Should().NotBeNull();
+        runtime.SuperLocations.Should().BeEquivalentTo(new[] { 10, 20 });
+
+        var restarted = WithAdventurers(null);
+        restarted.SuperLocationsSetting.Numbers.Should().Equal(10, 20);
+        restarted.IsSuperLocationsChanged.Should().BeTrue();
+
+        restarted.SetSuperLocations(false, new[] { 10, 20 }).Should().BeNull();
+        restarted.SuperLocations.Should().BeEmpty("off keeps the numbers, but none counts double");
+        restarted.SuperLocationsSetting.Numbers.Should().Equal(10, 20);
+
+        restarted.ResetSuperLocations();
+        restarted.IsSuperLocationsChanged.Should().BeFalse();
+        restarted.SuperLocations.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void SuperLocations_TooMany_ShouldBeRefused()
+    {
+        var runtime = WithAdventurers(null);
+
+        runtime.SetSuperLocations(true, Enumerable.Range(1, RuntimeSettingsService.MaxSuperLocations + 1)).Should().Contain("hoogstens");
+        runtime.SetSuperLocations(true, Enumerable.Range(1, RuntimeSettingsService.MaxSuperLocations)).Should().BeNull();
+    }
+
+    [Fact]
+    public void SuperLocations_BrokenFile_ShouldLoadCleaned()
+    {
+        System.IO.File.WriteAllText(File, """{ "Adventurers": { "SuperLocations": { "Enabled": true, "Numbers": [ 20, -1, 0, 20, 10, 99999 ] } } }""");
+
+        var runtime = WithAdventurers(null);
+
+        runtime.SuperLocationsSetting.Numbers.Should().Equal(10, 20);
+        runtime.SuperLocations.Should().BeEquivalentTo(new[] { 10, 20 });
+    }
+
+    [Fact]
+    public void SuperLocations_NumbersMissingInTheFile_ShouldLoadAsNone()
+    {
+        System.IO.File.WriteAllText(File, """{ "Adventurers": { "SuperLocations": { "Enabled": true, "Numbers": null } } }""");
+
+        var runtime = WithAdventurers(null);
+
+        runtime.SuperLocations.Should().BeEmpty();
+        runtime.IsSuperLocationsChanged.Should().BeTrue();
+    }
+
+    [Fact]
+    public void SuperLocations_FromAppsettings_ShouldBeUsedUntilChangedInTheApp()
+    {
+        var runtime = new RuntimeSettingsService(Options.Create(new ScoutingSettings
+        {
+            RuntimeSettingsFile = File,
+            Adventurers = new AdventurersSettings { Enabled = true, SuperLocations = new SuperLocationsConfig { Enabled = true, Numbers = new() { 30, 10 } } }
+        }), NullLogger<RuntimeSettingsService>.Instance);
+
+        runtime.SuperLocations.Should().BeEquivalentTo(new[] { 10, 30 });
+        runtime.SetSuperLocations(false, new[] { 10 }).Should().BeNull();
+        runtime.SuperLocations.Should().BeEmpty();
+        runtime.ResetSuperLocations();
+        runtime.SuperLocations.Should().BeEquivalentTo(new[] { 10, 30 });
+    }
 }

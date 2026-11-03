@@ -514,3 +514,107 @@ h1:focus {
     border-color: var(--border-color);
     color: #e6edf3;
 }
+
+/* Pictures of an assignment: thumbnails, and one large on top of the page */
+.assignment-image-thumb {
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 0.5rem;
+    background: rgba(0, 0, 0, 0.2);
+    overflow: hidden;
+    cursor: zoom-in;
+}
+
+.assignment-image-thumb img,
+.assignment-image-edit img {
+    display: block;
+    width: 8rem;
+    height: 6rem;
+    object-fit: cover;
+}
+
+.assignment-image-edit img {
+    border-radius: 0.5rem;
+    margin-bottom: 0.25rem;
+}
+
+.assignment-lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: rgba(0, 0, 0, 0.85);
+    cursor: zoom-out;
+}
+
+.assignment-lightbox img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border-radius: 0.5rem;
+}
+
+.assignment-lightbox-close {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    border: none;
+    background: transparent;
+    color: #fff;
+    font-size: 1.5rem;
+}
+
+/* Pictures of an assignment: thumbnails, and one large on top of the page */
+.assignment-image-thumb {
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 0.5rem;
+    background: rgba(0, 0, 0, 0.2);
+    overflow: hidden;
+    cursor: zoom-in;
+}
+
+.assignment-image-thumb img,
+.assignment-image-edit img {
+    display: block;
+    width: 8rem;
+    height: 6rem;
+    object-fit: cover;
+}
+
+.assignment-image-edit img {
+    border-radius: 0.5rem;
+    margin-bottom: 0.25rem;
+}
+
+.assignment-lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: rgba(0, 0, 0, 0.85);
+    cursor: zoom-out;
+}
+
+.assignment-lightbox img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border-radius: 0.5rem;
+}
+
+.assignment-lightbox-close {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    border: none;
+    background: transparent;
+    color: #fff;
+    font-size: 1.5rem;
+}

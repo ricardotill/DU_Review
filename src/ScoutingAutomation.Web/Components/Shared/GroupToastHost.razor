@@ -1,0 +1,100 @@
+@implements IDisposable
+@inject ISubmissionChangeNotifier Notifier
+@inject IJSRuntime JS
+@inject GroupNotificationPreferences Preferences
+@inject ILogger<GroupToastHost> Logger
+
+@* Tells a logged-in group that its Avonturiers opened new assignments, as chosen in the bell menu: a toast that stays
+   until it is closed, a soft chime, and a notification of the phone or computer when the tab is in the background.
+   A tab only ever hears about its own group. *@
+<div class="toast-stack" aria-live="polite" aria-relevant="additions">
+    @foreach (var toast in toasts)
+    {
+        <div class="submission-toast unlock-toast" @key="toast">
+            <a class="toast-body-link" href="mijn-opdrachten" @onclick="() => toasts.Remove(toast)">
+                <span class="toast-eyebrow"><i class="bi bi-unlock-fill"></i> Nieuwe opdrachten</span>
+                <span class="toast-group">@Codes(toast)</span>
+                <span class="toast-detail">Jullie hebben nu @toast.OpenCount van de @toast.Total opdrachten open.</span>
+            </a>
+            <button type="button" class="toast-close" aria-label="Melding sluiten" @onclick="() => toasts.Remove(toast)">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </div>
+    }
+</div>
+
+@code {
+    private const int MaxVisible = 3;
+
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private readonly List<AssignmentsUnlockedNotification> toasts = new();
+    private Guid? groupId;
+    private bool disposed;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Only once interactive: a prerendered copy would subscribe and never be disposed by a circuit
+        if (!firstRender) return;
+
+        groupId = AuthState == null ? null : AppAuth.GroupId((await AuthState).User);
+        if (groupId == null) return;
+
+        Notifier.Unlocked += OnUnlocked;
+        try
+        {
+            await Preferences.EnsureLoadedAsync();
+        }
+        catch (JSDisconnectedException)
+        {
+            // Tab closed during start-up
+        }
+    }
+
+    private void OnUnlocked(AssignmentsUnlockedNotification notification)
+    {
+        // Quick filter; the login is checked again below
+        if (disposed || notification.GroupId != groupId) return;
+
+        _ = InvokeAsync(async () =>
+        {
+            // Checked again for every notice: a tab whose group key was renewed or withdrawn stops getting them,
+            // and another group's news never reaches this tab
+            if (disposed || AuthState == null || AppAuth.GroupId((await AuthState).User) != notification.GroupId) return;
+
+            if (Preferences.ToastsEnabled)
+            {
+                toasts.Add(notification);
+                if (toasts.Count > MaxVisible) toasts.RemoveAt(0);
+                StateHasChanged();
+            }
+
+            try
+            {
+                await Preferences.PlayChimeAsync();
+                if (Preferences.SystemEnabled)
+                {
+                    await JS.InvokeVoidAsync("duNotifications.systemNotify", "Nieuwe opdrachten", $"{Codes(notification)} Jullie hebben nu {notification.OpenCount} van de {notification.Total} open.", "mijn-opdrachten");
+                }
+            }
+            catch (Exception ex) when (ex is JSDisconnectedException or TaskCanceledException)
+            {
+                // Tab closed in the meantime
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Could not play or show the unlock notification");
+            }
+        });
+    }
+
+    private static string Codes(AssignmentsUnlockedNotification n) => n.NewCodes.Count == 1
+        ? $"Opdracht {n.NewCodes[0]} is open!"
+        : $"Opdracht {string.Join(", ", n.NewCodes.Take(n.NewCodes.Count - 1))} en {n.NewCodes[^1]} zijn open!";
+
+    public void Dispose()
+    {
+        disposed = true;
+        Notifier.Unlocked -= OnUnlocked;
+    }
+}

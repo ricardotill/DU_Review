@@ -20,7 +20,8 @@ namespace ScoutingAutomation.IntegrationTests.Editions;
 public class EditionSwitchIntegrationTests : IClassFixture<WebApplicationFactory<Program>>, IAsyncLifetime
 {
     private const string Channel = "C01ZEEARENDEN";
-    private readonly FakeSlackApi _slack = new();
+    // A known workspace: a group's file link sends it to the message in Slack
+    private readonly FakeSlackApi _slack = new() { Workspace = ("T0DU", "https://du-scouting.slack.com/") };
     private readonly TestApp _app;
     private HttpClient _slackClient = default!;
 
@@ -76,7 +77,7 @@ public class EditionSwitchIntegrationTests : IClassFixture<WebApplicationFactory
 
         // The group logs in to its group in the new edition and sees the old one under its earlier editions
         using var group = await _app.CreateClientForAsync("zeearenden@du.test");
-        (await group.GetAsync($"/api/files/{fresh}")).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await group.GetAsync($"/api/files/{fresh}")).StatusCode.Should().Be(HttpStatusCode.Redirect, "a group is sent to its own file in Slack");
         (await group.GetAsync($"/api/files/{old}")).StatusCode.Should().NotBe(HttpStatusCode.OK);
         var history = await group.GetStringAsync("/edities");
         history.Should().Contain(archived.Name).And.Contain("De Zeearenden");

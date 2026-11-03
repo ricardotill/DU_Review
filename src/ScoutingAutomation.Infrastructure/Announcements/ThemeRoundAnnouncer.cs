@@ -21,7 +21,8 @@ public enum RoundMessage
 
 /// <summary>
 /// Posts the messages of the theme rounds in every Avonturiers channel: the round text when a round opens, a closing
-/// message when it ends, and the result once the jury reviewed every submission of the round. Each channel gets each
+/// message when it ends, and the result once the jury reviewed every submission of the round. When a round starts as
+/// the previous one ends, one handover message replaces the closing and the opening. Each channel gets each
 /// message once; that is saved, so a restart does not post again. Admins can post or repost by hand.
 /// </summary>
 public sealed class ThemeRoundAnnouncer : BackgroundService
@@ -84,6 +85,12 @@ public sealed class ThemeRoundAnnouncer : BackgroundService
             .Replace("{ranking}", ranking)
             .Trim();
 
+    /// <summary>The handover text: <paramref name="previous"/> ends as <paramref name="round"/> starts.</summary>
+    public static string RenderHandover(string template, ThemeRound previous, ThemeRound round) =>
+        Render(template
+            .Replace("{previousRound}", previous.Number.ToString())
+            .Replace("{previousThemes}", previous.ThemesLabel), round);
+
     /// <summary>
     /// Posts one message of a round in every Avonturiers channel that did not get it yet, or in all of them with
     /// <paramref name="resend"/>. A result is posted even while the round is provisional when an admin asks for it.
@@ -92,13 +99,25 @@ public sealed class ThemeRoundAnnouncer : BackgroundService
         CancellationToken ct = default, MessagePicture? picture = null)
     {
         var round = _runtime.ThemeRounds.FirstOrDefault(r => r.Number == roundNumber);
-        var template = Template(message);
-        if (round == null || string.IsNullOrWhiteSpace(template))
+        if (round == null || string.IsNullOrWhiteSpace(Template(message)))
         {
             _logger.LogWarning("No round {Round} or no {Message} text is set; nothing posted", roundNumber, message);
             return Array.Empty<AnnouncementPostResult>();
         }
 
+        return await PostPartsAsync(new[] { (round, message) }, combined: null, resend, picture, ct);
+    }
+
+    /// <summary>
+    /// Posts the given messages as one Slack message per Avonturiers channel: each channel gets only the parts it did
+    /// not get yet (all of them with <paramref name="resend"/>), and every part it got is saved as posted.
+    /// A channel that needs every part gets <paramref name="combined"/> when set; otherwise the texts of its parts,
+    /// leaving out the parts without a text.
+    /// </summary>
+    private async Task<IReadOnlyList<AnnouncementPostResult>> PostPartsAsync(
+        IReadOnlyList<(ThemeRound Round, RoundMessage Message)> parts, string? combined, bool resend, MessagePicture? picture,
+        CancellationToken ct)
+    {
         await _posting.WaitAsync(ct);
         try
         {
@@ -106,45 +125,66 @@ public sealed class ThemeRoundAnnouncer : BackgroundService
             var groups = await scope.ServiceProvider.GetRequiredService<IGroupRepository>().GetAllAsync(ct);
             var slack = scope.ServiceProvider.GetRequiredService<ISlackClient>();
 
-            var ranking = "";
-            if (message == RoundMessage.Result)
+            AdventurersOverview? overview = null;
+            var texts = new List<(ThemeRound Round, RoundMessage Message, string? Text)>();
+            foreach (var (round, message) in parts)
             {
-                var overview = await scope.ServiceProvider.GetRequiredService<AdventurersScoreService>().GetOverviewAsync(ct);
-                var result = overview.Standing.Rounds.FirstOrDefault(r => r.Round.Number == roundNumber);
-                var names = groups.ToDictionary(g => g.Id, g => g.Name);
-                ranking = result?.Ranking(id => names.GetValueOrDefault(id, "?")) ?? "";
+                var template = Template(message);
+                if (string.IsNullOrWhiteSpace(template))
+                {
+                    texts.Add((round, message, null));
+                    continue;
+                }
+
+                var ranking = "";
+                if (message == RoundMessage.Result)
+                {
+                    overview ??= await scope.ServiceProvider.GetRequiredService<AdventurersScoreService>().GetOverviewAsync(ct);
+                    var result = overview.Standing.Rounds.FirstOrDefault(r => r.Round.Number == round.Number);
+                    var names = groups.ToDictionary(g => g.Id, g => g.Name);
+                    ranking = result?.Ranking(id => names.GetValueOrDefault(id, "?")) ?? "";
+                }
+
+                texts.Add((round, message, Render(template, round, ranking)));
             }
 
-            var text = Render(template, round, ranking);
             // Only the open message carries the round's picture; a picture on a later message is the admin's choice
             var results = new List<AnnouncementPostResult>();
             foreach (var group in groups.Where(g => !string.IsNullOrWhiteSpace(g.AdventurersSlackChannelId)))
             {
                 var channel = group.AdventurersSlackChannelId!;
-                if (!resend && PostedAt(roundNumber, message, channel) != null)
+                var due = texts.Where(t => resend || PostedAt(t.Round.Number, t.Message, channel) == null).ToList();
+                if (due.Count == 0)
                 {
                     results.Add(new AnnouncementPostResult(group.Name, channel, Posted: false, Skipped: true, Error: null));
                     continue;
                 }
 
+                if (combined == null || due.Count < texts.Count) due = due.Where(t => t.Text != null).ToList();
+                if (due.Count == 0) continue;
+
+                var text = combined != null && due.Count == texts.Count
+                    ? combined
+                    : string.Join("\n\n", due.Select(t => t.Text));
+                var what = string.Join(" and ", due.Select(t => $"{t.Message} of round {t.Round.Number}"));
                 var error = picture == null
                     ? await slack.PostMessageAsync(channel, text, ct)
                     : await slack.PostFileAsync(channel, picture.Content, GroupMessageSender.SafeFileName(picture.FileName), text, ct);
                 if (error == null)
                 {
-                    _logger.LogInformation("Posted the {Message} message of round {Round} for {Group}", message, roundNumber, group.Name);
+                    _logger.LogInformation("Posted the {Messages} message for {Group}", what, group.Name);
                     try
                     {
-                        _runtime.MarkAdventurersPosted(Key(roundNumber, message), channel, _time.GetUtcNow());
+                        foreach (var t in due) _runtime.MarkAdventurersPosted(Key(t.Round.Number, t.Message), channel, _time.GetUtcNow());
                     }
                     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                     {
-                        _logger.LogError(ex, "Posted the {Message} message of round {Round} in {Channel}, but could not save that", message, roundNumber, channel);
+                        _logger.LogError(ex, "Posted the {Messages} message in {Channel}, but could not save that", what, channel);
                     }
                 }
                 else
                 {
-                    _logger.LogWarning("Could not post the {Message} message of round {Round} for {Group}: {Error}", message, roundNumber, group.Name, error);
+                    _logger.LogWarning("Could not post the {Messages} message for {Group}: {Error}", what, group.Name, error);
                 }
 
                 results.Add(new AnnouncementPostResult(group.Name, channel, Posted: error == null, Skipped: false, error));
@@ -202,7 +242,19 @@ public sealed class ThemeRoundAnnouncer : BackgroundService
 
             if (now - round.End <= ScheduledAnnouncer.AutoPostWindow && !Done(round, RoundMessage.Close))
             {
-                await PostAsync(round.Number, RoundMessage.Close, resend: false, ct);
+                // A round that starts as this one ends: one handover message instead, unless its text is empty
+                var following = rounds.FirstOrDefault(r => r.Start == round.End);
+                var handover = _runtime.Text(SlackText.RoundHandover);
+                if (following != null && !string.IsNullOrWhiteSpace(handover) && following.End > now
+                    && now - following.Start <= ScheduledAnnouncer.AutoPostWindow && !Done(following, RoundMessage.Open))
+                {
+                    await PostPartsAsync(new[] { (round, RoundMessage.Close), (following, RoundMessage.Open) },
+                        RenderHandover(handover, round, following), resend: false, picture: null, ct);
+                }
+                else
+                {
+                    await PostAsync(round.Number, RoundMessage.Close, resend: false, ct);
+                }
             }
 
             // A result waits for the jury, but only for a round this app closed itself: a late start posts no old results

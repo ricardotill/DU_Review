@@ -10,7 +10,13 @@ window.duMap = (function () {
         if (!element || !window.L) return false;
 
         const map = L.map(element, { scrollWheelZoom: true }).setView(defaultCenter, 8);
-        L.tileLayer(options.tileUrl, { attribution: options.attribution, maxZoom: 19 }).addTo(map);
+        // OpenStreetMap refuses tiles (403) without a Referer, and the app's Referrer-Policy (same-origin) sends none.
+        // The tiles alone send the site's origin, never the page path: the group map's address holds its secret token.
+        L.tileLayer(options.tileUrl, {
+            attribution: options.attribution,
+            maxZoom: 19,
+            referrerPolicy: 'strict-origin-when-cross-origin'
+        }).addTo(map);
         const state = { map, layer: L.layerGroup().addTo(map), pick: null, picked: null, fitted: false };
         maps.set(elementId, state);
         // A map in a container that was hidden or resized while loading draws grey tiles until told
@@ -23,7 +29,7 @@ window.duMap = (function () {
         root.className = 'du-map-popup';
         const title = document.createElement('div');
         title.className = 'fw-bold';
-        title.textContent = `${marker.number}. ${marker.name}`;
+        title.textContent = `${marker.number}. ${marker.name}${marker.super ? ' ★' : ''}`;
         root.appendChild(title);
 
         for (const line of marker.lines || []) {
@@ -36,6 +42,8 @@ window.duMap = (function () {
         if (marker.hint) {
             const hint = document.createElement('div');
             hint.className = 'small fst-italic mt-1';
+            // A description from My Maps has several lines
+            hint.style.whiteSpace = 'pre-line';
             hint.textContent = marker.hint;
             root.appendChild(hint);
         }
@@ -74,7 +82,8 @@ window.duMap = (function () {
         const bounds = [];
         for (const marker of markers) {
             const circle = L.circleMarker([marker.lat, marker.lng], {
-                radius: 11, color: '#0f141c', weight: 2, fillColor: marker.color, fillOpacity: 0.95
+                radius: marker.super ? 13 : 11, color: marker.super ? '#facc15' : '#0f141c', weight: marker.super ? 3 : 2,
+                fillColor: marker.color, fillOpacity: 0.95
             });
             circle.bindTooltip(String(marker.number), { permanent: true, direction: 'center', className: 'du-map-label' });
             circle.bindPopup(() => popup(marker));
@@ -132,7 +141,9 @@ window.duMap = (function () {
         render(elementId, first, listId);
         setInterval(async () => {
             const data = await load(dataUrl);
-            if (data) render(elementId, data, listId);
+            // The start was moved to later: the page shows the waiting text then
+            if (data && data.startsAt) location.reload();
+            else if (data) render(elementId, data, listId);
         }, 30000);
     }
 
@@ -165,7 +176,7 @@ window.duMap = (function () {
             dot.className = 'du-map-dot me-2';
             dot.style.background = marker.color;
             name.appendChild(dot);
-            name.appendChild(document.createTextNode(`${marker.number}. ${marker.name}`));
+            name.appendChild(document.createTextNode(`${marker.number}. ${marker.name}${marker.super ? ' ★' : ''}`));
             const status = document.createElement('span');
             status.className = 'small text-secondary text-end';
             status.textContent = marker.lines.join(' · ');

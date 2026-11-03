@@ -35,4 +35,19 @@ public static class StaffActions
             action();
             return (string?)null;
         });
+
+    /// <inheritdoc cref="RunAsync(Task{AuthenticationState}?, Func{string?})"/>
+    public static async Task<string?> RunTaskAsync(Task<AuthenticationState>? state, Func<Task<string?>> action)
+    {
+        if (!await IsStaffAsync(state)) return NotStaff;
+
+        try
+        {
+            return await action();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            return $"Opslaan is mislukt: {ex.Message}";
+        }
+    }
 }

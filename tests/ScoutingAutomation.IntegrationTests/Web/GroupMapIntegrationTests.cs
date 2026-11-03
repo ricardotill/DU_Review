@@ -6,11 +6,12 @@ using Microsoft.Extensions.DependencyInjection;
 using ScoutingAutomation.Domain.Entities;
 using ScoutingAutomation.Domain.Interfaces;
 using ScoutingAutomation.Infrastructure.Adventurers;
+using ScoutingAutomation.Infrastructure.Settings;
 using Xunit;
 
 namespace ScoutingAutomation.IntegrationTests.Web;
 
-/// <summary>The map a group opens from the link in Slack: no login, the token is the key, only its unlocked locations.</summary>
+/// <summary>The map a group opens from the link in Slack: no login, the token is the key, only its open locations.</summary>
 public class GroupMapIntegrationTests : IClassFixture<WebApplicationFactory<Program>>, IAsyncLifetime
 {
     private readonly TestApp _app;
@@ -29,12 +30,13 @@ public class GroupMapIntegrationTests : IClassFixture<WebApplicationFactory<Prog
             var locations = sp.GetRequiredService<LocationService>();
             await locations.SaveAsync(new Location { Number = 7, Name = "Molen", Latitude = 51.6, Longitude = 5.0, Hint = "Bij de brug" });
             await locations.SaveAsync(new Location { Number = 8, Name = "Geheime plek", Latitude = 51.7, Longitude = 5.1 });
-            return await locations.SetUnlockedAsync(_group.Id, 7, true);
+            // Locations 1 through 7 are open for the group: of the two, only 7
+            return await locations.SetOpenLocationsAsync(_group.Id, 7);
         });
     }
 
     [Fact]
-    public async Task MapData_ShouldShowOnlyTheUnlockedLocationsWithoutLogin()
+    public async Task MapData_ShouldShowOnlyTheOpenLocationsWithoutLogin()
     {
         using var client = _app.CreateClient();
 
@@ -50,6 +52,23 @@ public class GroupMapIntegrationTests : IClassFixture<WebApplicationFactory<Prog
     }
 
     [Fact]
+    public async Task MapData_ShouldMarkOnlyTheSuperLocations()
+    {
+        using var client = _app.CreateClient();
+        async Task<bool> SuperOf7()
+        {
+            using var json = JsonDocument.Parse(await client.GetStringAsync($"/api/kaart/{_group.MapToken}"));
+            return json.RootElement.GetProperty("markers").EnumerateArray().Single().GetProperty("super").GetBoolean();
+        }
+
+        await _app.GetAsync(sp => Task.FromResult(sp.GetRequiredService<RuntimeSettingsService>().SetSuperLocations(true, new[] { 8 })));
+        (await SuperOf7()).Should().BeFalse();
+
+        await _app.GetAsync(sp => Task.FromResult(sp.GetRequiredService<RuntimeSettingsService>().SetSuperLocations(true, new[] { 7 })));
+        (await SuperOf7()).Should().BeTrue();
+    }
+
+    [Fact]
     public async Task Page_ShouldOpenWithoutLogin()
     {
         using var client = _app.CreateClient();
@@ -59,6 +78,21 @@ public class GroupMapIntegrationTests : IClassFixture<WebApplicationFactory<Prog
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var html = await response.Content.ReadAsStringAsync();
         html.Should().Contain("De Zeearenden").And.Contain("duMap.publicMap");
+    }
+
+    [Fact]
+    public async Task BeforeTheAvonturiersStart_ShouldShowNoLocations()
+    {
+        await _app.GetAsync(sp => Task.FromResult(sp.GetRequiredService<RuntimeSettingsService>()
+            .SetAdventurersPostTime(false, DateTimeOffset.UtcNow.AddHours(1).ToGameTime().DateTime)));
+        using var client = _app.CreateClient();
+
+        using var json = JsonDocument.Parse(await client.GetStringAsync($"/api/kaart/{_group.MapToken}"));
+        json.RootElement.GetProperty("markers").GetArrayLength().Should().Be(0);
+        json.RootElement.GetProperty("startsAt").GetString().Should().NotBeNullOrEmpty();
+
+        var html = await client.GetStringAsync($"/kaart/{_group.MapToken}");
+        html.Should().Contain("zodra de Avonturiers beginnen").And.NotContain("duMap.publicMap").And.NotContain("Molen");
     }
 
     [Fact]

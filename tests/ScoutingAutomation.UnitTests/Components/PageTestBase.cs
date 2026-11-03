@@ -30,6 +30,7 @@ public abstract class PageTestBase : BunitContext
         Services.AddLogging();
         Services.AddScoped<ScoutingAutomation.Web.Favorites.FavoritesService>();
         Services.AddScoped<ScoutingAutomation.Web.Notifications.NotificationPreferences>();
+        Services.AddScoped<ScoutingAutomation.Web.Notifications.GroupNotificationPreferences>();
         JSInterop.Mode = JSRuntimeMode.Loose;
         Auth = AddAuthorization();
         Auth.SetAuthorized("Admin");

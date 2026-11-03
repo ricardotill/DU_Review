@@ -32,6 +32,10 @@ else
                 <i class="bi bi-folder2-open"></i>
                 <span>Alle uploads</span>
             </a>
+            <a href="mijn-opdrachten?group=@group.Id" class="btn btn-scout-secondary d-flex align-items-center gap-2 group-open-assignments" title="De opdrachten die deze groep nu kan doen, zoals de groep ze ziet">
+                <i class="bi bi-list-check"></i>
+                <span>Open opdrachten</span>
+            </a>
             <a href="messages?group=@group.Id" class="btn btn-scout-secondary d-flex align-items-center gap-2 send-group-message">
                 <i class="bi bi-megaphone"></i>
                 <span>Bericht sturen</span>
@@ -139,10 +143,11 @@ else
                     <span class="text-secondary">Kaart van de groep (zonder inloggen):</span>
                     <a href="@AdventurersLinks.MapPath(group.MapToken)" target="_blank" rel="noopener">@AdventurersLinks.MapPath(group.MapToken)</a>
                 }
+                <a href="onze-kaart?group=@group.Id" class="ms-2 group-own-map">Bekijk zoals de groep (met de half-uur opdracht)</a>
             </div>
             @if (adventurers.Count == 0)
             {
-                <p class="text-muted small mb-0">Nog geen check-ins of thema-inzendingen.</p>
+                <p class="text-muted small mb-0">Nog geen check-ins of half-uur opdrachten.</p>
             }
             else
             {

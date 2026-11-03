@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using ScoutingAutomation.Contracts.Configuration;
 using ScoutingAutomation.Domain.Enums;
 using ScoutingAutomation.Domain.Interfaces;
+using ScoutingAutomation.Domain.Models;
 using ScoutingAutomation.Infrastructure.Editions;
 using ScoutingAutomation.Infrastructure.Settings;
 
@@ -106,6 +107,20 @@ public class LocalFileStorageService : IFileStorageService
 
     public Task<string> SaveAdventurersFileAsync(string groupName, string fileName, Stream contentStream, CancellationToken ct = default) =>
         SaveAsync(AdventurersDirectoryPath(groupName, SubmissionStatus.Pending), fileName, contentStream, ct);
+
+    /// <summary>
+    /// The folder of the assignments' pictures, next to the group folders of the active edition; starts with "_", so no
+    /// group folder can have its name.
+    /// </summary>
+    public const string AssignmentImagesFolderName = "_opdrachten";
+
+    public Task<string> SaveAssignmentImageAsync(string assignmentCode, string fileName, Stream contentStream, CancellationToken ct = default)
+    {
+        // The code is normalised by the caller; anything else could point outside the folder
+        if (AssignmentCode.Normalize(assignmentCode) != assignmentCode) throw new ArgumentException($"'{assignmentCode}' is no assignment code", nameof(assignmentCode));
+
+        return SaveAsync(EnsureInsideRoot(Path.Combine(EditionRoot, AssignmentImagesFolderName, assignmentCode)), fileName, contentStream, ct);
+    }
 
     private async Task<string> SaveAsync(string groupDir, string fileName, Stream contentStream, CancellationToken ct)
     {

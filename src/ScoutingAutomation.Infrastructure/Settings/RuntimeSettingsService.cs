@@ -206,19 +206,46 @@ public partial class RuntimeSettingsService
     /// Whether a Slack message was posted before the event started. A message without a valid timestamp
     /// is never treated as early, so a live message cannot be lost.
     /// </summary>
-    public bool IsBeforeEventStart(string? ts) =>
-        EventStart is { } start && SlackTimestamp.ToDateTimeOffset(ts) is { } postedAt && postedAt < start;
+    public bool IsBeforeEventStart(string? ts) => IsBeforeStart(ts, adventurers: false);
+
+    /// <summary>
+    /// Whether a Slack message was posted before its part of the game started: the Avonturiers part with
+    /// <paramref name="adventurers"/>, otherwise the event. A message without a valid timestamp is never treated as early.
+    /// </summary>
+    public bool IsBeforeStart(string? ts, bool adventurers) =>
+        StartOf(adventurers) is { } start && SlackTimestamp.ToDateTimeOffset(ts) is { } postedAt && postedAt < start;
 
     /// <summary>
     /// Whether a Slack message was posted at or after the end of the event. A message without a valid timestamp
     /// is never treated as late, so a live message cannot be lost.
     /// </summary>
-    public bool IsAfterEventEnd(string? ts) =>
-        EventEnd is { } end && SlackTimestamp.ToDateTimeOffset(ts) is { } postedAt && postedAt >= end;
+    public bool IsAfterEventEnd(string? ts) => IsAfterEnd(ts, adventurers: false);
 
-    /// <summary>The later of <paramref name="since"/> and the start of the event.</summary>
-    public DateTimeOffset NotBeforeEventStart(DateTimeOffset since) =>
-        EventStart is { } start && start > since ? start : since;
+    /// <summary>
+    /// Whether a Slack message was posted at or after the end of its part of the game: the Avonturiers part with
+    /// <paramref name="adventurers"/>, otherwise the event. A message without a valid timestamp is never treated as late.
+    /// </summary>
+    public bool IsAfterEnd(string? ts, bool adventurers) =>
+        EndOf(adventurers) is { } end && SlackTimestamp.ToDateTimeOffset(ts) is { } postedAt && postedAt >= end;
+
+    /// <summary>The start of the Avonturiers part with <paramref name="adventurers"/>, otherwise of the event.</summary>
+    public DateTimeOffset? StartOf(bool adventurers) => adventurers ? AdventurersStartAt : EventStart;
+
+    /// <summary>The end of the Avonturiers part with <paramref name="adventurers"/>, otherwise of the event.</summary>
+    public DateTimeOffset? EndOf(bool adventurers) => adventurers ? AdventurersFinalAt : EventEnd;
+
+    /// <summary>
+    /// The later of <paramref name="since"/> and the earliest start: of the event, or of the Avonturiers part when that
+    /// starts earlier. A part without a start time keeps <paramref name="since"/>.
+    /// </summary>
+    public DateTimeOffset NotBeforeEventStart(DateTimeOffset since)
+    {
+        var starts = AdventurersEnabled ? new[] { EventStart, AdventurersStartAt } : new[] { EventStart };
+        if (starts.Any(s => s == null)) return since;
+
+        var earliest = starts.Min()!.Value;
+        return earliest > since ? earliest : since;
+    }
 
     /// <summary>Reviewers from appsettings; these can only be changed there.</summary>
     public IReadOnlyList<string> ConfiguredReviewers =>
@@ -838,6 +865,7 @@ public enum SlackText
     RoundOpen,
     RoundClose,
     RoundResult,
+    RoundHandover,
     UnlockNotice,
     UnlockCorrection,
     AdventurersMissingNumber,

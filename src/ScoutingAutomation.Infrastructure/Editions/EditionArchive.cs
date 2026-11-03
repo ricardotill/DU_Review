@@ -9,6 +9,7 @@ using ScoutingAutomation.Contracts.Configuration;
 using ScoutingAutomation.Domain.Entities;
 using ScoutingAutomation.Domain.Enums;
 using ScoutingAutomation.Domain.Interfaces;
+using ScoutingAutomation.Domain.Models;
 using ScoutingAutomation.Infrastructure.Data;
 using ScoutingAutomation.Infrastructure.Storage;
 
@@ -16,8 +17,8 @@ namespace ScoutingAutomation.Infrastructure.Editions;
 
 /// <summary>
 /// An edition as one ZIP: "edition.json" with everything in the database about it (groups and their teams,
-/// assignments, locations, submissions with their reviews, points entered by hand, unlocks) and the submitted files
-/// under "files/". Imported, it becomes a new edition next to the others: archived, or still in preparation if it was.
+/// assignments with their pictures, locations, submissions with their reviews, points entered by hand, the open locations
+/// per group) and the submitted files and assignment pictures under "files/". Imported, it becomes a new edition next to the others: archived, or still in preparation if it was.
 /// </summary>
 public sealed class EditionArchive
 {
@@ -75,7 +76,7 @@ public sealed class EditionArchive
     {
         // The rows and the standing are read under the edition lock, so an edition started meanwhile cannot mix in;
         // the files are streamed outside it, so a long download does not hold up other edition changes
-        var (edition, submissions, files, data) = await EditionService.OneAtATimeAsync(_cluster, () => ReadForExportAsync(editionId, ct), ct);
+        var (edition, submissions, files, images, data) = await EditionService.OneAtATimeAsync(_cluster, () => ReadForExportAsync(editionId, ct), ct);
 
         var missing = new List<string>();
         await using var zip = await ZipArchive.CreateAsync(output, ZipArchiveMode.Create, leaveOpen: true, entryNameEncoding: null, ct);
@@ -99,6 +100,21 @@ public sealed class EditionArchive
             await source.CopyToAsync(target, ct);
         }
 
+        foreach (var image in images)
+        {
+            var file = data.AssignmentImages!.First(i => i.Id == image.Id).File;
+            await using var source = await _storage.OpenReadStreamAsync(image.StoragePath, ct);
+            if (source == null)
+            {
+                missing.Add(file);
+                continue;
+            }
+
+            var entry = zip.CreateEntry(file, CompressionLevel.NoCompression);
+            await using var target = await entry.OpenAsync(ct);
+            await source.CopyToAsync(target, ct);
+        }
+
         if (missing.Count > 0)
         {
             _logger.LogWarning("Export of edition {Edition}: {Count} files are no longer on disk", edition.Name, missing.Count);
@@ -108,7 +124,7 @@ public sealed class EditionArchive
         return missing;
     }
 
-    private async Task<(Edition Edition, List<Submission> Submissions, Dictionary<Guid, string> Files, ArchiveData Data)> ReadForExportAsync(
+    private async Task<(Edition Edition, List<Submission> Submissions, Dictionary<Guid, string> Files, List<AssignmentImage> Images, ArchiveData Data)> ReadForExportAsync(
         Guid editionId, CancellationToken ct)
     {
         var edition = await FindAsync(editionId, ct) ?? throw new InvalidOperationException("Edition not found");
@@ -129,14 +145,17 @@ public sealed class EditionArchive
         var editionRoot = EditionRoot(edition.StorageFolder);
         var groupNames = groups.ToDictionary(g => g.Id, g => g.Name);
         var files = submissions.ToDictionary(s => s.Id, s => FilesFolder + RelativeFilePath(editionRoot, s, groupNames));
+        var images = (await _db.AssignmentImages.IgnoreQueryFilters().AsNoTracking().Where(i => i.EditionId == editionId).ToListAsync(ct))
+            .OrderBy(i => i.AssignmentCode).ThenBy(i => i.SortOrder).ToList();
 
         var data = new ArchiveData(
             Format, Version, _time.GetUtcNow(),
             new EditionData(edition.Id, edition.Name, edition.Year, edition.Status, edition.CreatedAt, edition.ArchivedAt, standing),
             groups.Select(g => g.Team).OfType<Team>().DistinctBy(t => t.Id).Select(t => new TeamData(t.Id, t.Name, t.CreatedAt)).ToList(),
-            groups.Select(g => new GroupData(g.Id, g.TeamId, g.Name, g.Abbreviation, g.SlackChannelId, g.AdventurersSlackChannelId, g.MapToken, g.Description, g.CreatedAt)).ToList(),
+            groups.Select(g => new GroupData(g.Id, g.TeamId, g.Name, g.Abbreviation, g.SlackChannelId, g.AdventurersSlackChannelId, g.MapToken, g.Description, g.CreatedAt,
+                g.OpenLocations)).ToList(),
             await _db.Assignments.IgnoreQueryFilters().AsNoTracking().Where(a => a.EditionId == editionId)
-                .Select(a => new AssignmentData(a.Code, a.Title, a.Description, a.StandardPoints, a.AwesomePoints, a.CreatedAt)).ToListAsync(ct),
+                .Select(a => new AssignmentData(a.Code, a.Title, a.Description, a.StandardPoints, a.AwesomePoints, a.CreatedAt, a.EditedAt)).ToListAsync(ct),
             await _db.Locations.IgnoreQueryFilters().AsNoTracking().Where(l => l.EditionId == editionId).OrderBy(l => l.Number)
                 .Select(l => new LocationData(l.Number, l.Name, l.Latitude, l.Longitude, l.Hint)).ToListAsync(ct),
             submissions.Select(s => new SubmissionData(s.Id, s.GroupId, s.AssignmentCode, s.Kind, s.SlackChannelId, s.SlackMessageId, s.SlackFileId,
@@ -147,10 +166,9 @@ public sealed class EditionArchive
                 .Select(b => new BonusPointsData(b.GroupId, b.CategoryKey, b.Points, b.UpdatedAt)).ToListAsync(ct),
             await _db.BonusPointsEntries.IgnoreQueryFilters().AsNoTracking().Where(b => groupIds.Contains(b.GroupId))
                 .Select(b => new BonusEntryData(b.GroupId, b.CategoryKey, b.Delta, b.Total, b.ChangedAt)).ToListAsync(ct),
-            await _db.LocationUnlocks.IgnoreQueryFilters().AsNoTracking().Where(u => groupIds.Contains(u.GroupId))
-                .Select(u => new UnlockData(u.GroupId, u.LocationNumber, u.UnlockedAt)).ToListAsync(ct));
+            images.Select(i => new AssignmentImageData(i.Id, i.AssignmentCode, i.FileName, ImageFilePath(i), i.SortOrder, i.UploadedAt)).ToList());
 
-        return (edition, submissions, files, data);
+        return (edition, submissions, files, images, data);
     }
 
     private string EditionRoot(string? storageFolder) =>
@@ -174,6 +192,10 @@ public sealed class EditionArchive
         var name = Path.GetFileName(relative);
         return Path.Combine(directory, $"{submission.Id:N}-{name}").Replace('\\', '/');
     }
+
+    /// <summary>"files/_opdrachten/{code}/{id}-{name}": the place the pictures have in an edition's folder.</summary>
+    private static string ImageFilePath(AssignmentImage image) =>
+        $"{FilesFolder}{LocalFileStorageService.AssignmentImagesFolderName}/{image.AssignmentCode}/{image.Id:N}-{Path.GetFileName(image.StoragePath)}";
 
     private static CompressionLevel Compression(string contentType) =>
         contentType.StartsWith("image/") || contentType.StartsWith("video/") || contentType.StartsWith("audio/")
@@ -269,7 +291,7 @@ public sealed class EditionArchive
         {
             Teams = data.Teams ?? [], Groups = data.Groups ?? [], Assignments = data.Assignments ?? [], Locations = data.Locations ?? [],
             Submissions = (data.Submissions ?? []).Select(x => x with { Reviews = x.Reviews ?? [] }).ToList(),
-            BonusPoints = data.BonusPoints ?? [], BonusEntries = data.BonusEntries ?? [], Unlocks = data.Unlocks ?? []
+            BonusPoints = data.BonusPoints ?? [], BonusEntries = data.BonusEntries ?? [], AssignmentImages = data.AssignmentImages ?? []
         };
         if (data.Version > Version) return (null, "Deze editie komt uit een nieuwere versie van DU Review. Werk de app eerst bij.");
 
@@ -289,9 +311,14 @@ public sealed class EditionArchive
         var groupIds = data.Groups.Select(g => g.Id).ToHashSet();
         if (groupIds.Count != data.Groups.Count) return (null, "Een groep staat twee keer in het bestand.");
         if (data.Submissions.Any(s => !groupIds.Contains(s.GroupId)) || data.BonusPoints.Any(b => !groupIds.Contains(b.GroupId))
-            || data.BonusEntries.Any(b => !groupIds.Contains(b.GroupId)) || data.Unlocks.Any(u => !groupIds.Contains(u.GroupId)))
+            || data.BonusEntries.Any(b => !groupIds.Contains(b.GroupId)))
         {
             return (null, "Het bestand noemt een groep die er niet in staat.");
+        }
+
+        if (data.AssignmentImages!.Any(i => AssignmentCode.Normalize(i.AssignmentCode) != i.AssignmentCode))
+        {
+            return (null, "Een plaatje in het bestand hoort bij geen geldige opdracht.");
         }
 
         return (data with { Edition = data.Edition with { Name = name } }, null);
@@ -328,7 +355,7 @@ public sealed class EditionArchive
                 TeamId = knownTeams.Contains(g.TeamId) ? g.TeamId : Guid.Empty,
                 Name = g.Name.Trim(), Abbreviation = g.Abbreviation, SlackChannelId = g.SlackChannelId.Trim(),
                 AdventurersSlackChannelId = g.AdventurersSlackChannelId, MapToken = DatabaseInitializer.NewMapToken(),
-                Description = g.Description, CreatedAt = g.CreatedAt
+                Description = g.Description, CreatedAt = g.CreatedAt, OpenLocations = g.OpenLocations
             };
             _db.Groups.Add(group);
             groupIds[g.Id] = group.Id;
@@ -339,7 +366,7 @@ public sealed class EditionArchive
             _db.Assignments.Add(new Assignment
             {
                 EditionId = edition.Id, Code = a.Code, Title = a.Title, Description = a.Description,
-                StandardPoints = a.StandardPoints, AwesomePoints = a.AwesomePoints, CreatedAt = a.CreatedAt
+                StandardPoints = a.StandardPoints, AwesomePoints = a.AwesomePoints, CreatedAt = a.CreatedAt, EditedAt = a.EditedAt
             });
         }
 
@@ -381,9 +408,14 @@ public sealed class EditionArchive
             _db.BonusPointsEntries.Add(new BonusPointsEntry { GroupId = groupIds[b.GroupId], CategoryKey = b.CategoryKey, Delta = b.Delta, Total = b.Total, ChangedAt = b.ChangedAt });
         }
 
-        foreach (var u in data.Unlocks.DistinctBy(u => (u.GroupId, u.LocationNumber)))
+        foreach (var i in data.AssignmentImages!.DistinctBy(i => i.Id))
         {
-            _db.LocationUnlocks.Add(new LocationUnlock { GroupId = groupIds[u.GroupId], LocationNumber = u.LocationNumber, UnlockedAt = u.UnlockedAt });
+            var target = await UnpackAsync(zip, i.File, root, rootWithSeparator, ct);
+            _db.AssignmentImages.Add(new AssignmentImage
+            {
+                EditionId = edition.Id, AssignmentCode = i.AssignmentCode, FileName = i.FileName, StoragePath = target,
+                SortOrder = i.SortOrder, UploadedAt = i.UploadedAt
+            });
         }
 
         // The standing points at this app's group ids
@@ -395,12 +427,12 @@ public sealed class EditionArchive
         return edition;
     }
 
-    /// <summary>Unpacks a submission's file to its place in the edition's folder; a file missing from the ZIP stays missing.</summary>
+    /// <summary>Unpacks a submission's file or an assignment's picture to its place in the edition's folder; a file missing from the ZIP stays missing.</summary>
     private static async Task<string> UnpackAsync(ZipArchive zip, string? file, string root, string rootWithSeparator, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(file) || !file.StartsWith(FilesFolder, StringComparison.Ordinal))
         {
-            throw new ArchiveException("Een inzending in het bestand heeft geen geldige bestandsnaam.");
+            throw new ArchiveException("Een inzending of plaatje in het bestand heeft geen geldige bestandsnaam.");
         }
 
         // The path comes from the file: it must stay inside the edition's folder
@@ -442,20 +474,27 @@ public sealed class EditionArchive
     private sealed class ArchiveException(string message) : Exception(message);
 
     // ---------------------------------------------------------------- the file format (version 1)
+    // Fields added later are optional, so a file from before them still reads. Before the open locations per group
+    // there were unlocks per location ("unlocks"); an import leaves those out.
 
     public sealed record ArchiveData(
         string Format, int Version, DateTimeOffset ExportedAt, EditionData Edition,
         List<TeamData> Teams, List<GroupData> Groups, List<AssignmentData> Assignments, List<LocationData> Locations,
-        List<SubmissionData> Submissions, List<BonusPointsData> BonusPoints, List<BonusEntryData> BonusEntries, List<UnlockData> Unlocks);
+        List<SubmissionData> Submissions, List<BonusPointsData> BonusPoints, List<BonusEntryData> BonusEntries,
+        List<AssignmentImageData>? AssignmentImages = null);
 
     public sealed record EditionData(Guid Id, string Name, int Year, EditionStatus Status, DateTimeOffset CreatedAt, DateTimeOffset? ArchivedAt, string? FinalStandingJson);
 
     public sealed record TeamData(Guid Id, string Name, DateTimeOffset CreatedAt);
 
     public sealed record GroupData(Guid Id, Guid TeamId, string Name, string? Abbreviation, string SlackChannelId, string? AdventurersSlackChannelId,
-        string? MapToken, string? Description, DateTimeOffset CreatedAt);
+        string? MapToken, string? Description, DateTimeOffset CreatedAt, int? OpenLocations = null);
 
-    public sealed record AssignmentData(string Code, string? Title, string? Description, int StandardPoints, int AwesomePoints, DateTimeOffset CreatedAt);
+    public sealed record AssignmentData(string Code, string? Title, string? Description, int StandardPoints, int AwesomePoints, DateTimeOffset CreatedAt,
+        DateTimeOffset? EditedAt = null);
+
+    /// <summary>A picture of an assignment; <see cref="File"/> is its entry in the ZIP.</summary>
+    public sealed record AssignmentImageData(Guid Id, string AssignmentCode, string FileName, string File, int SortOrder, DateTimeOffset UploadedAt);
 
     public sealed record LocationData(int Number, string Name, double Latitude, double Longitude, string? Hint);
 
@@ -468,6 +507,4 @@ public sealed class EditionArchive
     public sealed record BonusPointsData(Guid GroupId, string CategoryKey, int Points, DateTimeOffset? UpdatedAt);
 
     public sealed record BonusEntryData(Guid GroupId, string CategoryKey, int Delta, int Total, DateTimeOffset ChangedAt);
-
-    public sealed record UnlockData(Guid GroupId, int LocationNumber, DateTimeOffset UnlockedAt);
 }

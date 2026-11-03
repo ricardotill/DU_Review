@@ -114,7 +114,7 @@ public class ReviewReminderService : BackgroundService
             var label = item.Kind switch
             {
                 SubmissionKind.CheckIn => $"{group} – locatie {item.AssignmentCode ?? "?"}",
-                SubmissionKind.Theme => $"{group} – thema {item.AssignmentCode ?? "?"}",
+                SubmissionKind.Theme => $"{group} – half-uur opdracht {item.AssignmentCode ?? "?"}",
                 _ => $"{group} – opdracht {item.AssignmentCode ?? "?"}"
             };
             var link = _links.WebLink(item.ChannelId, item.MessageTs);

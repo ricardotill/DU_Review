@@ -5,7 +5,7 @@
 
 <PageTitle>Avonturiers - DU Review</PageTitle>
 
-<PageHeader Title="Avonturiers" Subtitle="Check-ins, vrijgespeelde opdrachten en de themarondes per groep." />
+<PageHeader Title="Avonturiers" Subtitle="Check-ins, vrijgespeelde opdrachten en de half-uur opdrachten per groep." />
 <AdventurersTabs />
 
 @if (!Runtime.AdventurersEnabled)
@@ -58,11 +58,12 @@ else
                 <thead>
                     <tr>
                         <th>Groep</th>
-                        <th title="Goedgekeurde locaties">Locaties</th>
-                        <th title="Toeristen-opdrachten vrijgespeeld">Vrijgespeeld</th>
-                        <th title="Punten van gesloten rondes, maximaal @options.ThemeMaxPoints">Thema (max @options.ThemeMaxPoints)</th>
+                        <th title="Goedgekeurde locaties; doorgestreept: nog niet open voor de groep en telt nog niet">Locaties</th>
+                        <th title="Locaties 1 tot en met dit nummer zijn open voor de groep">Open t/m</th>
+                        <th title="Toeristen-opdrachten open (de eerste @Runtime.InitialOpenAssignments zijn altijd open)">Opdrachten open</th>
+                        <th title="Punten van gesloten rondes, maximaal @Runtime.ThemeMaxPoints">Half-uur (max @Runtime.ThemeMaxPoints)</th>
                         <th title="Wat de lopende ronde nu zou geven">Lopende ronde</th>
-                        <th title="Met de hand ingevoerd op Beheer, maximaal @options.FinalMaxPoints">Eindspel (max @options.FinalMaxPoints)</th>
+                        <th title="Met de hand ingevoerd op Beheer, maximaal @Runtime.FinalMaxPoints">Eindspel (max @Runtime.FinalMaxPoints)</th>
                         <th>Totaal</th>
                     </tr>
                 </thead>
@@ -70,6 +71,7 @@ else
                     @foreach (var group in overview.Groups.OrderByDescending(g => overview.Standing.For(g.Id)?.Total ?? 0).ThenBy(g => g.Name))
                     {
                         var score = overview.Standing.For(group.Id);
+                        var unlock = overview.UnlocksOf(group.Id);
                         <tr>
                             <td>
                                 <a href="groups/@group.Id" class="text-white">@group.Name</a>
@@ -78,8 +80,29 @@ else
                                     <span class="badge bg-secondary ms-1" title="Geen Avonturiers-kanaal ingesteld">geen kanaal</span>
                                 }
                             </td>
-                            <td>@(score == null || score.ApprovedLocations.Count == 0 ? "–" : string.Join(", ", score.ApprovedLocations))</td>
-                            <td>@(score?.UnlockedAssignments ?? 0)@(overview.UnlockTotal is { } total ? $" van {total}" : "")</td>
+                            <td class="approved-locations">
+                                @if (score == null || score.ApprovedLocations.Count == 0)
+                                {
+                                    <text>–</text>
+                                }
+                                else
+                                {
+                                    @foreach (var (location, index) in score.ApprovedLocations.Select((l, i) => (l, i)))
+                                    {
+                                        @(index > 0 ? ", " : "")
+                                        if (unlock?.CountedLocations.Contains(location) ?? true)
+                                        {
+                                            <span>@location</span>
+                                        }
+                                        else
+                                        {
+                                            <s class="text-secondary" title="Nog niet open voor deze groep: telt nog niet">@location</s>
+                                        }
+                                    }
+                                }
+                            </td>
+                            <td>@(unlock?.OpenLocations.ToString() ?? "–")</td>
+                            <td>@(unlock is { } u ? $"{u.OpenCount} van {u.Total}" : "–")</td>
                             <td>@(score?.ThemePoints ?? 0)</td>
                             <td class="text-secondary">@(score?.RunningRoundPoints is > 0 and var points ? $"+{points}" : "–")</td>
                             <td>@(score?.FinalPoints ?? 0)</td>
@@ -101,7 +124,7 @@ else
         {
             <div class="table-responsive">
                 <table class="custom-table">
-                    <thead><tr><th>Ronde</th><th>Tijd</th><th>Thema's</th><th>Status</th><th>Uitslag</th></tr></thead>
+                    <thead><tr><th>Ronde</th><th>Tijd</th><th>Half-uur opdrachten</th><th>Status</th><th>Uitslag</th></tr></thead>
                     <tbody>
                         @foreach (var result in overview.Standing.Rounds)
                         {
@@ -123,7 +146,7 @@ else
         <h2 class="panel-title"><i class="bi bi-images text-warning"></i> Laatste inzendingen</h2>
         @if (overview.Submissions.Count == 0)
         {
-            <p class="text-secondary mb-0">Nog geen check-ins of thema-inzendingen.</p>
+            <p class="text-secondary mb-0">Nog geen check-ins of half-uur opdrachten.</p>
         }
         else
         {

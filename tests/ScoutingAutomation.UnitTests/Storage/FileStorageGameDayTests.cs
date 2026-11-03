@@ -86,6 +86,28 @@ public class FileStorageGameDayTests : IDisposable
         Directory.Exists(Path.Combine(_temp.Path, "_deleted", "de-wolven")).Should().BeTrue();
     }
 
+    [Fact]
+    public async Task Backup_ShouldLeaveTheAssignmentPicturesAlone()
+    {
+        // A rebuild from Slack replaces the group folders; the pictures do not come from Slack
+        var picture = await _storage.SaveAssignmentImageAsync("12", "voorbeeld.png", new MemoryStream(new byte[] { 1 }));
+
+        await _storage.MoveAllToBackupAsync(new[] { "De Wolven" });
+
+        File.Exists(picture).Should().BeTrue();
+        picture.Replace('\\', '/').Should().Contain("/_opdrachten/12/");
+    }
+
+    [Theory]
+    [InlineData("../x")]
+    [InlineData("012")]
+    public async Task AssignmentPicture_CodeThatIsNotNormalised_ShouldBeRefused(string code)
+    {
+        var act = () => _storage.SaveAssignmentImageAsync(code, "a.png", new MemoryStream(new byte[] { 1 }));
+
+        await act.Should().ThrowAsync<ArgumentException>();
+    }
+
     public void Dispose() => _temp.Dispose();
 
     private sealed class BrokenStream : MemoryStream

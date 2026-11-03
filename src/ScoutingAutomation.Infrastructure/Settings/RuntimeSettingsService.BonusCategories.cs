@@ -8,6 +8,8 @@ namespace ScoutingAutomation.Infrastructure.Settings;
 /// The point categories entered by hand (Avonturiers, Reisbureau, ...). They come from appsettings; once an admin
 /// adds, renames or removes one in the app, the whole list is saved and wins over appsettings until it is reset.
 /// Removing a category hides its points but keeps them: adding the same key again brings them back.
+/// While the Avonturiers part is on, its category (<see cref="AdventurersSettings.FinalGameCategoryKey"/>) is always
+/// there and cannot be removed: it shows the computed Avonturiers points, and holds the hand-entered final game.
 /// </summary>
 public partial class RuntimeSettingsService
 {
@@ -23,7 +25,25 @@ public partial class RuntimeSettingsService
     /// <summary>The categories in use, in the order they are shown.</summary>
     public IReadOnlyList<BonusCategoryConfig> BonusCategories
     {
-        get { lock (_lock) return Copy(_bonusCategories ?? ConfiguredBonusCategories); }
+        get { lock (_lock) return Current(); }
+    }
+
+    /// <summary>The Avonturiers category: on while that part is on, and then never removed.</summary>
+    public bool IsFixedBonusCategory(string key) => FixedBonusKey is { } fixedKey && key == fixedKey;
+
+    /// <summary>The key of the Avonturiers category; null while the Avonturiers part is off.</summary>
+    public string? FixedBonusKey => AdventurersEnabled ? AdventurersOptions.FinalGameCategoryKey : null;
+
+    /// <summary>The list in use, with the Avonturiers category first when it is missing. Call inside the lock.</summary>
+    private List<BonusCategoryConfig> Current()
+    {
+        var list = Copy(_bonusCategories ?? ConfiguredBonusCategories);
+        if (FixedBonusKey is { } key && list.All(c => c.Key != key))
+        {
+            list.Insert(0, new BonusCategoryConfig { Key = key, Name = "Avonturiers", ShortName = "Av" });
+        }
+
+        return list;
     }
 
     /// <summary>Whether the categories were changed in the app.</summary>
@@ -44,7 +64,7 @@ public partial class RuntimeSettingsService
 
         lock (_lock)
         {
-            var list = Copy(_bonusCategories ?? ConfiguredBonusCategories);
+            var list = Current();
             if (list.Any(c => c.Key == key)) return $"De sleutel '{key}' is al in gebruik.";
             if (list.Count >= MaxBonusCategories) return $"Er kunnen hoogstens {MaxBonusCategories} categorieën zijn.";
 
@@ -66,7 +86,7 @@ public partial class RuntimeSettingsService
 
         lock (_lock)
         {
-            var list = Copy(_bonusCategories ?? ConfiguredBonusCategories);
+            var list = Current();
             var index = list.FindIndex(c => c.Key == key);
             if (index < 0) return $"Categorie '{key}' bestaat niet.";
             if (list[index].Name == renamed.Name && list[index].ShortName == renamed.ShortName) return null;
@@ -82,12 +102,18 @@ public partial class RuntimeSettingsService
     }
 
     /// <summary>Stops using a category: its points no longer count or show, but stay stored.</summary>
-    /// <returns>False when there was no such category.</returns>
+    /// <returns>False when there was no such category, or it is the Avonturiers category, which stays.</returns>
     public bool RemoveBonusCategory(string key)
     {
+        if (IsFixedBonusCategory(key))
+        {
+            _logger.LogWarning("Refused to remove bonus category {Key}: it belongs to the Avonturiers", key);
+            return false;
+        }
+
         lock (_lock)
         {
-            var list = Copy(_bonusCategories ?? ConfiguredBonusCategories);
+            var list = Current();
             if (list.RemoveAll(c => c.Key == key) == 0) return false;
 
             _bonusCategories = list;

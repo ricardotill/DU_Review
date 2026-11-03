@@ -53,43 +53,17 @@ public class LocationRepository : ILocationRepository
 
     public async Task DeleteAsync(int number, CancellationToken ct = default)
     {
-        _context.LocationUnlocks.RemoveRange(await _context.LocationUnlocks.Where(u => u.LocationNumber == number).ToListAsync(ct));
         _context.Locations.RemoveRange(await _context.Locations.Where(l => l.Number == number).ToListAsync(ct));
         await _context.SaveChangesAsync(ct);
     }
 
-    public async Task<IReadOnlyList<LocationUnlock>> GetUnlocksAsync(Guid? groupId = null, CancellationToken ct = default)
+    public async Task<bool> SetOpenLocationsAsync(Guid groupId, int? openLocations, CancellationToken ct = default)
     {
-        var query = _context.LocationUnlocks.AsNoTracking();
-        if (groupId.HasValue) query = query.Where(u => u.GroupId == groupId.Value);
-        return (await query.ToListAsync(ct)).OrderBy(u => u.LocationNumber).ToList();
-    }
+        var group = await _context.Groups.FirstOrDefaultAsync(g => g.Id == groupId, ct);
+        if (group == null || group.OpenLocations == openLocations) return false;
 
-    public async Task<bool> SetUnlockedAsync(Guid groupId, int number, bool unlocked, DateTimeOffset at, CancellationToken ct = default)
-    {
-        var row = await _context.LocationUnlocks.FirstOrDefaultAsync(u => u.GroupId == groupId && u.LocationNumber == number, ct);
-        if (unlocked == (row != null)) return false;
-
-        if (unlocked)
-        {
-            _context.LocationUnlocks.Add(new LocationUnlock { GroupId = groupId, LocationNumber = number, UnlockedAt = at });
-        }
-        else
-        {
-            _context.LocationUnlocks.Remove(row!);
-        }
-
-        try
-        {
-            await _context.SaveChangesAsync(ct);
-        }
-        catch (DbUpdateException ex) when (DbErrors.IsUniqueViolation(ex))
-        {
-            // Unlocked at the same moment in another tab: the result is the same
-            _context.ChangeTracker.Clear();
-            return false;
-        }
-
+        group.OpenLocations = openLocations;
+        await _context.SaveChangesAsync(ct);
         return true;
     }
 }
