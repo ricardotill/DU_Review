@@ -17,7 +17,7 @@ public sealed class AccountServiceTests : IAsyncLifetime, IAsyncDisposable
     private readonly ServiceProvider _services;
     private readonly FakeMailer _mailer = new();
     private readonly LogLines _log = new();
-    private readonly ScoutingSettings _settings = new() { Accounts = { BootstrapAdminEmail = "admin@du.test" } };
+    private readonly ScoutingSettings _settings = new() { PublicUrl = "https://du.test", Accounts = { BootstrapAdminEmail = "admin@du.test" } };
 
     public AccountServiceTests()
     {
@@ -262,6 +262,19 @@ public sealed class AccountServiceTests : IAsyncLifetime, IAsyncDisposable
         await With(async (s, _) => { await s.SendPasswordResetAsync("eva@du.test", baseUrl); return 0; });
 
         _mailer.Sent.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task FirstStart_WithMailButNoPublicUrl_ShouldLogTheLinkInsteadOfMailingABarePath()
+    {
+        _settings.PublicUrl = null;
+        _settings.Accounts.BootstrapAdminEmail = "second@du.test";
+        await RemoveAdminRoleAsync();
+
+        await InitializeAsync();
+
+        _mailer.Sent.Should().NotContain(m => m.To == "second@du.test");
+        _log.Lines.Should().Contain(l => l.Contains("second@du.test") && l.Contains("/wachtwoord-instellen?id="));
     }
 
     [Fact]

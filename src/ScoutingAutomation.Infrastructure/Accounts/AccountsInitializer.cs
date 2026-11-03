@@ -118,8 +118,11 @@ public class AccountsInitializer
             return;
         }
 
-        var link = await _accounts.CreatePasswordLinkAsync(user, _options.Value.PublicUrl?.TrimEnd('/') ?? "");
-        if (_mailer.CanSend)
+        var publicUrl = _options.Value.PublicUrl?.TrimEnd('/');
+        // A mailed link needs the full address; without PublicUrl it would be a bare path nobody can click
+        var absolute = Uri.TryCreate(publicUrl, UriKind.Absolute, out var parsed) && (parsed.Scheme == Uri.UriSchemeHttps || parsed.Scheme == Uri.UriSchemeHttp);
+        var link = await _accounts.CreatePasswordLinkAsync(user, publicUrl ?? "");
+        if (_mailer.CanSend && absolute)
         {
             try
             {
@@ -135,6 +138,6 @@ public class AccountsInitializer
 
         // Only without working mail: then the log is the only way in on a fresh install. The link works once, for a few days,
         // and anyone who can read this log already controls the server.
-        _logger.LogWarning("First admin {Email}: no mail could be sent, choose a password at {Link}", email, link);
+        _logger.LogWarning("First admin {Email}: no mail sent (no mail server or no Scouting:PublicUrl), choose a password at {Link}", email, link);
     }
 }
