@@ -624,8 +624,9 @@ public partial class RuntimeSettingsService
 
     private void Load()
     {
-        ResetToDefaults();
+        // Read first: when the database cannot be reached, the settings in memory stay as they were
         var (json, version) = _store.Load();
+        ResetToDefaults();
         _version = version;
         if (json == null) return;
 

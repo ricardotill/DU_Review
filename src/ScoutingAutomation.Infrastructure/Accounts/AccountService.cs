@@ -64,7 +64,12 @@ public class AccountService
 
     /// <returns>The new account, or the reason it was not made.</returns>
     /// <param name="actingUserId">The admin who makes it, checked against the database; null only for the app itself (the first admin).</param>
-    public async Task<(AppUser? User, string? Error)> CreateAsync(string? email, string? displayName, AccountKind kind, Guid? groupId, Guid? actingUserId)
+    public Task<(AppUser? User, string? Error)> CreateAsync(string? email, string? displayName, AccountKind kind, Guid? groupId, Guid? actingUserId) =>
+        // One at a time with the changes that take away an admin: an admin who is demoted or blocked at the same
+        // moment, also on another instance, cannot still make an account afterwards
+        _cluster.OneAtATimeAsync(AdminChanges, ClusterLockNames.Accounts, () => CreateCoreAsync(email, displayName, kind, groupId, actingUserId));
+
+    private async Task<(AppUser? User, string? Error)> CreateCoreAsync(string? email, string? displayName, AccountKind kind, Guid? groupId, Guid? actingUserId)
     {
         if (actingUserId is { } acting && await NotAdminAsync(acting) is { } notAdmin) return (null, notAdmin);
         email = email?.Trim();

@@ -81,6 +81,19 @@ public class SettingsFilesHardeningTests : IDisposable
     }
 
     [Fact]
+    public void DatabaseThatCannotBeRead_ShouldKeepTheSettingsInMemory()
+    {
+        var store = new FailingStore();
+        var runtime = TestRuntime.Create(new ScoutingSettings { ManualMode = false }, store);
+        runtime.SetManualMode(true);
+        store.FailLoad = true;
+
+        runtime.Reload();
+
+        runtime.ManualMode.Should().BeTrue("a short database outage must not switch manual mode off");
+    }
+
+    [Fact]
     public void SaveBasedOnOldSettings_ShouldBeRefusedAndShowTheNewOnes()
     {
         // Two instances of the app on one database
@@ -121,7 +134,9 @@ public class SettingsFilesHardeningTests : IDisposable
 
         public bool Fail { get; set; }
 
-        public (string? Json, long Version) Load() => _inner.Load();
+        public bool FailLoad { get; set; }
+
+        public (string? Json, long Version) Load() => FailLoad ? throw new InvalidOperationException("database down") : _inner.Load();
 
         public long? TrySave(string json, long expectedVersion) =>
             Fail ? throw new InvalidOperationException("database down") : _inner.TrySave(json, expectedVersion);

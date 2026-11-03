@@ -111,6 +111,8 @@ public static class ClusterLockNames
 
     public static string Channel(string? channel) => "slack-channel:" + (channel ?? "");
 
+    public static string Unlock(Guid groupId) => "unlock:" + groupId;
+
     public const string Editions = "editions";
 
     public const string Accounts = "accounts";
