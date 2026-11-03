@@ -752,7 +752,7 @@ public partial class RuntimeSettingsService
     /// </summary>
     private void SaveRecord(Action apply)
     {
-        for (var attempt = 1; ; attempt++)
+        while (true)
         {
             apply();
             try
@@ -760,9 +760,11 @@ public partial class RuntimeSettingsService
                 Save();
                 return;
             }
-            catch (RuntimeSettingsSaveException ex) when (ex.ChangedElsewhere && attempt < 5)
+            catch (RuntimeSettingsSaveException ex) when (ex.ChangedElsewhere)
             {
-                // Save read the newer settings back; apply the record to those
+                // Save read the newer settings back; apply the record to those. Each attempt starts from the newest
+                // version, so it only fails again when yet another save came in between: it does not give up and lose
+                // the record. A database that cannot be reached still ends the attempts.
             }
         }
     }
