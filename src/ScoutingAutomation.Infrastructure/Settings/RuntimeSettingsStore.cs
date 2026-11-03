@@ -63,12 +63,30 @@ public sealed class InMemoryRuntimeSettingsStore : IRuntimeSettingsStore
 /// <summary>Keeps the settings in the <c>RuntimeSettings</c> table.</summary>
 public sealed class DatabaseRuntimeSettingsStore(IServiceScopeFactory scopes, TimeProvider time) : IRuntimeSettingsStore
 {
+    // The settings are first read before DatabaseInitializer has made the table (a new database);
+    // checking for it first keeps that start free of query errors in the log.
+    private volatile bool _tableSeen;
+
     public (string? Json, long Version) Load()
     {
         using var scope = scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ScoutingDbContext>();
+        if (!_tableSeen && db.Database.IsRelational())
+        {
+            if (!TableExists(db)) return (null, 0);
+            _tableSeen = true;
+        }
+
         var row = db.RuntimeSettings.AsNoTracking().FirstOrDefault(r => r.Id == RuntimeSettingsRecord.SingleId);
         return row == null ? (null, 0) : (row.Json, row.Version);
+    }
+
+    private static bool TableExists(ScoutingDbContext db)
+    {
+        var sql = db.Database.IsNpgsql()
+            ? """SELECT COUNT(*)::int AS "Value" FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'RuntimeSettings'"""
+            : """SELECT COUNT(*) AS "Value" FROM sqlite_master WHERE type = 'table' AND name = 'RuntimeSettings'""";
+        return db.Database.SqlQueryRaw<int>(sql).AsEnumerable().First() > 0;
     }
 
     public long? TrySave(string json, long expectedVersion)

@@ -57,7 +57,7 @@ var configConnectionString = builder.Configuration.GetConnectionString("scouting
 var connectionString = !string.IsNullOrWhiteSpace(aspireConnectionString) ? aspireConnectionString : configConnectionString;
 var isAspire = !string.IsNullOrWhiteSpace(aspireConnectionString) || !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ASPIRE_RESOURCE_NAME"));
 
-var databaseDescription = "PostgreSQL via Aspire";
+var databaseDescription = "PostgreSQL";
 if (isAspire && !string.IsNullOrWhiteSpace(connectionString) && !connectionString.Contains("Data Source=", StringComparison.OrdinalIgnoreCase))
 {
     // PostgreSQL registered via Aspire component
@@ -99,6 +99,9 @@ var knownProxyNetworks = builder.Configuration.GetSection("ForwardedHeaders:Know
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    // A chain of known proxies (cloudflared -> load balancer) is followed back to the visitor; it still stops at
+    // the first address that is not a known proxy, so a visitor cannot pass on a made-up address.
+    options.ForwardLimit = null;
     foreach (var network in knownProxyNetworks)
     {
         options.KnownIPNetworks.Add(System.Net.IPNetwork.Parse(network));

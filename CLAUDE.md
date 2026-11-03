@@ -30,7 +30,7 @@ dotnet test tests/ScoutingAutomation.UnitTests --filter "FullyQualifiedName~Slac
 ./run-gameday.sh
 ```
 
-CI (`.github/workflows/ci.yml`) builds and tests every push and PR with `TZ=Europe/Amsterdam`, then builds the Docker image for linux/amd64 and linux/arm64 and pushes it to `ghcr.io/ricardotill/du_review` on `main` (`main`, `sha-*`) and on `v*` tags (`1.4.0`, `1.4`, `latest`). The production server pulls `latest` automatically, so only a tagged release goes live. The Dockerfile cross-compiles (`--platform=$BUILDPLATFORM`, `dotnet publish -a $TARGETARCH`); keep it that way so arm64 needs no emulated .NET build.
+CI (`.github/workflows/ci.yml`) builds and tests every push and PR with `TZ=Europe/Amsterdam`, then builds the Docker image for linux/amd64 and linux/arm64 and pushes it to `ghcr.io/ricardotill/du_review` on `main` (`main`, `sha-*`) and on `v*` tags (`1.4.0`, `1.4`, `latest`). The production server pulls `latest` automatically, so only a tagged release goes live. The Dockerfile cross-compiles (`--platform=$BUILDPLATFORM`, `dotnet publish -a $TARGETARCH`); keep it that way so arm64 needs no emulated .NET build. `docker-compose.yml` runs the app as replicas (`APP_REPLICAS`, default 2) on an external PostgreSQL (`DATABASE_CONNECTION_STRING`), behind Caddy (`docker/Caddyfile`) with a sticky cookie, because Blazor Server circuits must stay on one instance.
 
 The Web build runs `npm ci` and copies Bootstrap / Bootstrap Icons into `wwwroot/lib` (MSBuild targets in `ScoutingAutomation.Web.csproj`), so Node/npm must be installed.
 

@@ -1,5 +1,5 @@
 # DU Review as a container: a Release build of the Web project, run as the non-root `app` user.
-# Build and run with docker-compose.yml (PostgreSQL plus this app); see docs/handleiding-beheer.md, "Met Docker Compose".
+# Run with docker-compose.yml (two replicas behind a proxy, on your own PostgreSQL server); see docs/handleiding-beheer.md, "Met Docker Compose".
 # CI (.github/workflows/ci.yml) builds it for linux/amd64 and linux/arm64 and pushes it to ghcr.io/ricardotill/du_review.
 
 # Node for the build machine, not the target: npm only fetches Bootstrap and the fonts
