@@ -262,7 +262,7 @@ GitHub Actions test elke wijziging en bouwt daarna het image:
 
 | Tag | Wanneer | Gebruik |
 |---|---|---|
-| `latest` | bij elke release (een Git-tag `v1.4.0`) | standaard in `docker-compose.yml` |
+| `latest` | bij elke stabiele release: een Git-tag `v1.4.0` op een commit van `main` (een tag als `v1.4.0-rc1` schuift `latest` niet) | standaard in `docker-compose.yml` |
 | `1.4.0`, `1.4` | bij die release | een vaste versie, met `APP_VERSION=1.4.0` in `.env` |
 | `main`, `sha-<code>` | bij elke wijziging op `main` | testen van een versie die nog niet is uitgebracht |
 
