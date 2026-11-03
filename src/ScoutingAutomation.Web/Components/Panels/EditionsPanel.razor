@@ -1,0 +1,382 @@
+@inject IServiceScopeFactory ScopeFactory
+@inject TimeProvider Time
+
+@* Admins prepare next year's edition, keep its groups, and start it; the edition being played is archived then. *@
+<AuthorizeView Roles="@AppAuth.AdminRole">
+    <div class="glass-panel p-4 editions">
+        <h2 class="panel-title"><i class="bi bi-calendar3 text-info"></i> Edities</h2>
+        <p class="text-secondary small">
+            Elk jaar is een editie met eigen groepen, opdrachten en inzendingen. Alleen de actieve editie verwerkt Slack.
+            Bereid de volgende editie voor, zet de groepen en hun Slack-kanalen goed, en start hem op de speeldag:
+            de huidige editie wordt dan gearchiveerd met haar eindstand.
+        </p>
+
+        <div class="table-responsive mb-3">
+            <table class="table table-dark table-sm align-middle edition-list mb-0">
+                <thead>
+                    <tr><th>Editie</th><th>Status</th><th class="text-end">Groepen</th><th class="text-end">Inzendingen</th><th></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var summary in editions)
+                    {
+                        var e = summary.Edition;
+                        <tr class="@(selected?.Id == e.Id ? "table-active" : null)" @key="e.Id">
+                            <td class="text-white">@e.Name <span class="text-secondary small">(@e.Year)</span></td>
+                            <td><span class="badge @StatusClass(e.Status)">@StatusLabel(e.Status)</span></td>
+                            <td class="text-end">@summary.GroupCount</td>
+                            <td class="text-end">@summary.SubmissionCount</td>
+                            <td class="text-end">
+                                <button type="button" class="btn btn-sm btn-link text-info select-edition" @onclick="() => SelectAsync(e)">Bekijken</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <EditForm Model="newEdition" OnValidSubmit="CreateAsync" FormName="new-edition" Context="form" class="row g-2 align-items-end mb-3 new-edition">
+            <div class="col-md-4">
+                <label class="form-label text-secondary small fw-semibold mb-1" for="editionName">Nieuwe editie</label>
+                <InputText id="editionName" class="form-control form-control-dark form-control-sm" @bind-Value="newEdition.Name" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label text-secondary small fw-semibold mb-1" for="editionYear">Jaar</label>
+                <InputNumber id="editionYear" class="form-control form-control-dark form-control-sm" @bind-Value="newEdition.Year" />
+            </div>
+            <div class="col-md-4">
+                <div class="form-check">
+                    <InputCheckbox id="copyGroups" class="form-check-input" @bind-Value="newEdition.CopyGroups" />
+                    <label class="form-check-label small text-secondary" for="copyGroups">Groepen van de actieve editie overnemen</label>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-scout-primary btn-sm w-100 create-edition"><i class="bi bi-plus-lg me-1"></i> Maken</button>
+            </div>
+        </EditForm>
+
+        @if (error != null)
+        {
+            <div class="text-danger small mb-2 edition-error" role="alert">@error</div>
+        }
+
+        @if (notice != null)
+        {
+            <div class="alert alert-info small edition-notice" role="status">@notice</div>
+        }
+
+        @if (selected != null)
+        {
+            <div class="edition-detail border-top border-secondary pt-3">
+                <h3 class="h6 text-white mb-2">@selected.Name <span class="badge @StatusClass(selected.Status) ms-1">@StatusLabel(selected.Status)</span></h3>
+
+                @if (selected.Status == EditionStatus.Draft)
+                {
+                    <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
+                        @if (confirmActivate)
+                        {
+                            <span class="small text-warning">
+                                @(active == null ? "" : $"{active.Name} wordt gearchiveerd met de huidige stand. ")
+                                Groepen loggen opnieuw in. Zet daarna de start- en eindtijd op Configuratie.
+                            </span>
+                            <button type="button" class="btn btn-sm btn-warning confirm-activate" @onclick="ActivateAsync">Echt starten</button>
+                            <button type="button" class="btn btn-sm btn-link text-secondary" @onclick="() => confirmActivate = false">Annuleren</button>
+                        }
+                        else
+                        {
+                            <button type="button" class="btn btn-sm btn-outline-warning activate-edition" @onclick="() => confirmActivate = true">
+                                <i class="bi bi-play-fill me-1"></i> Deze editie starten
+                            </button>
+                            @if (confirmDelete)
+                            {
+                                <button type="button" class="btn btn-sm btn-danger confirm-delete-edition" @onclick="DeleteAsync">Echt verwijderen</button>
+                            }
+                            else
+                            {
+                                <button type="button" class="btn btn-sm btn-link text-danger delete-edition" @onclick="() => confirmDelete = true">Verwijderen</button>
+                            }
+                        }
+                    </div>
+                }
+
+                @if (selected.Status == EditionStatus.Archived)
+                {
+                    var standing = EditionService.ReadStanding(selected);
+                    <p class="text-secondary small mb-1">Eindstand@(selected.ArchivedAt is { } at ? $" bij het archiveren op {GameTime.ToGameTime(at):d MMMM yyyy}" : "")</p>
+                    @if (standing.Count == 0)
+                    {
+                        <p class="text-secondary small">Geen eindstand bewaard.</p>
+                    }
+                    else
+                    {
+                        <ol class="small final-standing">
+                            @foreach (var row in standing)
+                            {
+                                <li value="@row.Rank">@row.GroupName <span class="text-secondary">· @row.Score punten</span></li>
+                            }
+                        </ol>
+                    }
+                }
+
+                <div class="table-responsive">
+                    <table class="table table-dark table-sm align-middle edition-groups mb-2">
+                        <thead>
+                            <tr><th>Groep</th><th>Afk.</th><th>Slack-kanaal</th><th>Avonturiers-kanaal</th><th></th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var g in groups)
+                            {
+                                <tr @key="g.Id">
+                                    @if (editing?.Id == g.Id)
+                                    {
+                                        <td><input class="form-control form-control-dark form-control-sm" aria-label="Naam" @bind="editing.Name" /></td>
+                                        <td><input class="form-control form-control-dark form-control-sm" aria-label="Afkorting" @bind="editing.Abbreviation" /></td>
+                                        <td><input class="form-control form-control-dark form-control-sm" aria-label="Slack-kanaal" @bind="editing.Channel" /></td>
+                                        <td><input class="form-control form-control-dark form-control-sm" aria-label="Avonturiers-kanaal" @bind="editing.AdventurersChannel" /></td>
+                                        <td class="text-end text-nowrap">
+                                            <button type="button" class="btn btn-sm btn-scout-primary save-group" @onclick="SaveGroupAsync">Opslaan</button>
+                                            <button type="button" class="btn btn-sm btn-link text-secondary" @onclick="() => editing = null">Annuleren</button>
+                                        </td>
+                                    }
+                                    else
+                                    {
+                                        <td class="text-white">@g.Name</td>
+                                        <td class="small">@g.Abbreviation</td>
+                                        <td class="small"><code>@g.SlackChannelId</code></td>
+                                        <td class="small"><code>@g.AdventurersSlackChannelId</code></td>
+                                        <td class="text-end text-nowrap">
+                                            @if (selected.Status != EditionStatus.Archived)
+                                            {
+                                                <button type="button" class="btn btn-sm btn-link text-info edit-group" title="Wijzigen" aria-label="@($"{g.Name} wijzigen")" @onclick="() => EditGroup(g)">
+                                                    <i class="bi bi-pencil"></i>
+                                                </button>
+                                                <button type="button" class="btn btn-sm btn-link text-danger remove-group" title="Uit deze editie halen" aria-label="@($"{g.Name} uit deze editie halen")" @onclick="() => RemoveGroupAsync(g)">
+                                                    <i class="bi bi-x-lg"></i>
+                                                </button>
+                                            }
+                                        </td>
+                                    }
+                                </tr>
+                            }
+                            @if (groups.Count == 0)
+                            {
+                                <tr><td colspan="5" class="text-secondary small">Nog geen groepen.</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                @if (selected.Status != EditionStatus.Archived && editing?.Id == null)
+                {
+                    var input = editing ??= new GroupForm();
+                    <div class="row g-2 align-items-end add-group">
+                        <div class="col-md-3">
+                            <label class="form-label text-secondary small fw-semibold mb-1" for="groupTeam">Team</label>
+                            <select id="groupTeam" class="form-select form-select-dark form-select-sm" @bind="input.TeamId" @bind:after="FillFromTeam">
+                                <option value="">Nieuw team</option>
+                                @foreach (var t in teams.Where(t => groups.All(g => g.TeamId != t.Id)))
+                                {
+                                    <option value="@t.Id">@t.Name</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label text-secondary small fw-semibold mb-1" for="groupName">Naam</label>
+                            <input id="groupName" class="form-control form-control-dark form-control-sm" @bind="input.Name" />
+                        </div>
+                        <div class="col-md-1">
+                            <label class="form-label text-secondary small fw-semibold mb-1" for="groupAbbreviation">Afk.</label>
+                            <input id="groupAbbreviation" class="form-control form-control-dark form-control-sm" @bind="input.Abbreviation" />
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label text-secondary small fw-semibold mb-1" for="groupChannel">Slack-kanaal</label>
+                            <input id="groupChannel" class="form-control form-control-dark form-control-sm" placeholder="C0123ABCD" @bind="input.Channel" />
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label text-secondary small fw-semibold mb-1" for="groupAdventurers">Avonturiers</label>
+                            <input id="groupAdventurers" class="form-control form-control-dark form-control-sm" placeholder="optioneel" @bind="input.AdventurersChannel" />
+                        </div>
+                        <div class="col-md-1">
+                            <button type="button" class="btn btn-scout-primary btn-sm w-100 add-group-button" @onclick="SaveGroupAsync"><i class="bi bi-plus-lg"></i></button>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</AuthorizeView>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private IReadOnlyList<EditionSummary> editions = [];
+    private IReadOnlyList<Group> groups = [];
+    private IReadOnlyList<Team> teams = [];
+    private Edition? selected;
+    private Edition? active;
+    private NewEdition newEdition = new();
+    private GroupForm? editing;
+    private bool confirmActivate;
+    private bool confirmDelete;
+    private string? error;
+    private string? notice;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        var year = GameTime.ToGameTime(Time.GetUtcNow()).Year;
+        var next = Math.Max(year, (active?.Year ?? year - 1) + 1);
+        newEdition = new NewEdition { Name = Edition.DefaultName(next), Year = next };
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var scope = ScopeFactory.CreateAsyncScope();
+        var service = scope.ServiceProvider.GetRequiredService<EditionService>();
+        editions = await service.GetAllAsync();
+        teams = await service.GetTeamsAsync();
+        active = editions.Select(s => s.Edition).FirstOrDefault(e => e.Status == EditionStatus.Active);
+        selected = selected == null ? active : editions.Select(s => s.Edition).FirstOrDefault(e => e.Id == selected.Id) ?? active;
+        groups = selected == null ? [] : await service.GetGroupsAsync(selected.Id);
+    }
+
+    private async Task SelectAsync(Edition edition)
+    {
+        selected = edition;
+        editing = null;
+        confirmActivate = confirmDelete = false;
+        error = notice = null;
+        await LoadAsync();
+    }
+
+    private async Task CreateAsync()
+    {
+        notice = null;
+        Edition? made = null;
+        error = await AdminActions.RunTaskAsync(AuthState, async () =>
+        {
+            await using var scope = ScopeFactory.CreateAsyncScope();
+            var (edition, problem) = await scope.ServiceProvider.GetRequiredService<EditionService>()
+                .CreateAsync(newEdition.Name, newEdition.Year, newEdition.CopyGroups);
+            made = edition;
+            return problem;
+        });
+        if (made != null)
+        {
+            selected = made;
+            editing = null;
+            notice = $"{made.Name} is klaar om voor te bereiden. Controleer de groepen en kanalen; start hem op de speeldag.";
+        }
+
+        await LoadAsync();
+    }
+
+    private void EditGroup(Group group)
+    {
+        error = null;
+        editing = new GroupForm
+        {
+            Id = group.Id, TeamId = group.TeamId, Name = group.Name, Abbreviation = group.Abbreviation,
+            Channel = group.SlackChannelId, AdventurersChannel = group.AdventurersSlackChannelId, Description = group.Description
+        };
+    }
+
+    private void FillFromTeam()
+    {
+        if (editing?.TeamId is { } id && string.IsNullOrWhiteSpace(editing.Name))
+        {
+            editing.Name = teams.FirstOrDefault(t => t.Id == id)?.Name;
+        }
+    }
+
+    private async Task SaveGroupAsync()
+    {
+        if (selected == null || editing == null) return;
+        var form = editing;
+        var editionId = selected.Id;
+        notice = null;
+        error = await AdminActions.RunTaskAsync(AuthState, async () =>
+        {
+            await using var scope = ScopeFactory.CreateAsyncScope();
+            return await scope.ServiceProvider.GetRequiredService<EditionService>().SaveGroupAsync(editionId,
+                new GroupInput(form.Id, form.TeamId, form.Name, form.Abbreviation, form.Channel, form.AdventurersChannel, form.Description));
+        });
+        if (error == null) editing = null;
+        await LoadAsync();
+    }
+
+    private async Task RemoveGroupAsync(Group group)
+    {
+        notice = null;
+        error = await AdminActions.RunTaskAsync(AuthState, async () =>
+        {
+            await using var scope = ScopeFactory.CreateAsyncScope();
+            return await scope.ServiceProvider.GetRequiredService<EditionService>().RemoveGroupAsync(group.Id);
+        });
+        await LoadAsync();
+    }
+
+    private async Task ActivateAsync()
+    {
+        if (selected == null) return;
+        var edition = selected;
+        confirmActivate = false;
+        error = await AdminActions.RunTaskAsync(AuthState, async () =>
+        {
+            await using var scope = ScopeFactory.CreateAsyncScope();
+            return await scope.ServiceProvider.GetRequiredService<EditionService>().ActivateAsync(edition.Id);
+        });
+        if (error == null) notice = $"{edition.Name} is nu de actieve editie. Zet de start- en eindtijd op Configuratie.";
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (selected == null) return;
+        var edition = selected;
+        confirmDelete = false;
+        error = await AdminActions.RunTaskAsync(AuthState, async () =>
+        {
+            await using var scope = ScopeFactory.CreateAsyncScope();
+            return await scope.ServiceProvider.GetRequiredService<EditionService>().DeleteAsync(edition.Id);
+        });
+        if (error == null)
+        {
+            selected = null;
+            notice = $"{edition.Name} is verwijderd.";
+        }
+
+        await LoadAsync();
+    }
+
+    private static string StatusLabel(EditionStatus status) => status switch
+    {
+        EditionStatus.Active => "Actief",
+        EditionStatus.Draft => "In voorbereiding",
+        _ => "Gearchiveerd"
+    };
+
+    private static string StatusClass(EditionStatus status) => status switch
+    {
+        EditionStatus.Active => "bg-success",
+        EditionStatus.Draft => "bg-warning text-dark",
+        _ => "bg-secondary"
+    };
+
+    private sealed class NewEdition
+    {
+        public string? Name { get; set; }
+        public int Year { get; set; }
+        public bool CopyGroups { get; set; } = true;
+    }
+
+    private sealed class GroupForm
+    {
+        public Guid? Id { get; set; }
+        public Guid? TeamId { get; set; }
+        public string? Name { get; set; }
+        public string? Abbreviation { get; set; }
+        public string? Channel { get; set; }
+        public string? AdventurersChannel { get; set; }
+        public string? Description { get; set; }
+    }
+}

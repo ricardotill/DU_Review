@@ -25,6 +25,9 @@ public static class AppAuth
     /// <summary>The group of a group login.</summary>
     public const string GroupIdClaim = "du:group";
 
+    /// <summary>The team of a group login: the group across editions.</summary>
+    public const string TeamIdClaim = "du:team";
+
     /// <summary>Whether this is a group login rather than jury, beamer or admin.</summary>
     public static bool IsGroup(ClaimsPrincipal user) => user.IsInRole(GroupRole);
 
@@ -35,13 +38,17 @@ public static class AppAuth
     public static Guid? GroupId(ClaimsPrincipal user) =>
         IsGroup(user) && Guid.TryParse(user.FindFirstValue(GroupIdClaim), out var id) ? id : null;
 
+    /// <summary>The team of a group login, also when it does not play the active edition; null for everyone else.</summary>
+    public static Guid? TeamId(ClaimsPrincipal user) =>
+        IsGroup(user) && Guid.TryParse(user.FindFirstValue(TeamIdClaim), out var id) ? id : null;
+
     /// <summary>The account of a login.</summary>
     public static Guid? UserId(ClaimsPrincipal user) =>
         Guid.TryParse(user.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : null;
 
     /// <summary>Where a login starts: a group and the beamer have no use for a jury page.</summary>
     public static string StartPage(ClaimsPrincipal user, string? returnUrl) =>
-        IsBeamer(user) ? "/scoreboard" : IsGroup(user) ? "/" : SafeReturnUrl(returnUrl);
+        IsBeamer(user) ? "/scoreboard" : IsGroup(user) ? (GroupId(user) == null ? "/edities" : "/") : SafeReturnUrl(returnUrl);
 
     /// <summary>Only local paths, so a login link cannot send people to another site.</summary>
     public static string SafeReturnUrl(string? returnUrl) =>

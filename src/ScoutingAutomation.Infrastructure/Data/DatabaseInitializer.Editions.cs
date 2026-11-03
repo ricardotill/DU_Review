@@ -89,6 +89,23 @@ public partial class DatabaseInitializer
                   "CreatedAt" timestamp with time zone NOT NULL)
               """;
         await _context.Database.ExecuteSqlRawAsync(teams, ct);
+
+        // Added with the editions screen
+        if (Sqlite)
+        {
+            await AddSqliteColumnAsync("Editions", "StorageFolder", "TEXT NULL", ct);
+            await AddSqliteColumnAsync("Editions", "ArchivedAt", "TEXT NULL", ct);
+            await AddSqliteColumnAsync("Editions", "FinalStandingJson", "TEXT NULL", ct);
+        }
+        else
+        {
+            await _context.Database.ExecuteSqlRawAsync(
+                $"ALTER TABLE \"Editions\" ADD COLUMN IF NOT EXISTS \"StorageFolder\" character varying({Edition.MaxNameLength + 20}) NULL", ct);
+            await _context.Database.ExecuteSqlRawAsync(
+                "ALTER TABLE \"Editions\" ADD COLUMN IF NOT EXISTS \"ArchivedAt\" timestamp with time zone NULL", ct);
+            await _context.Database.ExecuteSqlRawAsync(
+                "ALTER TABLE \"Editions\" ADD COLUMN IF NOT EXISTS \"FinalStandingJson\" text NULL", ct);
+        }
     }
 
     /// <summary>
@@ -211,14 +228,27 @@ public partial class DatabaseInitializer
         _logger.LogInformation("Added column {Column} to {Table}", column, table);
     }
 
-    /// <summary>A database without any edition (just made) gets the active edition of this year.</summary>
+    /// <summary>
+    /// A database without any edition (just made) gets the active edition of this year. The edition being played is
+    /// then known to the rest of the app (the folder files go to).
+    /// </summary>
     private async Task EnsureActiveEditionAsync(CancellationToken ct)
     {
-        if (await _context.Editions.IgnoreQueryFilters().AnyAsync(ct)) return;
+        if (!await _context.Editions.AnyAsync(ct))
+        {
+            var year = DateTimeOffset.UtcNow.ToGameTime().Year;
+            _context.Editions.Add(new Edition { Name = Edition.DefaultName(year), Year = year, Status = EditionStatus.Active });
+            await _context.SaveChangesAsync(ct);
+            _logger.LogInformation("Created the first edition: {Edition}", Edition.DefaultName(year));
+        }
 
-        var year = DateTimeOffset.UtcNow.ToGameTime().Year;
-        _context.Editions.Add(new Edition { Name = Edition.DefaultName(year), Year = year, Status = EditionStatus.Active });
-        await _context.SaveChangesAsync(ct);
-        _logger.LogInformation("Created the first edition: {Edition}", Edition.DefaultName(year));
+        var active = await _context.Editions.AsNoTracking().FirstOrDefaultAsync(e => e.Status == EditionStatus.Active, ct);
+        if (active == null)
+        {
+            _logger.LogWarning("No edition is active: Slack messages find no group until an admin starts an edition");
+            return;
+        }
+
+        _activeEdition?.Set(active);
     }
 }

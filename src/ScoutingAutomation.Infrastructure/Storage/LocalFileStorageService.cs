@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using ScoutingAutomation.Contracts.Configuration;
 using ScoutingAutomation.Domain.Enums;
 using ScoutingAutomation.Domain.Interfaces;
+using ScoutingAutomation.Infrastructure.Editions;
 using ScoutingAutomation.Infrastructure.Settings;
 
 namespace ScoutingAutomation.Infrastructure.Storage;
@@ -11,10 +12,12 @@ public class LocalFileStorageService : IFileStorageService
 {
     private readonly string _storageRoot;
     private readonly ILogger<LocalFileStorageService> _logger;
+    private readonly ActiveEdition? _edition;
 
-    public LocalFileStorageService(IOptions<ScoutingSettings> options, ILogger<LocalFileStorageService> logger)
+    public LocalFileStorageService(IOptions<ScoutingSettings> options, ILogger<LocalFileStorageService> logger, ActiveEdition? edition = null)
     {
         _logger = logger;
+        _edition = edition;
         _storageRoot = Path.GetFullPath(string.IsNullOrWhiteSpace(options.Value.StorageRoot)
             ? "./scouting_storage"
             : options.Value.StorageRoot);
@@ -47,9 +50,16 @@ public class LocalFileStorageService : IFileStorageService
     private static readonly StringComparison PathComparison =
         OperatingSystem.IsLinux() ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
 
+    /// <summary>
+    /// Where the group folders of the active edition are: the storage root for the first edition, a folder of its own
+    /// for every later one, so a group that plays again does not mix its files with last year's.
+    /// </summary>
+    private string EditionRoot =>
+        _edition?.Current.StorageFolder is { Length: > 0 } folder ? EnsureInsideRoot(Path.Combine(_storageRoot, folder)) : _storageRoot;
+
     public string GetStatusDirectoryPath(string groupName, SubmissionStatus status)
     {
-        var groupRoot = Path.Combine(_storageRoot, SanitizePath(groupName));
+        var groupRoot = Path.Combine(EditionRoot, SanitizePath(groupName));
 
         // Unreviewed files live in the group folder itself; reviewed files get a status subfolder
         if (status is SubmissionStatus.Received or SubmissionStatus.Pending)
@@ -81,7 +91,7 @@ public class LocalFileStorageService : IFileStorageService
     public Task EnsureFolderStructureAsync(string groupName, CancellationToken ct = default)
     {
         var safeGroupName = SanitizePath(groupName);
-        var groupRoot = Path.Combine(_storageRoot, safeGroupName);
+        var groupRoot = Path.Combine(EditionRoot, safeGroupName);
 
         foreach (var status in Enum.GetValues<SubmissionStatus>())
         {
@@ -274,7 +284,7 @@ public class LocalFileStorageService : IFileStorageService
         // Only the app's own group folders: the storage root may be a shared folder with other things in it
         foreach (var folder in groupNames.Select(FolderName).Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            var source = EnsureInsideRoot(Path.Combine(_storageRoot, folder));
+            var source = EnsureInsideRoot(Path.Combine(EditionRoot, folder));
             if (Directory.Exists(source))
             {
                 Directory.Move(source, Path.Combine(backup, folder));
@@ -290,7 +300,7 @@ public class LocalFileStorageService : IFileStorageService
         var backup = EnsureInsideRoot(backupFolder);
         foreach (var folder in Directory.GetDirectories(backup))
         {
-            var target = Path.Combine(_storageRoot, Path.GetFileName(folder));
+            var target = Path.Combine(EditionRoot, Path.GetFileName(folder));
             if (Directory.Exists(target))
             {
                 // Recreated after the move: only empty status folders can be in it yet

@@ -60,6 +60,10 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ReviewReminderService>();
         services.AddHostedService(sp => sp.GetRequiredService<ReviewReminderService>());
 
+        // Editions: the one being played, and making and switching editions
+        services.AddSingleton<ScoutingAutomation.Infrastructure.Editions.ActiveEdition>();
+        services.AddScoped<ScoutingAutomation.Infrastructure.Editions.EditionService>();
+
         // Avonturiers: check-ins, theme rounds, broadcasts and the maps
         services.AddScoped<ILocationRepository, LocationRepository>();
         services.AddScoped<LocationService>();

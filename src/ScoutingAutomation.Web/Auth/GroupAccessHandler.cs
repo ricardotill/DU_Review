@@ -17,6 +17,7 @@ public sealed class GroupAccessHandler : AuthorizationHandler<StaffOrGroupPageRe
         if (context.User.IsInRole(AppAuth.JuryRole)
             // A group login without its group (claim missing or broken) gets nothing: pages would read "no group" as "all groups"
             || (AppAuth.GroupId(context.User) != null && Allows<GroupAccessAttribute>(context.Resource))
+            || (AppAuth.TeamId(context.User) != null && Allows<TeamAccessAttribute>(context.Resource))
             || (context.User.IsInRole(AppAuth.BeamerRole) && Allows<BeamerAccessAttribute>(context.Resource)))
         {
             context.Succeed(requirement);

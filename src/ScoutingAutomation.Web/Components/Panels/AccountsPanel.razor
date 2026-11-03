@@ -45,9 +45,9 @@
                     <label class="form-label text-secondary small fw-semibold mb-1" for="newGroup">Groep</label>
                     <InputSelect id="newGroup" class="form-select form-select-dark form-select-sm" @bind-Value="newAccount.GroupId">
                         <option value="">Kies…</option>
-                        @foreach (var g in groups)
+                        @foreach (var t in teams)
                         {
-                            <option value="@g.TeamId">@g.Name</option>
+                            <option value="@t.Id">@t.Name</option>
                         }
                     </InputSelect>
                 }
@@ -108,9 +108,9 @@
                                     {
                                         <select class="form-select form-select-dark form-select-sm" aria-label="Groep" @bind="editing.GroupId">
                                             <option value="">Kies…</option>
-                                            @foreach (var g in groups)
+                                            @foreach (var t in teams)
                                             {
-                                                <option value="@g.TeamId">@g.Name</option>
+                                                <option value="@t.Id">@t.Name</option>
                                             }
                                         </select>
                                     }
@@ -186,6 +186,8 @@
 
     private IReadOnlyList<AccountInfo> accounts = [];
     private IReadOnlyList<Group> groups = [];
+    // An account belongs to a team: also teams that play a later edition, or played an earlier one
+    private IReadOnlyList<Team> teams = [];
     private List<Group> groupsWithoutAccount = [];
     private NewAccount newAccount = new();
     private EditAccount? editing;
@@ -208,11 +210,12 @@
         canSendMail = service.CanSendMail;
         accounts = await service.ListAsync();
         groups = (await scope.ServiceProvider.GetRequiredService<IGroupRepository>().GetAllAsync()).OrderBy(g => g.Name).ToList();
+        teams = await scope.ServiceProvider.GetRequiredService<EditionService>().GetTeamsAsync();
         var withAccount = accounts.Where(a => a.Kind == AccountKind.Group).Select(a => a.GroupId).ToHashSet();
         groupsWithoutAccount = groups.Where(g => !withAccount.Contains(g.TeamId)).ToList();
     }
 
-    private string GroupName(Guid? id) => groups.FirstOrDefault(g => g.TeamId == id)?.Name ?? "onbekende groep";
+    private string GroupName(Guid? id) => groups.FirstOrDefault(g => g.TeamId == id)?.Name ?? teams.FirstOrDefault(t => t.Id == id)?.Name ?? "onbekende groep";
 
     private string BaseUri => BaseUrl.Of(Options.Value, Navigation.BaseUri);
 

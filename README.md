@@ -211,7 +211,7 @@ Wacht een bericht langer dan `Scouting:ReviewReminder:AfterMinutes` minuten op e
 
 ## Avonturiers
 
-Naast de Toeristen (de opdrachten in het groepskanaal) heeft elke groep **Avonturiers**: lopers die locaties bezoeken en themafoto's maken. Ze plaatsen hun foto's in een tweede Slack-kanaal per groep. Zet het deel aan met `Scouting:Adventurers:Enabled` en geef elke groep een `AdventurersSlackChannelId`. Staat het uit, dan negeert de app die kanalen en zijn de Avonturiers-pagina's verborgen.
+Naast de Toeristen (de opdrachten in het groepskanaal) heeft elke groep **Avonturiers**: lopers die locaties bezoeken en themafoto's maken. Ze plaatsen hun foto's in een tweede Slack-kanaal per groep. Zet het deel aan met `Scouting:Adventurers:Enabled` en geef elke groep een Avonturiers-kanaal (op **Beheer** > **Edities**). Staat het uit, dan negeert de app die kanalen en zijn de Avonturiers-pagina's verborgen.
 
 ### Check-ins op locaties
 
@@ -263,7 +263,20 @@ De Avonturiers-punten zijn de rondepunten (maximaal `ThemeMaxPoints`, standaard 
 
 ## Edities
 
-Elk jaar is een **editie** (bijvoorbeeld "DU 2026"), met haar eigen groepen, opdrachten, locaties en inzendingen. Er is altijd één actieve editie: alleen die verwerkt Slack, en alle pagina's tonen die. Een groep is daarnaast een vast **team** dat elk jaar mee kan doen; een groepsaccount hoort bij het team en komt na het inloggen bij de groep van dat team in de actieve editie. Doet het team niet mee aan de actieve editie, dan ziet het account geen groepspagina's.
+Elk jaar is een **editie** (bijvoorbeeld "DU 2026"), met haar eigen groepen, opdrachten, locaties en inzendingen. Er is altijd één actieve editie: alleen die verwerkt Slack, en alle pagina's tonen die. Een groep is daarnaast een vast **team** dat elk jaar mee kan doen; een groepsaccount hoort bij het team en komt na het inloggen bij de groep van dat team in de actieve editie. Doet het team niet mee aan de actieve editie, dan ziet het account alleen **Eerdere edities** en **Mijn account**.
+
+Beheerders doen alles op **Beheer** > **Edities**:
+
+- **Nieuwe editie**: naam en jaar. Hij krijgt de opdrachten van de actieve editie, en desgewenst ook de groepen (met hun team en Slack-kanalen). Een nieuwe editie is **in voorbereiding**: ze verwerkt nog geen Slack.
+- **Groepen**: per editie toevoegen (een nieuw team, of een team dat al eerder meedeed), wijzigen (naam, afkorting, Slack-kanaal, Avonturiers-kanaal) en weghalen. Een kanaal en een team horen maar bij één groep per editie; volgend jaar mag hetzelfde kanaal weer. Een groep met inzendingen kan niet uit een editie: eerst moeten ze beoordeeld of verwijderd zijn, anders zouden ze mee verdwijnen.
+- **Deze editie starten**: de actieve editie wordt gearchiveerd met haar eindstand, de nieuwe wordt actief. Slack, alle pagina's en de bestanden gaan vanaf dan over de nieuwe editie; groepen loggen opnieuw in en komen bij hun groep in de nieuwe editie. Zet daarna de start- en eindtijd op **Configuratie**: de instellingen (teksten, tijden, regels) gelden voor de actieve editie en schuiven niet vanzelf mee.
+- Een editie in voorbereiding kan weer weg; een gearchiveerde editie verandert niet meer.
+
+De bestanden van de eerste editie staan in `scouting_storage/` zoals altijd; elke latere editie krijgt een eigen map `scouting_storage/_edities/{editie}/`, zodat een groep die opnieuw meedoet haar bestanden niet mengt met die van vorig jaar.
+
+Op **Eerdere edities** ziet een groep de gearchiveerde edities waaraan haar team meedeed, met haar plaats en punten in de eindstand; de jury ziet daar alle eindstanden.
+
+De groepen staan sinds edities in de database. `Groups` in `appsettings.json` vult alleen een editie die nog geen groepen heeft (een nieuwe installatie); daarna past de app het niet meer toe.
 
 Een database van voor edities wordt bij de eerste start één editie, genoemd naar het jaar van de eerste inzending. Elke groep wordt een team met hetzelfde id, zodat groepsaccounts blijven werken; inzendingen, punten, locaties en instellingen blijven staan. Bij SQLite staat vooraf een kopie van de database in `scouting_storage/_backup/pre-editions-{tijdstip}.db`; bij PostgreSQL maak je zelf eerst een back-up (`pg_dump`).
 
@@ -347,7 +360,7 @@ Alles staat onder `Scouting` in `src/ScoutingAutomation.Web/appsettings.json`. W
 
 | Instelling | Betekenis |
 |---|---|
-| `Groups` | Per groep: naam, afkorting (voor bestandsnamen), Slack-kanaal-ID, optioneel het kanaal van de Avonturiers (`AdventurersSlackChannelId`) en omschrijving. Elk kanaal mag maar bij één groep horen; anders start de app niet. |
+| `Groups` | De groepen voor een nieuwe installatie: per groep naam, afkorting (voor bestandsnamen), Slack-kanaal-ID, optioneel het kanaal van de Avonturiers (`AdventurersSlackChannelId`) en omschrijving. Elk kanaal mag maar bij één groep horen; anders start de app niet. Alleen gebruikt zolang de actieve editie geen groepen heeft; daarna beheer je groepen op **Beheer** > **Edities**. |
 | `Reviewers` | Slack member-ID's van de jury. Alleen hun emoji's tellen. Op de pagina **Configuratie** kun je er meer toevoegen. |
 | `ReviewerNames` | Optioneel: een naam per member-ID, bijvoorbeeld `{ "U04ABC123": "Sanne" }`. Namen die in de app zijn ingevuld of uit Slack zijn opgehaald, gaan voor. |
 | `RuntimeSettingsFile` | Waar de in de app toegevoegde juryleden, hun namen, de aangepaste teksten van de bot, de in de app gezette start- en eindtijd en de kanalen met een start- of eindbericht worden bewaard (standaard `runtime-settings.json`). |

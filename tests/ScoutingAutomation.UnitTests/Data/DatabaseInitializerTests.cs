@@ -59,7 +59,7 @@ public class DatabaseInitializerTests : IDisposable
     }
 
     [Fact]
-    public async Task InitializeAsync_SecondRun_ShouldUpdateGroupsAndPointsWithoutReseeding()
+    public async Task InitializeAsync_SecondRun_ShouldUpdatePointsButLeaveTheGroupsToTheApp()
     {
         var name = $"Init_{Guid.NewGuid():N}";
         var settings = Settings();
@@ -77,9 +77,10 @@ public class DatabaseInitializerTests : IDisposable
             var before = await db.Submissions.CountAsync();
             await Create(db, settings).InitializeAsync();
 
+            // Groups are changed in the app once the edition has them
             var wolves = await db.Groups.SingleAsync(g => g.SlackChannelId == "C1");
-            wolves.Abbreviation.Should().Be("CDW");
-            wolves.Description.Should().Be("Nieuw");
+            wolves.Abbreviation.Should().Be("DWO");
+            wolves.Description.Should().Be("Welpen");
             (await db.Assignments.SingleAsync(a => a.Code == "1")).StandardPoints.Should().Be(5);
             (await db.Assignments.CountAsync()).Should().Be(7, "assignments removed from the CSV are kept");
             (await db.Submissions.CountAsync()).Should().Be(before);
@@ -313,7 +314,6 @@ public class DatabaseInitializerTests : IDisposable
         var path = Path.Combine(_temp.Path, "before-avonturiers.db");
         var options = new DbContextOptionsBuilder<ScoutingDbContext>().UseSqlite($"Data Source={path}").Options;
         var settings = Settings();
-        settings.Groups[0].AdventurersSlackChannelId = "CAV1";
         var groupId = Guid.NewGuid();
         await using (var db = new ScoutingDbContext(options))
         {
@@ -349,9 +349,8 @@ public class DatabaseInitializerTests : IDisposable
             var old = await db.Submissions.SingleAsync(s => s.SlackMessageId == "1727700000.000100");
             old.Kind.Should().Be(SubmissionKind.Assignment, "existing rows keep their meaning");
             var wolves = await db.Groups.SingleAsync(g => g.Id == groupId);
-            wolves.AdventurersSlackChannelId.Should().Be("CAV1");
-            wolves.MapToken.Should().NotBeNullOrWhiteSpace();
-            (await db.Groups.Select(g => g.MapToken).Distinct().CountAsync()).Should().Be(2);
+            wolves.AdventurersSlackChannelId.Should().BeNull();
+            wolves.MapToken.Should().NotBeNullOrWhiteSpace("every group gets a map link");
 
             db.Locations.Add(new Location { Number = 7, Name = "Molen", Latitude = 51.6, Longitude = 5.0 });
             db.LocationUnlocks.Add(new LocationUnlock { GroupId = groupId, LocationNumber = 7, UnlockedAt = DateTimeOffset.UtcNow });
@@ -421,10 +420,10 @@ public class DatabaseInitializerTests : IDisposable
             var edition = await db.Editions.SingleAsync();
             edition.Should().BeEquivalentTo(new { Name = "DU 2025", Year = 2025, Status = EditionStatus.Active }, "the game is from the year of its first submission");
             var groups = await db.Groups.ToListAsync();
-            groups.Should().HaveCount(3, "both old groups are kept and De Bosuilen is added");
+            groups.Should().HaveCount(2, "both old groups are kept; the settings only fill an edition without groups");
             groups.Should().OnlyContain(g => g.EditionId == edition.Id && g.TeamId != Guid.Empty);
             groups.Single(g => g.Name == "De Wolven").TeamId.Should().Be(Guid.Parse(wolves), "group accounts keep pointing at the group's id");
-            (await db.Teams.Select(t => t.Name).ToListAsync()).Should().BeEquivalentTo("De Wolven", "Oud team", "De Bosuilen");
+            (await db.Teams.Select(t => t.Name).ToListAsync()).Should().BeEquivalentTo("De Wolven", "Oud team");
             (await db.Assignments.Select(a => a.Code).ToListAsync()).Should().Contain("2");
             (await db.Locations.SingleAsync()).Name.Should().Be("Molen");
             (await new LocationRepository(db).GetUnlocksAsync(Guid.Parse(wolves))).Should().ContainSingle();

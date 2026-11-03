@@ -1,0 +1,79 @@
+@page "/edities"
+@attribute [TeamAccess]
+@attribute [ExcludeFromInteractiveRouting]
+@inject EditionService EditionData
+
+<PageTitle>Eerdere edities - DU Review</PageTitle>
+
+<PageHeader Title="Eerdere edities" Subtitle="@(team != null ? "De edities waaraan jullie meededen, met jullie plaats in de eindstand." : "Alle gearchiveerde edities met hun eindstand.")" />
+
+@if (rows.Count == 0)
+{
+    <div class="glass-panel p-4">
+        <p class="text-secondary small mb-0 no-editions">Nog geen eerdere edities.</p>
+    </div>
+}
+else
+{
+    <div class="row g-4">
+        @foreach (var row in rows)
+        {
+            <div class="col-md-6 col-xl-4">
+                <div class="glass-panel p-4 h-100 past-edition">
+                    <h2 class="panel-title"><i class="bi bi-calendar3 text-info"></i> @row.Edition.Name</h2>
+                    @if (team != null)
+                    {
+                        <p class="text-white mb-1">@row.GroupName</p>
+                        @if (row.Own is { } own)
+                        {
+                            <p class="mb-0"><span class="fs-4 fw-bold text-warning">@own.Rank<sup>e</sup></span> <span class="text-secondary">van @row.Standing.Count · @own.Score punten</span></p>
+                        }
+                        else
+                        {
+                            <p class="text-secondary small mb-0">Geen plaats in de eindstand.</p>
+                        }
+                    }
+                    else
+                    {
+                        <ol class="small mb-0">
+                            @foreach (var place in row.Standing)
+                            {
+                                <li value="@place.Rank">@place.GroupName <span class="text-secondary">· @place.Score punten</span></li>
+                            }
+                        </ol>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    private Guid? team;
+    private List<Row> rows = [];
+
+    private sealed record Row(Edition Edition, string? GroupName, IReadOnlyList<EditionStanding> Standing, EditionStanding? Own);
+
+    protected override async Task OnInitializedAsync()
+    {
+        // A group sees only the editions its own team played
+        team = AppAuth.TeamId(HttpContext.User);
+        if (team is { } id)
+        {
+            rows = (await EditionData.GetTeamHistoryAsync(id))
+                .Select(h => new Row(h.Edition, h.Group.Name, EditionService.ReadStanding(h.Edition), h.Standing))
+                .ToList();
+        }
+        else if (HttpContext.User.IsInRole(AppAuth.JuryRole))
+        {
+            rows = (await EditionData.GetAllAsync())
+                .Select(s => s.Edition)
+                .Where(e => e.Status == EditionStatus.Archived)
+                .Select(e => new Row(e, null, EditionService.ReadStanding(e), null))
+                .ToList();
+        }
+    }
+}

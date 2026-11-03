@@ -51,6 +51,7 @@ public class ScoutingDbContext : DbContext
             entity.Property(e => e.Id).ValueGeneratedNever();
             entity.Property(e => e.Name).IsRequired().HasMaxLength(Edition.MaxNameLength);
             entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(20);
+            entity.Property(e => e.StorageFolder).HasMaxLength(Edition.MaxNameLength + 20);
             // At most one active edition: it is the one that handles Slack
             entity.HasIndex(e => e.Status).IsUnique().HasDatabaseName(ActiveEditionIndexName).HasFilter("\"Status\" = 'Active'");
         });
