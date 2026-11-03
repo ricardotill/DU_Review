@@ -91,7 +91,7 @@ Bij catch-up en rebuild plaatst de bot geen berichten opnieuw. Dat geldt ook voo
 
 ## Wie mag wat
 
-Juryleden zien alles; alleen admins kunnen iets herstellen. Admin word je door op Beheer de beheerderssleutel in te vullen.
+Juryleden zien alles; alleen admins kunnen iets herstellen. Admin ben je met een beheerdersaccount (zie **Beheer** > **Accounts**).
 
 | Actie | Jury | Admin |
 | --- | --- | --- |
@@ -101,7 +101,7 @@ Juryleden zien alles; alleen admins kunnen iets herstellen. Admin word je door o
 | Override op een inzending | nee | ja |
 | Groep herbouwen, volledige rebuild | nee | ja |
 
-Wordt de beheerderssleutel opnieuw gemaakt, dan zijn open tabbladen geen admin meer. De knoppen weigeren dan op de server.
+Wordt een account geblokkeerd, verwijderd of geen beheerder meer, dan zijn open tabbladen van dat account binnen een minuut geen admin meer. De knoppen weigeren dan op de server.
 
 ## Checklist voor zaterdag
 
@@ -109,7 +109,7 @@ Wordt de beheerderssleutel opnieuw gemaakt, dan zijn open tabbladen geen admin m
 - [ ] Jury-Slack-ID's staan allemaal onder Reviewers.
 - [ ] Elke groep staat in de configuratie met het juiste kanaal, en met de Avonturiers aan ook het Avonturiers-kanaal.
 - [ ] De bot is lid van alle kanalen, ook die van de Avonturiers.
-- [ ] Minstens één coordinator per dienst heeft de beheerderssleutel.
+- [ ] Minstens één coordinator per dienst heeft een beheerdersaccount.
 - [ ] Tijdens het spel: `/events` open houden en de lijst Mislukte events in de gaten houden.
 - [ ] Na een storing of herstart: eerst Catch-up nu draaien, dan Alles opnieuw.
 - [ ] Geen volledige rebuild zonder overleg: overrides gaan verloren.

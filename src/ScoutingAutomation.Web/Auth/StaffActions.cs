@@ -11,7 +11,7 @@ public static class StaffActions
     public const string NotStaff = "Alleen voor de jury en beheerders.";
 
     public static async Task<bool> IsStaffAsync(Task<AuthenticationState>? state) =>
-        state != null && (await state).User.IsInRole(KeyAuth.JuryRole);
+        state != null && (await state).User.IsInRole(AppAuth.JuryRole);
 
     /// <returns>Null when done, otherwise the message to show.</returns>
     public static async Task<string?> RunAsync(Task<AuthenticationState>? state, Func<string?> action)

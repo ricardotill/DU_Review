@@ -34,36 +34,35 @@ Elke groep heeft een eigen wachtrij. Een groot filmpje van de ene groep houdt de
 
 ## Toegang
 
-De app is afgeschermd met een gedeelde **toegangssleutel**. Wie de app opent, moet eerst die sleutel invullen. Daarna blijft de browser 30 dagen ingelogd. Hoofdletters en spaties in de sleutel maken niet uit.
+Iedereen logt in met een eigen **account**: een e-mailadres en een wachtwoord. Daarna blijft de browser 30 dagen ingelogd. Er zijn vier soorten accounts:
 
-Er is daarnaast een aparte **beheerderssleutel**. Alleen in beheermodus kun je:
+| Soort | Wat je ziet en mag |
+| --- | --- |
+| **Jury** | Alles bekijken, zoeken, filteren en favorieten markeren, de stand voor groepen aan- of uitzetten. |
+| **Beheerder** | Alles wat de jury kan, en ook: accounts beheren, **Opnieuw opbouwen uit Slack**, juryleden en bot-teksten aanpassen, **Handmatige modus**, **Status handmatig aanpassen**, extra punten, exporteren. |
+| **Groep** | Alleen de eigen groep: dashboard en **Onze inzendingen**. Zie hieronder. |
+| **Beamer** | Alleen het **Scorebord** en de **Diavoorstelling**, voor het scherm in de zaal. |
 
-- de sleutels opnieuw aanmaken;
-- **Opnieuw opbouwen uit Slack** starten;
-- juryleden toevoegen, weghalen en hun namen aanpassen;
-- **Handmatige modus** aan- of uitzetten;
-- een status aanpassen met **Status handmatig aanpassen**.
+**De eerste beheerder.** Bij de eerste start maakt de app een beheerder voor het adres in `Scouting:Accounts:BootstrapAdminEmail` (bij Docker: `BOOTSTRAP_ADMIN_EMAIL` in `.env`). Die krijgt een mail met een link om een wachtwoord te kiezen. Alleen als er geen mail kan worden verstuurd, staat de link in het logboek. Is er geen beheerder en geen adres, dan start de app niet. Lokaal (`dotnet run`) is de eerste beheerder `admin@du.local`; open de link uit de console, of zet het wachtwoord meteen met `dotnet user-secrets set "Scouting:Accounts:BootstrapAdminPassword" "<wachtwoord>" --project src/ScoutingAutomation.Web`.
 
-Bekijken, zoeken, filteren en favorieten markeren kan iedereen met de toegangssleutel.
+**Accounts beheren.** Een beheerder maakt accounts aan op **Beheer** > **Accounts**: naam, e-mailadres, soort en bij een groep welke groep. De app mailt een uitnodiging met een link om een wachtwoord te kiezen; de link is 3 dagen geldig. Met **Link mailen** stuur je een nieuwe; zonder mailserver heet die knop **Link maken** en kopieer je de link zelf. Een account kun je aanpassen, blokkeren en verwijderen. Blokkeren, verwijderen of de soort wijzigen logt dat account binnen een minuut uit, ook in pagina's die al open staan. Je kunt jezelf niet blokkeren of verwijderen, en er blijft altijd minstens één beheerder.
 
-**Waar vind je de sleutels?** Bij de eerste start maakt de app beide sleutels zelf aan. Ze staan dan eenmalig in het logboek, en worden bewaard in `access-keys.json` (zie `Scouting:KeysFile`). Wil je zelf een sleutel kiezen, vul dan `Scouting:AccessKey` of `Scouting:AdminKey` in, bijvoorbeeld via user secrets. Dat geldt alleen zolang `access-keys.json` nog niet bestaat.
+**Wachtwoord.** Minstens 10 tekens; een zin werkt goed. **Wachtwoord vergeten?** op het loginscherm mailt een link om een nieuw wachtwoord te kiezen. Dat werkt alleen als `Scouting:PublicUrl` (`PUBLIC_URL`) is ingesteld: de link komt nooit uit het adres van het verzoek, want dat kan een aanvaller vervalsen. Op **Account** (je naam onderaan het menu) wijzig je je wachtwoord; andere apparaten worden dan uitgelogd. De mailserver stel je in met `Scouting:Email` (bij Docker: de `SMTP_`-regels in `.env`), zie **Instellingen**. Op **Beheer** > **Mail** zie je of mail is ingesteld en stuur je een testmail.
 
-**Beheermodus:** ga naar de pagina **Beheer** en vul de beheerderssleutel in. Inloggen met de beheerderssleutel op het loginscherm kan ook. Met **Beheermodus verlaten** ga je terug naar gewone toegang. Bovenaan de pagina staat **Beheer** zolang je in beheermodus bent.
+**Verkeerde wachtwoorden.** Na 5 verkeerde wachtwoorden voor één account is dat account 15 minuten op slot. Daarnaast moet een adres na 30 mislukte pogingen binnen een minuut even wachten. Die grens is ruim, omdat alle groepen en de jury op de locatie vaak hetzelfde internetadres delen. Een goede login wist eerdere fouten niet, dus wie zelf een account heeft (zoals een groep) kan daarmee niet onbeperkt wachtwoorden van anderen proberen. Een onbekend adres en een verkeerd wachtwoord krijgen dezelfde melding.
 
-**Sleutel opnieuw aanmaken:** op de pagina **Beheer** maak je een nieuwe toegangssleutel of beheerderssleutel aan. Iedereen die met de oude sleutel is ingelogd, wordt direct uitgelogd, ook in pagina's die al open staan. Jij blijft zelf ingelogd. Een nieuwe beheerderssleutel wordt maar één keer getoond: noteer hem meteen.
-
-Na 30 verkeerde sleutels binnen een minuut moet een adres even wachten voordat het opnieuw mag proberen. De grens is ruim, omdat alle groepen en de jury op de locatie vaak hetzelfde internetadres delen: een paar tikfouten van één groep blokkeren zo niet iedereen. Een goede sleutel wist eerdere fouten niet, dus wie zelf een sleutel heeft (zoals een groep) kan daarmee niet onbeperkt andere sleutels proberen.
-
-**Groepssleutels.** Elke groep kan een eigen sleutel krijgen. Een groep logt daarmee in op hetzelfde loginscherm en ziet alleen:
+**Groepsaccounts.** Elke groep kan een eigen account krijgen. Een groep ziet alleen:
 
 - een eigen dashboard met haar score, plaats, de stand en de punten in de loop van het spel;
 - haar eigen inzendingen (**Onze inzendingen**) met de beoordeling, en de bestanden zelf.
 
 Meldingen van nieuwe inzendingen (rechtsonder) krijgt alleen de jury; een groep ziet zo niet wat andere groepen insturen.
 
-Inzendingen en bestanden van andere groepen, de namen van juryleden, opmerkingen bij beoordelingen en alle pagina's voor de jury (zoals **Te beoordelen**, **Groepen**, **Opdrachten**, **Scorebord** en **Configuratie**) zijn voor een groep afgeschermd; die komt dan op **Geen toegang** uit. Nieuwe pagina's zijn standaard ook afgeschermd: alleen pagina's met `[GroupAccess]` staan open voor groepen, en zulke pagina's tonen een groep alleen haar eigen gegevens. Groepssleutels beheer je in beheermodus op **Beheer** > **Groepssleutels**: maak sleutels voor alle groepen, maak voor één groep een nieuwe sleutel of trek een sleutel in. Een nieuwe of ingetrokken sleutel logt die groep direct uit; de jury en andere groepen merken er niets van. De sleutels staan per Slack-kanaal in `access-keys.json`.
+Inzendingen en bestanden van andere groepen, de namen van juryleden, opmerkingen bij beoordelingen en alle pagina's voor de jury (zoals **Te beoordelen**, **Groepen**, **Opdrachten**, **Scorebord** en **Configuratie**) zijn voor een groep afgeschermd; die komt dan op **Geen toegang** uit. Nieuwe pagina's zijn standaard ook afgeschermd: alleen pagina's met `[GroupAccess]` staan open voor groepen (en met `[BeamerAccess]` voor de beamer), en zulke pagina's tonen een groep alleen haar eigen gegevens. Op **Beheer** > **Accounts** staat welke groepen nog geen account hebben. De beamer krijgt geen bestanden van afgekeurde inzendingen.
 
-> **Let op:** de sleutel en het login-cookie gaan onversleuteld over het netwerk als de app via gewone `http://` wordt geopend. Iedereen op hetzelfde netwerk kan ze dan meelezen. Gebruik HTTPS (bijvoorbeeld via een reverse proxy of tunnel) als de app buiten een vertrouwd netwerk bereikbaar is, en geef groepen alleen het HTTPS-adres. Logt een groep toch in via gewone `http://` van een ander apparaat, dan staat er een waarschuwing in het logboek. De app vertrouwt een proxy op dezelfde computer (zoals `cloudflared` of `ngrok`) en de `cloudflared`-container uit `docker-compose.yml`; draait de proxy ergens anders, zet het adres dan in `ForwardedHeaders:KnownNetworks` (CIDR, bijvoorbeeld `"192.168.1.5/32"`), anders ziet de app voor iedereen hetzelfde adres. Zie [Via internet](#via-internet-cloudflare-tunnel).
+**Van sleutels naar accounts.** Eerdere versies werkten met een gedeelde toegangssleutel, een beheerderssleutel en groepssleutels. Die bestaan niet meer: `access-keys.json` wordt niet meer gelezen en mag weg. Een bestaande database krijgt bij de eerste start de tabellen voor accounts erbij; inzendingen, punten en instellingen blijven zoals ze waren. Daarna maak je de accounts aan voor de jury, de groepen en de beamer.
+
+> **Let op:** het wachtwoord en het login-cookie gaan onversleuteld over het netwerk als de app via gewone `http://` wordt geopend. Iedereen op hetzelfde netwerk kan ze dan meelezen. Gebruik HTTPS (bijvoorbeeld via een reverse proxy of tunnel) als de app buiten een vertrouwd netwerk bereikbaar is, en geef groepen alleen het HTTPS-adres. Logt een groep toch in via gewone `http://` van een ander apparaat, dan staat er een waarschuwing in het logboek. De app vertrouwt een proxy op dezelfde computer (zoals `cloudflared` of `ngrok`) en de `cloudflared`-container uit `docker-compose.yml`; draait de proxy ergens anders, zet het adres dan in `ForwardedHeaders:KnownNetworks` (CIDR, bijvoorbeeld `"192.168.1.5/32"`), anders ziet de app voor iedereen hetzelfde adres. Zie [Via internet](#via-internet-cloudflare-tunnel).
 
 ## Favorieten
 
@@ -73,7 +72,7 @@ Favorieten worden bewaard in een cookie in je eigen browser (`du_favorites`, een
 
 ## Handmatige modus
 
-Wil de organisatie alles zelf beoordelen, zet dan **Handmatige modus** aan met de schakelaar op het **Dashboard** (alleen in beheermodus). De app doet dan alleen nog dit: van elk bericht met een geldig opdrachtnummer worden de bestanden gedownload en opgeslagen met de juiste naam (bijvoorbeeld `CDW 12.jpg`) in de map van de groep.
+Wil de organisatie alles zelf beoordelen, zet dan **Handmatige modus** aan met de schakelaar op het **Dashboard** (alleen voor beheerders). De app doet dan alleen nog dit: van elk bericht met een geldig opdrachtnummer worden de bestanden gedownload en opgeslagen met de juiste naam (bijvoorbeeld `CDW 12.jpg`) in de map van de groep.
 
 Verder gebeurt er niets:
 
@@ -87,7 +86,7 @@ Bovenaan elke pagina staat dan **Handmatige modus**. Met `Scouting:ManualMode` i
 
 Met `Scouting:BlockAttemptsAfterApproval` aan is een opdracht klaar zodra de groep er een goedkeuring of awesome voor heeft. Een nieuwe poging voor die opdracht wordt dan niet opgeslagen. De bot reageert met de emoji en tekst uit `SlackFeedback:AlreadyCompleted`. Zo kan een groep een goedgekeurde opdracht niet blijven insturen in de hoop op awesome.
 
-- In beheermodus zet je de regel aan of uit op **Configuratie**, onder **Beoordelingsregels**. Dat geldt direct en blijft bewaard na een herstart, in `runtime-settings.json`. **Terug naar appsettings** zet de waarde uit `appsettings.json` terug.
+- Als beheerder zet je de regel aan of uit op **Configuratie**, onder **Beoordelingsregels**. Dat geldt direct en blijft bewaard na een herstart, in `runtime-settings.json`. **Terug naar appsettings** zet de waarde uit `appsettings.json` terug.
 - Alleen een **nieuw** bericht dat **na** de eerste goedgekeurde inzending is geplaatst, wordt geweigerd. Een bericht dat al als inzending in de app staat, wordt nooit geweigerd. Dat geldt ook bij inhalen: een eerdere afgekeurde poging, of een tweede bericht dat al was goedgekeurd, krijgt dan geen 🔒. Een bericht dat de app gemist heeft en dat vóór de goedkeuring is geplaatst, telt gewoon mee; de beste beoordeling telt.
 - Verandert een groep met een bewerking het nummer naar een opdracht die al klaar is, dan blijft de inzending bij het oude nummer en reageert de bot op dezelfde manier.
 - In handmatige modus geldt de regel niet: dan worden alleen bestanden opgeslagen.
@@ -133,7 +132,7 @@ Een los getal ergens in de tekst telt **niet**. Zo wordt "we deden het met 3 man
 
 | Pagina | Wat je ziet |
 |---|---|
-| **Dashboard** | Totalen, het scorebord met **Laatst actief** per groep, de punten in de loop van het spel en de voortgang per opdracht. In beheermodus ook de schakelaar voor **Handmatige modus** en **Exporteren**. Zie **Scorebord en export**. |
+| **Dashboard** | Totalen, het scorebord met **Laatst actief** per groep, de punten in de loop van het spel en de voortgang per opdracht. Als beheerder ook de schakelaar voor **Handmatige modus** en **Exporteren**. Zie **Scorebord en export**. |
 | **Te beoordelen** | De open inzendingen per Slack-bericht, de langst wachtende eerst, met de wachttijd. Een klik opent het bericht in de Slack-app; ernaast staat een link naar het bericht in de browser. Zie **Te beoordelen**. |
 | **Inzendingen** | Alle inzendingen, met zoeken en filteren op groep, opdracht, status en jurylid (op naam of Slack-ID), en alleen je favorieten. Met de Avonturiers aan ook op soort: Toeristen, check-in of thema. |
 | **Opdrachten** | Alle opdrachten. Per opdracht een pagina met de inzendingen van alle groepen naast elkaar. Met **Alleen open inzendingen** beoordeel je één opdracht in één keer; sneltoetsen ← en → gaan naar de vorige en volgende opdracht, **N** naar de volgende met open inzendingen. |
@@ -145,15 +144,15 @@ Een los getal ergens in de tekst telt **niet**. Zo wordt "we deden het met 3 man
 | **Slack-simulator** | Nep-inzendingen en -reacties versturen om te testen. Alleen zichtbaar in simulatiemodus. |
 | **Configuratie** | Alle instellingen, de juryleden met hun namen, de **Beoordelingsregels**, en **Opnieuw opbouwen uit Slack** (zie hieronder). |
 | **Stand voor groepen** | De stand verbergen voor groepen (en desgewenst op de beamer), periodes plannen en een tussenstand publiceren. Zie **Stand verbergen**. |
-| **Beheer** | Naar beheermodus gaan, de toegangssleutel bekijken, sleutels opnieuw aanmaken en de groepssleutels beheren. |
+| **Beheer** | Accounts beheren, mail controleren, extra punten en puntencategorieën. Alleen voor beheerders. |
 
-Een groep die met haar groepssleutel inlogt, ziet alleen **Dashboard** en **Onze inzendingen**. Zie **Toegang**.
+Een groepsaccount ziet alleen **Dashboard** en **Onze inzendingen**, de beamer alleen **Scorebord** en **Diavoorstelling**. Je naam onderaan het menu opent **Account**. Zie **Toegang**.
 
-Beoordelen gebeurt in Slack. Voor noodgevallen kan een status op de detailpagina van een inzending handmatig worden aangepast, onder **Status handmatig aanpassen** (alleen in beheermodus). Dit vraagt om een reden en wordt vastgelegd in de beoordelingsgeschiedenis. Net als een emoji in Slack geldt de aanpassing voor alle bestanden van hetzelfde bericht: anders zou bij twee foto's de andere foto haar status houden, en omdat de beste beoordeling telt, zouden de punten niet veranderen. Een latere emoji in Slack overschrijft zo'n aanpassing weer.
+Beoordelen gebeurt in Slack. Voor noodgevallen kan een status op de detailpagina van een inzending handmatig worden aangepast, onder **Status handmatig aanpassen** (alleen voor beheerders). Dit vraagt om een reden en wordt vastgelegd in de beoordelingsgeschiedenis. Net als een emoji in Slack geldt de aanpassing voor alle bestanden van hetzelfde bericht: anders zou bij twee foto's de andere foto haar status houden, en omdat de beste beoordeling telt, zouden de punten niet veranderen. Een latere emoji in Slack overschrijft zo'n aanpassing weer.
 
 ## Extra punten en puntencategorieën
 
-Punten die buiten Slack worden verdiend, zoals de **Avonturiers** en het **Reisbureau** (pubquiz), vul je in beheermodus in op **Beheer**, onder **Extra punten**: één kolom per categorie, één rij per groep. Ze tellen mee in de score, de stand en de grafiek, en blijven staan bij **Opnieuw opbouwen uit Slack**.
+Punten die buiten Slack worden verdiend, zoals de **Avonturiers** en het **Reisbureau** (pubquiz), vul je als beheerder in op **Beheer**, onder **Extra punten**: één kolom per categorie, één rij per groep. Ze tellen mee in de score, de stand en de grafiek, en blijven staan bij **Opnieuw opbouwen uit Slack**.
 
 Welke categorieën er zijn, staat in `Scouting:BonusCategories`. Elke categorie heeft een `Key` (kleine letters, cijfers en streepjes; de punten worden eronder bewaard), een `Name` en optioneel een `ShortName` voor smalle plekken zoals het **Dashboard**. Ontbreekt de lijst, dan gelden Avonturiers en Reisbureau.
 
@@ -167,7 +166,7 @@ Tijdens het spel pas je de categorieën aan op **Beheer**, onder **Puntencategor
 
 **Beamer.** De pagina **Scorebord** toont dezelfde totalen als het **Dashboard** en de stand in grote letters, met de resterende speeltijd en de grafiek. De knop rechtsboven zet hem op volledig scherm. In de **Diavoorstelling** kun je met **Scorebord tussendoor** elke 3, 5, 10 of 20 items 15 seconden de tussenstand tonen.
 
-**Exporteren** (alleen in beheermodus), via de knop op het **Dashboard**:
+**Exporteren** (alleen voor beheerders), via de knop op het **Dashboard**:
 
 - `/api/export/scores.csv`: het scorebord als CSV, met puntkomma's, zodat Excel het direct goed opent. Elke puntencategorie heeft een eigen kolom;
 - `/api/export/files.zip?status=awesome`: alle awesome bestanden;
@@ -177,7 +176,7 @@ De ZIP heeft per groep een map, met daarin `approved/` en `awesome/`. Bestanden 
 
 ## Stand verbergen
 
-Op de pagina **Stand voor groepen** kan de jury (ook zonder beheermodus) de stand verbergen voor groepen, bijvoorbeeld in het laatste uur van het spel:
+Op de pagina **Stand voor groepen** kan de jury (ook zonder beheerdersaccount) de stand verbergen voor groepen, bijvoorbeeld in het laatste uur van het spel:
 
 - **Stand verbergen**: een schakelaar die direct werkt, los van de periodes.
 - **Periodes**: van–tot, in de tijdzone van het spel. Binnen een periode is de stand vanzelf verborgen; het begin telt mee, het einde niet. Open pagina's wisselen op het moment zelf.
@@ -206,7 +205,7 @@ Wacht een bericht langer dan `Scouting:ReviewReminder:AfterMinutes` minuten op e
 
 - De app kijkt elke minuut. Elk bericht krijgt één herinnering. Na een herstart kan een bericht er nog één krijgen.
 - Berichten die **niet meer tellen** krijgen geen herinnering.
-- In beheermodus pas je de tijd aan op **Configuratie**, onder **Beoordelingsregels**. Leeg betekent geen herinneringen. De tijd geldt direct en blijft bewaard na een herstart, in `runtime-settings.json`.
+- Als beheerder pas je de tijd aan op **Configuratie**, onder **Beoordelingsregels**. Leeg betekent geen herinneringen. De tijd geldt direct en blijft bewaard na een herstart, in `runtime-settings.json`.
 - Geen kanaal ingesteld, handmatige modus aan, of geen tijd: dan komen er geen herinneringen. In simulatiemodus komt de herinnering alleen in het logboek.
 - Nodig de bot uit in het jurykanaal. Er zijn geen extra Slack-rechten nodig.
 
@@ -253,7 +252,7 @@ De bot plaatst in elk Avonturiers-kanaal de opening bij de start van een ronde, 
 
 De kaarten gebruiken [Leaflet](https://leafletjs.com) uit de app zelf en de kaarttegels van OpenStreetMap; er is geen Google-account of API-sleutel nodig. Tegelserver en bronvermelding zijn instellingen (`MapTileUrl`, `MapAttribution`).
 
-- **Locaties** (beheermodus): toevoegen met een klik op de kaart, aanpassen, verwijderen, of importeren uit een GeoJSON-, GPX- of CSV-bestand (bijvoorbeeld uit Google My Maps of uMap). Het nummer komt uit een kolom `nummer` of vooraan de naam (`7 Molen`, `Locatie 7 - Molen`). Een CSV heeft kolommen `nummer;naam;lat;lon;hint`; puntkomma's en decimale komma's van Nederlandse Excel mogen.
+- **Locaties** (beheerders): toevoegen met een klik op de kaart, aanpassen, verwijderen, of importeren uit een GeoJSON-, GPX- of CSV-bestand (bijvoorbeeld uit Google My Maps of uMap). Het nummer komt uit een kolom `nummer` of vooraan de naam (`7 Molen`, `Locatie 7 - Molen`). Een CSV heeft kolommen `nummer;naam;lat;lon;hint`; puntkomma's en decimale komma's van Nederlandse Excel mogen.
 - **Vrijgespeelde locaties** (op **Beheer**): per groep een vinkje per locatie. Alleen die locaties staan op de kaart van de groep.
 - **Kaart van de groep**: `/kaart/{code}`, zonder inloggen; de geheime code in de link is de sleutel. De link staat op de pagina van de groep en komt via `{map}` in de startinformatie. Kleuren: grijs nog niet bezocht, oranje wacht op beoordeling, groen goedgekeurd, rood afgekeurd. De kaart ververst elke halve minuut en toont geen foto's.
 - **Avonturiers → Kaart** (jury): alle groepen op één kaart, met een groepsfilter. Een klik op een locatie toont de check-in en de beoordeling.
@@ -288,7 +287,7 @@ Lukt het opslaan in de database niet nadat een bestand is verplaatst, dan gaat h
 
 De groepsmappen komen uit de groepsnamen. Geven twee groepen dezelfde map, dan start de app niet en zegt het logboek welke groepen het zijn. Is het puntenbestand kapot, dan start de app ook niet. Het puntenbestand mag komma's of puntkomma's gebruiken, zoals Nederlandse Excel opslaat.
 
-`runtime-settings.json` en `access-keys.json` worden in één stap weggeschreven, zodat een stroomstoring nooit een half bestand achterlaat. Is een van beide toch onleesbaar, dan zet de app het opzij als `….corrupt-{tijd}` en begint opnieuw. `access-keys.json` is alleen leesbaar voor de gebruiker die de app draait.
+`runtime-settings.json` wordt in één stap weggeschreven, zodat een stroomstoring nooit een half bestand achterlaat. Is het toch onleesbaar, dan zet de app het opzij als `….corrupt-{tijd}` en begint opnieuw. Accounts staan in de database, in de tabellen `AspNet…`.
 
 Geaccepteerde bestanden: alle afbeeldingen, video's en geluidsopnames, plus PDF en Word (`.doc`, `.docx`). SVG-bestanden worden geweigerd, omdat die scripts kunnen bevatten.
 
@@ -313,12 +312,12 @@ dotnet run --project src/ScoutingAutomation.AppHost
 **In productie, met Docker Compose** (PostgreSQL en de app in containers; alleen Docker vereist):
 
 ```bash
-cp .env.example .env   # vul POSTGRES_PASSWORD, SLACK_BOT_TOKEN en SLACK_APP_TOKEN in
+cp .env.example .env   # vul POSTGRES_PASSWORD, SLACK_BOT_TOKEN, SLACK_APP_TOKEN, BOOTSTRAP_ADMIN_EMAIL en eventueel SMTP_… in
 docker login ghcr.io   # eenmalig, met een GitHub-token met read:packages
 docker compose pull && docker compose up -d
 ```
 
-Het image komt uit de GitHub Container Registry (`ghcr.io/ricardotill/du_review`, `amd64` en `arm64`); GitHub Actions test elke wijziging en publiceert bij elke release (`v*`-tag) een nieuwe `latest`. Zelf bouwen kan met `docker compose up -d --build`. De app draait dan op <http://localhost:5231>. Gegevens staan in Docker-volumes; zie de [handleiding](docs/handleiding-beheer.md#met-docker-compose-productie) voor sleutels, back-ups en het overnemen van instellingen.
+Het image komt uit de GitHub Container Registry (`ghcr.io/ricardotill/du_review`, `amd64` en `arm64`); GitHub Actions test elke wijziging en publiceert bij elke release (`v*`-tag) een nieuwe `latest`. Zelf bouwen kan met `docker compose up -d --build`. De app draait dan op <http://localhost:5231>. Gegevens staan in Docker-volumes; zie de [handleiding](docs/handleiding-beheer.md#met-docker-compose-productie) voor de eerste beheerder, mail, back-ups en het overnemen van instellingen.
 
 ### Via internet: Cloudflare Tunnel
 
@@ -346,8 +345,8 @@ Alles staat onder `Scouting` in `src/ScoutingAutomation.Web/appsettings.json`. W
 | `Reviewers` | Slack member-ID's van de jury. Alleen hun emoji's tellen. Op de pagina **Configuratie** kun je er meer toevoegen. |
 | `ReviewerNames` | Optioneel: een naam per member-ID, bijvoorbeeld `{ "U04ABC123": "Sanne" }`. Namen die in de app zijn ingevuld of uit Slack zijn opgehaald, gaan voor. |
 | `RuntimeSettingsFile` | Waar de in de app toegevoegde juryleden, hun namen, de aangepaste teksten van de bot, de in de app gezette start- en eindtijd en de kanalen met een start- of eindbericht worden bewaard (standaard `runtime-settings.json`). |
-| `AccessKey`, `AdminKey` | Optioneel: de sleutels bij de eerste start. Leeg laten om ze te laten aanmaken. Zie **Toegang**. |
-| `KeysFile` | Waar de sleutels worden bewaard (standaard `access-keys.json`). |
+| `Accounts` | `BootstrapAdminEmail`: het adres van de eerste beheerder, gemaakt bij de eerste start als er nog geen beheerder is. `BootstrapAdminPassword`: optioneel het wachtwoord daarvan, alleen voor lokaal testen (via user secrets, nooit in een bestand in Git). Zie **Toegang**. |
+| `Email` | De mailserver voor uitnodigingen en **Wachtwoord vergeten?**: `Host`, `Port` (standaard 587), `Security` (`StartTls`, `SslOnConnect` of `None`), `Username`, `Password`, `FromAddress` en `FromName` (standaard `DU Review`). Zonder `Host` mailt de app niets en kopieert een beheerder de links zelf. |
 | `ManualMode` | Of de app met handmatige modus aan start (standaard `false`). |
 | `ReviewStatusReactions` | Welke emoji Goedgekeurd (`Approved`), Awesome (`Awesome`) of Afgekeurd (`Rejected`) betekent. |
 | `SlackFeedback` | Emoji en tekst waarmee de bot reageert op een probleem. `AlreadyCompleted` is de reactie op een nieuwe poging na goedkeuring (`{number}` = opdrachtnummer). `TooLate` is de reactie op een inzending na de eindtijd (`{end}` = eindtijd, bijvoorbeeld `17:00`). |
@@ -357,7 +356,7 @@ Alles staat onder `Scouting` in `src/ScoutingAutomation.Web/appsettings.json`. W
 | `GameStartAnnouncement` | Het startbericht dat de bot bij de start van het spel in elk groepskanaal plaatst. `Message` is de tekst (Slack-opmaak; leeg = geen bericht). Plaatshouders: `{group}` (naam van de groep), `{retryRule}` (of opnieuw insturen na een goedkeuring mag, volgens `BlockAttemptsAfterApproval`), `{approved}`, `{awesome}`, `{rejected}` (de emoji uit `ReviewStatusReactions`) en `{missingNumber}`, `{unknownNumber}`, `{unsupportedFile}`, `{downloadFailed}`, `{alreadyCompleted}` (de emoji uit `SlackFeedback`). Met `AutoPost` (standaard `true`) plaatst de app het bericht zelf op `EventStart`. Zie **Startbericht**. |
 | `GameEndAnnouncement` | Het eindbericht dat de bot bij het einde van het spel in elk groepskanaal plaatst. `Message` is de tekst (leeg = geen bericht). Plaatshouders: `{group}` (naam van de groep) en `{end}` (de eindtijd). Met `AutoPost` (standaard `true`) plaatst de app het bericht zelf op `EventEnd`. Zie **Eindtijd en eindbericht**. |
 | `Adventurers` | Het Avonturiers-deel. `Enabled` zet het aan. `RequireUnlockedLocation`, `UnlockPool`, `Rounds`, de teksten en de tijden van `StartAnnouncement` en `FinalAnnouncement` (`PostAt`, `AutoPost`) zijn ook in de app aan te passen. Verder: `ThemeMaxPoints`, `FinalMaxPoints`, `FinalGameCategoryKey`, `RoundMinutes` (lengte van een gegenereerde ronde), `Feedback` (emoji en tekst van de bot), `MapTileUrl` en `MapAttribution`. Zie **Avonturiers**. |
-| `PublicUrl` | Het adres waarop de app van buiten bereikbaar is, bijvoorbeeld `https://du.example.nl`. Nodig voor de kaartlinks in de berichten aan de Avonturiers. |
+| `PublicUrl` | Het adres waarop de app van buiten bereikbaar is, bijvoorbeeld `https://du.example.nl`. Nodig voor de kaartlinks in de berichten aan de Avonturiers en de links in mails over accounts. |
 | `SupportedExtensions`, `SupportedMimeTypePrefixes` | Welke bestanden worden geaccepteerd. |
 | `AssignmentPointsFile` | Het CSV-bestand met de opdrachten, hun punten en optioneel titel en beschrijving. Zie **Punten**. |
 | `StorageRoot` | De map waarin de bestanden worden opgeslagen. |
@@ -375,7 +374,7 @@ Bij de start van het spel plaatst de bot in elk groepskanaal één bericht: inze
 
 - Met een starttijd (`EventStart`) en `AutoPost` aan plaatst de app het bericht zelf op de starttijd.
 - Start de app later dan een uur na de starttijd, dan plaatst hij het bericht niet meer zelf. Een laat "het spel is begonnen" zou alleen verwarren.
-- Op de pagina **Configuratie** staat onder **Startbericht in Slack** een voorbeeld, per groep of het bericht al is geplaatst, en een knop om het met de hand te sturen. Dat werkt alleen in beheermodus en als de app met Slack verbonden is.
+- Op de pagina **Configuratie** staat onder **Startbericht in Slack** een voorbeeld, per groep of het bericht al is geplaatst, en een knop om het met de hand te sturen. Dat werkt alleen als beheerder en als de app met Slack verbonden is.
 - Elk kanaal krijgt het bericht één keer, ook na een herstart. De app onthoudt de geplaatste kanalen in `runtime-settings.json`. Opnieuw sturen naar alle kanalen kan met de hand, na bevestiging.
 - In simulatiemodus komt het bericht alleen in het logboek.
 
@@ -391,7 +390,7 @@ Met een eindtijd (`EventEnd`) stopt het spel op een vast moment.
 
 ### Start- en eindtijd in de app
 
-In beheermodus pas je op de pagina **Configuratie** onder **Speeltijd** de start- en eindtijd aan terwijl de app draait. De tijden gaan in de tijdzone van `TimeZone`.
+Als beheerder pas je op de pagina **Configuratie** onder **Speeltijd** de start- en eindtijd aan terwijl de app draait. De tijden gaan in de tijdzone van `TimeZone`.
 
 - Een nieuwe tijd geldt direct. Het start- of eindbericht volgt de nieuwe tijd.
 - Een leeg veld opslaan betekent: geen start- of eindtijd.
@@ -400,7 +399,7 @@ In beheermodus pas je op de pagina **Configuratie** onder **Speeltijd** de start
 
 ## Teksten van de bot aanpassen
 
-In beheermodus pas je op de pagina **Configuratie** de teksten van de bot aan terwijl de app draait: het startbericht (onder **Startbericht in Slack**), het eindbericht (onder **Eindbericht in Slack**) en de zes antwoorden in de thread (onder **Automatische feedback**). Klik op het potlood, wijzig de tekst en sla op.
+Als beheerder pas je op de pagina **Configuratie** de teksten van de bot aan terwijl de app draait: het startbericht (onder **Startbericht in Slack**), het eindbericht (onder **Eindbericht in Slack**) en de zes antwoorden in de thread (onder **Automatische feedback**). Klik op het potlood, wijzig de tekst en sla op.
 
 - De tekst bewerk je zoals hij in Slack komt, met dezelfde editor als **Bericht sturen**: knoppen voor vet, schuin, doorgehaald, code, links en opsommingen, en 🙂 voor emoji. Opgeslagen wordt Slack-opmaak (`*vet*`, `_schuin_`). Plaatshouders zoals `{group}` en emoji-codes zoals `:thumbsup:` typ je gewoon als tekst. Sla je op zonder iets te wijzigen, dan blijft de tekst precies zoals hij was.
 - Een nieuwe tekst geldt direct voor het volgende bericht van de bot. Wat al in Slack staat, verandert niet.
@@ -421,7 +420,7 @@ Er wordt niets weggegooid. **Gebeurtenissen** en het logboek melden wat er is in
 
 ## Herbouwen vanuit Slack
 
-Is er iets misgegaan, bijvoorbeeld omdat de app een tijd niet draaide, dan kan de app alle inzendingen opnieuw opbouwen uit de Slack-berichten. Dit staat onderaan de pagina **Configuratie**, onder **Opnieuw opbouwen uit Slack**. Het werkt alleen in beheermodus en als de app met Slack verbonden is.
+Is er iets misgegaan, bijvoorbeeld omdat de app een tijd niet draaide, dan kan de app alle inzendingen opnieuw opbouwen uit de Slack-berichten. Dit staat onderaan de pagina **Configuratie**, onder **Opnieuw opbouwen uit Slack**. Het werkt alleen als beheerder en als de app met Slack verbonden is.
 
 Kies het tijdstip vanaf wanneer berichten meetellen (standaard vandaag 00:00) en typ `OPBOUWEN` om te bevestigen. De app:
 
@@ -472,7 +471,7 @@ Het oorspronkelijke ontwerp staat in `ScoutingAutomation.Complete.SDD.md`.
 
 ## Beperkingen
 
-- De jury deelt dezelfde toegangssleutel. De app weet dus niet wie iets heeft gedaan; alleen dat het in beheermodus was. Groepen hebben elk een eigen sleutel, maar binnen een groep delen de leden die sleutel.
-- Zonder HTTPS gaan de sleutel en het login-cookie onversleuteld over het netwerk.
+- Een groep heeft één account; binnen een groep delen de leden dat wachtwoord.
+- Zonder HTTPS gaan het wachtwoord en het login-cookie onversleuteld over het netwerk.
 - Live bijwerken werkt binnen één server. Draai je meerdere exemplaren van de app, dan is extra werk nodig.
 - Inhalen kijkt alleen naar berichten van vandaag. Een bericht dat is verwijderd of waarvan het nummer is aangepast terwijl de app weg was, wordt niet bijgewerkt. Herbouw in dat geval vanuit Slack.

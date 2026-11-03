@@ -8,7 +8,7 @@ using Xunit;
 
 namespace ScoutingAutomation.UnitTests.Settings;
 
-/// <summary>Settings and key files that are damaged, cannot be written, or hold values the app cannot use.</summary>
+/// <summary>Settings files that are damaged, cannot be written, or hold values the app cannot use.</summary>
 public class SettingsFilesHardeningTests : IDisposable
 {
     private static readonly DateTime Start = new(2026, 10, 3, 12, 0, 0);
@@ -16,13 +16,9 @@ public class SettingsFilesHardeningTests : IDisposable
     private readonly TempDirectory _temp = new();
 
     private string SettingsFile => Path.Combine(_temp.Path, "runtime-settings.json");
-    private string KeysFile => Path.Combine(_temp.Path, "access-keys.json");
 
     private RuntimeSettingsService Runtime() =>
         new(Options.Create(new ScoutingSettings { EventStart = Start, RuntimeSettingsFile = SettingsFile }), NullLogger<RuntimeSettingsService>.Instance);
-
-    private AccessKeyService Keys() =>
-        new(Options.Create(new ScoutingSettings { KeysFile = KeysFile }), NullLogger<AccessKeyService>.Instance);
 
     [Theory]
     [InlineData(1)]
@@ -86,53 +82,6 @@ public class SettingsFilesHardeningTests : IDisposable
         act.Should().Throw<Exception>().Which.Should().Match(e => e is IOException || e is UnauthorizedAccessException);
         runtime.EventStartGameTime.Should().Be(Start, "a restart would lose a change that was never saved");
         Directory.GetFiles(_temp.Path, "*.tmp").Should().BeEmpty();
-    }
-
-    [Fact]
-    public void DamagedKeysFile_ShouldBeSetAsideSoTheOldKeysCanStillBeLookedUp()
-    {
-        File.WriteAllText(KeysFile, "{ broken");
-
-        Keys();
-
-        File.ReadAllText(Directory.GetFiles(_temp.Path, "access-keys.json.corrupt-*").Single()).Should().Be("{ broken");
-    }
-
-    [Fact]
-    public void KeysFile_ShouldOnlyBeReadableByTheApp()
-    {
-        if (OperatingSystem.IsWindows()) return;
-
-        Keys().RegenerateAdminKey();
-
-        File.GetUnixFileMode(KeysFile).Should().Be(UnixFileMode.UserRead | UnixFileMode.UserWrite);
-    }
-
-    [Fact]
-    public void ExistingKeysFile_ReadableByOthers_ShouldBeRestrictedAtStart()
-    {
-        if (OperatingSystem.IsWindows()) return;
-        Keys();
-        File.SetUnixFileMode(KeysFile, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
-
-        Keys();
-
-        File.GetUnixFileMode(KeysFile).Should().Be(UnixFileMode.UserRead | UnixFileMode.UserWrite);
-    }
-
-    [Fact]
-    public void KeyThatCannotBeSaved_ShouldKeepTheOldKeyInUse()
-    {
-        var keys = Keys();
-        var old = keys.AccessKey;
-        File.Delete(KeysFile);
-        Directory.CreateDirectory(KeysFile);
-
-        var act = () => keys.RegenerateAccessKey();
-
-        act.Should().Throw<Exception>();
-        keys.AccessKey.Should().Be(old, "a key nobody saw must not lock everyone out");
-        keys.IsAccessKey(old).Should().BeTrue();
     }
 
     public void Dispose() => _temp.Dispose();

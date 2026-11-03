@@ -34,7 +34,7 @@ public class HardeningComponentTests : PageTestBase
     [Fact]
     public async Task AdminAction_ThatCannotBeSaved_ShouldShowAMessageInsteadOfBreakingThePage()
     {
-        var error = await AdminActions.RunAsync(State(KeyAuth.AdminRole), () => throw new IOException("No space left on device"));
+        var error = await AdminActions.RunAsync(State(AppAuth.AdminRole), () => throw new IOException("No space left on device"));
 
         error.Should().Contain("No space left on device");
     }

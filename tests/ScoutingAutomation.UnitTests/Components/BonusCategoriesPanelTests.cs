@@ -28,7 +28,7 @@ public class BonusCategoriesPanelTests : BunitContext
         Services.AddSingleton(_notifier);
         _auth = AddAuthorization();
         _auth.SetAuthorized("Admin");
-        _auth.SetRoles(ScoutingAutomation.Web.Auth.KeyAuth.AdminRole);
+        _auth.SetRoles(ScoutingAutomation.Web.Auth.AppAuth.AdminRole);
     }
 
     protected override void Dispose(bool disposing)

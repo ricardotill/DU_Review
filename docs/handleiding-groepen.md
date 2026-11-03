@@ -10,7 +10,7 @@ Jullie sturen opdrachten in via Slack. De jury beoordeelt ze daar, en in de app 
 - Meerdere foto's in één bericht mag.
 - Zet de bot een ❓, bewerk dan je bericht en zet het juiste nummer erin.
 - Zet de bot een ⚠️, lees de uitleg in de thread.
-- Met jullie groepssleutel zie je in de app jullie score, de stand en jullie inzendingen.
+- Met jullie groepsaccount zie je in de app jullie score, de stand en jullie inzendingen.
 - Avonturiers plaatsen hun foto's in hun eigen kanaal, met `Locatie 7` bij een check-in en `Thema 3` bij een themafoto. Zie **Voor de Avonturiers**.
 
 ## Een opdracht insturen
@@ -108,14 +108,14 @@ Het dashboard toont live jullie score en inzendingen. Je hoeft de pagina nooit t
 ### Inloggen
 
 1. Open het adres van de app dat je van de organisatie kreeg. Is dat een `https://`-adres, gebruik dan precies dat adres.
-2. Vul jullie groepssleutel in. Hoofdletters en spaties maken niet uit.
+2. Vul het e-mailadres en het wachtwoord van jullie groepsaccount in. De eerste keer kies je het wachtwoord via de link die je van de organisatie kreeg (per mail of in jullie Slack-kanaal). Kies minstens 10 tekens; een zin werkt goed.
 3. Je browser blijft daarna 30 dagen ingelogd.
 
-Deel de groepssleutel alleen binnen je eigen groep. Na 30 verkeerde sleutels binnen een minuut vanaf hetzelfde adres moet je even wachten voordat je het opnieuw kunt proberen.
+Deel het wachtwoord alleen binnen je eigen groep. Na 5 verkeerde wachtwoorden staat het account 15 minuten op slot. Wachtwoord vergeten? Klik op **Wachtwoord vergeten?** op het loginscherm; de link gaat naar het e-mailadres van het account. Op **Account** (jullie naam onderaan het menu) wijzig je het wachtwoord.
 
 ### Wat je ziet
 
-Met de groepssleutel zie je alleen je eigen groep:
+Met het groepsaccount zie je alleen je eigen groep:
 
 - **Dashboard**: jullie score en plaats, de stand van alle groepen, de punten in de loop van het spel, en per opdracht de beoordeling en de punten.
 - **Onze inzendingen**: al jullie uploads, met de beoordeling. Klik op een upload om het bestand te bekijken.
@@ -136,5 +136,5 @@ Inzendingen van andere groepen zie je niet. Jullie eigen score en de punten per 
 | Je inzending staat niet in **Onze inzendingen** | Staat er een opdrachtnummer in het bericht, en zit er een bestand bij? Zie je een ❓ of ⚠️ van de bot, lees dan de thread. Staat er niets, vraag het dan aan de organisatie. |
 | De bot reageert met ❓ | Het nummer ontbreekt of de opdracht bestaat niet. Bewerk je bericht en zet het juiste nummer erin. |
 | De bot reageert met ⚠️ "kon niet worden opgehaald" | De download mislukte, vaak door een slechte verbinding. Plaats het bestand opnieuw. |
-| Je kunt niet meer inloggen | Misschien is jullie sleutel vernieuwd. Vraag de organisatie om de nieuwe sleutel. |
+| Je kunt niet meer inloggen | Gebruik **Wachtwoord vergeten?**. Werkt dat niet, of staat het account op slot, vraag de organisatie dan om een nieuwe link. |
 | Een video speelt niet af | Niet elke browser speelt elk videoformaat af. In Slack staat het bestand nog gewoon. |

@@ -56,8 +56,8 @@ public sealed class TestApp : IAsyncDisposable
             builder.UseSetting("Scouting:StorageRoot", StorageRoot);
             builder.UseSetting("Scouting:AssignmentPointsFile", PointsFile);
             builder.UseSetting("Scouting:RuntimeSettingsFile", Path.Combine(StorageRoot, "runtime-settings.json"));
-            builder.UseSetting("Scouting:KeysFile", Path.Combine(StorageRoot, "access-keys.json"));
             builder.UseSetting("Scouting:Slack:SimulationMode", "true");
+            builder.UseSetting("Scouting:Accounts:BootstrapAdminPassword", AdminPassword);
             foreach (var (key, value) in settings ?? new Dictionary<string, string?>())
             {
                 builder.UseSetting(key, value);
@@ -172,19 +172,60 @@ public sealed class TestApp : IAsyncDisposable
 
     public string StorageRoot { get; }
 
-    public const string AccessKey = "TEST-ACCESS-KEY";
-    public const string AdminKey = "TEST-ADMIN-KEY";
+    /// <summary>The first admin, made from testsettings.json at the first start.</summary>
+    public const string AdminEmail = "admin@du.test";
+
+    /// <summary>Made per test run, so no password sits in the repository.</summary>
+    public static readonly string AdminPassword = NewPassword();
+
+    /// <summary>The jury account of <see cref="CreateLoggedInClientAsync"/>.</summary>
+    public const string JuryEmail = "jury@du.test";
+
+    /// <summary>The password of accounts made with <see cref="EnsureAccountAsync"/>.</summary>
+    public static readonly string Password = NewPassword();
+
+    /// <summary>A fresh password that meets the rules: long enough and enough different characters.</summary>
+    public static string NewPassword() => Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(12));
 
     public HttpClient CreateClient() => Factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
-    /// <summary>A client logged in the way a browser does: through the login form.</summary>
+    /// <summary>An account with <see cref="Password"/>, made when it does not exist yet.</summary>
+    public async Task<Infrastructure.Accounts.AppUser> EnsureAccountAsync(
+        string email, Infrastructure.Accounts.AccountKind kind = Infrastructure.Accounts.AccountKind.Jury, Guid? groupId = null)
+    {
+        await using var scope = Factory.Services.CreateAsyncScope();
+        var users = scope.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.Identity.UserManager<Infrastructure.Accounts.AppUser>>();
+        if (await users.FindByEmailAsync(email) is { } existing) return existing;
+
+        var (user, error) = await scope.ServiceProvider.GetRequiredService<Infrastructure.Accounts.AccountService>()
+            .CreateAsync(email, email.Split('@')[0], kind, groupId, actingUserId: null);
+        if (user == null) throw new InvalidOperationException(error);
+        var password = await users.AddPasswordAsync(user, Password);
+        if (!password.Succeeded) throw new InvalidOperationException(Infrastructure.Accounts.AccountService.Describe(password));
+        return user;
+    }
+
+    /// <summary>Posts the login form the way a browser does.</summary>
+    public static Task<HttpResponseMessage> LogInAsync(HttpClient client, string email, string password, string page = "/login") =>
+        PostFormAsync(client, page, "login", new() { ["Input.Email"] = email, ["Input.Password"] = password });
+
+    /// <summary>A client logged in the way a browser does, through the login form: as jury, or as the admin.</summary>
     public async Task<HttpClient> CreateLoggedInClientAsync(bool admin = false)
     {
+        if (admin) return await CreateClientForAsync(AdminEmail, AdminPassword);
+
+        await EnsureAccountAsync(JuryEmail);
+        return await CreateClientForAsync(JuryEmail, Password);
+    }
+
+    /// <summary>A client logged in with this account.</summary>
+    public async Task<HttpClient> CreateClientForAsync(string email, string? password = null)
+    {
         var client = CreateClient();
-        var response = await PostFormAsync(client, "/login", "login", new() { ["Input.Key"] = admin ? AdminKey : AccessKey });
+        var response = await LogInAsync(client, email, password ?? Password);
         if (response.StatusCode != System.Net.HttpStatusCode.Redirect)
         {
-            throw new InvalidOperationException($"Login failed: {response.StatusCode}");
+            throw new InvalidOperationException($"Login of {email} failed: {response.StatusCode}");
         }
 
         return client;

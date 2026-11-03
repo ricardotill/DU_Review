@@ -27,7 +27,7 @@ else
     var text = Runtime.Text(Kind);
     <div class="d-flex align-items-start gap-2">
         <div class="text-white-50 small slack-text flex-grow-1">@(string.IsNullOrWhiteSpace(text) ? EmptyText : text)</div>
-        <AuthorizeView Roles="@KeyAuth.AdminRole">
+        <AuthorizeView Roles="@AppAuth.AdminRole">
             <button type="button" class="btn btn-sm btn-link text-secondary p-0 edit-text" aria-label="Tekst van @Label bewerken" @onclick="StartEdit">
                 <i class="bi bi-pencil"></i>
             </button>
@@ -37,7 +37,7 @@ else
     {
         <div class="stat-caption mt-1">
             <i class="bi bi-pencil-square text-info me-1"></i>Aangepast in de app.
-            <AuthorizeView Roles="@KeyAuth.AdminRole">
+            <AuthorizeView Roles="@AppAuth.AdminRole">
                 <button type="button" class="btn btn-sm btn-link text-secondary p-0 align-baseline reset-text" @onclick="Reset">Terug naar appsettings</button>
             </AuthorizeView>
         </div>

@@ -31,7 +31,7 @@
     <div class="mb-3">
         <div class="fw-semibold text-white small mb-1">Tijd</div>
         <div class="small text-white mb-2 post-time">@(PostTimeGameTime?.ToString("dd-MM-yyyy HH:mm") ?? "alleen met de hand")</div>
-        <AuthorizeView Roles="@KeyAuth.AdminRole">
+        <AuthorizeView Roles="@AppAuth.AdminRole">
             <form class="d-flex gap-2 align-items-start" @onsubmit="SaveTime">
                 <input type="datetime-local" class="form-control form-control-dark form-control-sm" aria-label="Tijd" step="60" @bind="timeDraft" />
                 <button type="submit" class="btn btn-sm btn-scout-secondary text-nowrap"><i class="bi bi-check-lg me-1"></i> Opslaan</button>
@@ -73,7 +73,7 @@
         }
     </ul>
 
-    <AuthorizeView Roles="@KeyAuth.AdminRole">
+    <AuthorizeView Roles="@AppAuth.AdminRole">
         <PicturePicker @bind-Picture="picture" Disabled="posting" />
         <div class="d-flex flex-wrap gap-2 mt-2">
             <button class="btn btn-outline-success btn-sm" disabled="@(!IsConnected || posting)" @onclick="() => Post(false)"><i class="bi bi-send me-1"></i> Nu sturen</button>

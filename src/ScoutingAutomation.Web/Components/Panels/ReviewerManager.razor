@@ -6,7 +6,7 @@
     <div class="field-label mb-0">Juryleden</div>
     @if (NameFetcher.CanFetch)
     {
-        <AuthorizeView Roles="@KeyAuth.AdminRole">
+        <AuthorizeView Roles="@AppAuth.AdminRole">
             <button type="button" class="btn btn-sm btn-link text-secondary p-0 fetch-names" disabled="@fetching" @onclick="FetchAll">
                 <i class="bi bi-arrow-repeat me-1"></i>@(fetching ? "Ophalen…" : "Namen ophalen uit Slack")
             </button>
@@ -33,7 +33,7 @@
                 <i class="bi @(configured ? "bi-lock-fill text-muted" : "bi-person-plus text-info")" title="@(configured ? "Uit appsettings.json" : "Toegevoegd in de app")"></i>
                 <span class="reviewer-name text-white text-truncate">@(Runtime.NameOf(reviewer) ?? "geen naam")</span>
                 <span class="font-monospace text-muted small">@reviewer</span>
-                <AuthorizeView Roles="@KeyAuth.AdminRole">
+                <AuthorizeView Roles="@AppAuth.AdminRole">
                     <span class="ms-auto d-flex gap-1">
                         <button type="button" class="btn btn-sm btn-link text-secondary p-0 edit-name" aria-label="Naam van @reviewer bewerken" @onclick="() => StartEdit(reviewer)">
                             <i class="bi bi-pencil"></i>
@@ -62,7 +62,7 @@
     }
 </div>
 
-<AuthorizeView Roles="@KeyAuth.AdminRole">
+<AuthorizeView Roles="@AppAuth.AdminRole">
     <Authorized>
         <form class="d-flex gap-2 mb-1" @onsubmit="Add">
             <input type="text" class="form-control form-control-dark form-control-sm font-monospace" placeholder="Slack-member-ID, bijv. U04ABC123"

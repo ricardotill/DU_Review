@@ -259,42 +259,42 @@
 </div>
 
 <div class="mt-4">
-    <AuthorizeView Roles="@KeyAuth.AdminRole">
+    <AuthorizeView Roles="@AppAuth.AdminRole">
         <Authorized>
             <AnnouncementPanel />
         </Authorized>
         <NotAuthorized>
             <div class="glass-panel p-4">
                 <h2 class="panel-title"><i class="bi bi-flag-fill text-success"></i> Startbericht in Slack</h2>
-                <p class="text-secondary small mb-0">Alleen beheerders kunnen het startbericht sturen. <a href="admin">Naar beheermodus</a>.</p>
+                <p class="text-secondary small mb-0">Alleen beheerders kunnen het startbericht sturen.</p>
             </div>
         </NotAuthorized>
     </AuthorizeView>
 </div>
 
 <div class="mt-4">
-    <AuthorizeView Roles="@KeyAuth.AdminRole">
+    <AuthorizeView Roles="@AppAuth.AdminRole">
         <Authorized>
             <AnnouncementPanel End="true" />
         </Authorized>
         <NotAuthorized>
             <div class="glass-panel p-4">
                 <h2 class="panel-title"><i class="bi bi-stopwatch-fill text-danger"></i> Eindbericht in Slack</h2>
-                <p class="text-secondary small mb-0">Alleen beheerders kunnen het eindbericht sturen. <a href="admin">Naar beheermodus</a>.</p>
+                <p class="text-secondary small mb-0">Alleen beheerders kunnen het eindbericht sturen.</p>
             </div>
         </NotAuthorized>
     </AuthorizeView>
 </div>
 
 <div class="mt-4">
-    <AuthorizeView Roles="@KeyAuth.AdminRole">
+    <AuthorizeView Roles="@AppAuth.AdminRole">
         <Authorized>
             <RebuildPanel />
         </Authorized>
         <NotAuthorized>
             <div class="glass-panel p-4">
                 <h2 class="panel-title"><i class="bi bi-arrow-repeat text-warning"></i> Opnieuw opbouwen uit Slack</h2>
-                <p class="text-secondary small mb-0">Alleen beheerders kunnen opnieuw opbouwen. <a href="admin">Naar beheermodus</a>.</p>
+                <p class="text-secondary small mb-0">Alleen beheerders kunnen opnieuw opbouwen.</p>
             </div>
         </NotAuthorized>
     </AuthorizeView>

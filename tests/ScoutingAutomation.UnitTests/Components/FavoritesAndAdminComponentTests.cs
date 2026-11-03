@@ -135,14 +135,13 @@ public class AdminOnlyComponentTests : PageTestBase
     }
 
     [Fact]
-    public void Configuration_ForJury_ShouldPointToAdminModeForRebuild()
+    public void Configuration_ForJury_ShouldNotOfferTheRebuild()
     {
         LogInAsJury();
 
         var cut = Render<Configuration>();
 
         cut.Markup.Should().Contain("Alleen beheerders kunnen opnieuw opbouwen");
-        cut.Find("a[href=admin]").TextContent.Should().Be("Naar beheermodus");
         cut.FindAll(".rebuild-panel").Should().BeEmpty();
     }
 

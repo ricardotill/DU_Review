@@ -10,9 +10,9 @@ PORT="${PORT:-5231}"
 
 dotnet publish "$PROJECT" -c Release -o "$APP_DIR" --nologo
 
-# Keys and runtime settings are never published: take them over once from the project folder,
-# so the access keys, reviewer names and rules stay the same
-for f in access-keys.json runtime-settings.json; do
+# Runtime settings are never published: take them over once from the project folder,
+# so the reviewer names and rules stay the same. Accounts live in the database.
+for f in runtime-settings.json; do
   if [[ ! -e "$APP_DIR/$f" && -e "$PROJECT/$f" ]]; then
     cp "$PROJECT/$f" "$APP_DIR/"
   fi

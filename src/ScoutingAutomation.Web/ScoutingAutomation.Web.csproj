@@ -13,7 +13,7 @@
 
   <!-- Created at runtime and holding secrets or local state: never copy them to build or publish output -->
   <ItemGroup>
-    <Content Remove="access-keys.json;access-keys.json.tmp;runtime-settings.json;runtime-settings.json.tmp" />
+    <Content Remove="runtime-settings.json;runtime-settings.json.tmp" />
   </ItemGroup>
   <ItemGroup>
     <_ContentIncludedByDefault Remove="scouting_storage\_backup\20260930-175206\submissions.json" />

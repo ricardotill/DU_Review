@@ -17,7 +17,7 @@ else if (isStaff)
 {
     <PageHeader Title="Dashboard" Subtitle="Scores en voortgang van de beoordeling voor alle groepen.">
         <Actions>
-            <AuthorizeView Roles="@KeyAuth.AdminRole">
+            <AuthorizeView Roles="@AppAuth.AdminRole">
                 <Authorized>
                     <div class="form-check form-switch mb-0 align-self-center me-2" title="Alleen bestanden downloaden en benoemen; verder wordt niets verwerkt">
                         <input class="form-check-input" type="checkbox" role="switch" id="manualMode" checked="@Runtime.ManualMode" @onchange="ToggleManualMode" />
@@ -220,8 +220,8 @@ else if (isStaff)
     protected override async Task OnInitializedAsync()
     {
         var user = AuthState == null ? null : (await AuthState).User;
-        ownGroup = user == null ? null : KeyAuth.GroupId(user);
-        isStaff = user?.IsInRole(KeyAuth.JuryRole) == true;
+        ownGroup = user == null ? null : AppAuth.GroupId(user);
+        isStaff = user?.IsInRole(AppAuth.JuryRole) == true;
         if (!isStaff) return;
 
         clock = new StandingClock(Runtime, Time, () => InvokeAsync(StateHasChanged));

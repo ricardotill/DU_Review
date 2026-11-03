@@ -23,7 +23,7 @@ else
             }
         </div>
         <div class="col-xl-5 d-flex flex-column gap-4">
-            <AuthorizeView Roles="@KeyAuth.AdminRole">
+            <AuthorizeView Roles="@AppAuth.AdminRole">
                 <div class="glass-panel p-4">
                     <h2 class="panel-title"><i class="bi bi-geo-alt-fill text-danger"></i> @(editing ? $"Locatie {form.Number} aanpassen" : "Locatie toevoegen")</h2>
                     <form @onsubmit="Save">
@@ -111,7 +111,7 @@ else
                                         <div class="text-secondary">@location.Hint</div>
                                     }
                                 </span>
-                                <AuthorizeView Roles="@KeyAuth.AdminRole">
+                                <AuthorizeView Roles="@AppAuth.AdminRole">
                                     <span class="d-flex gap-1 flex-shrink-0">
                                         <button type="button" class="btn btn-sm btn-link p-0" title="Aanpassen" @onclick="() => Edit(location)"><i class="bi bi-pencil"></i></button>
                                         @if (deleting == location.Number)

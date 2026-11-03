@@ -1,3 +1,4 @@
+using ScoutingAutomation.Infrastructure.Accounts;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -89,7 +90,10 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<RuntimeSettingsService>();
         services.AddScoped<ReviewerNameFetcher>();
         services.AddScoped<GroupMessageSender>();
-        services.AddSingleton<AccessKeyService>();
+        services.AddSingleton<AccountChangeNotifier>();
+        services.AddSingleton<IAccountMailer, SmtpAccountMailer>();
+        services.AddScoped<AccountService>();
+        services.AddScoped<AccountsInitializer>();
         services.AddSingleton<LoginAttemptLimiter>();
         services.AddSingleton<ISlackRebuildService, SlackRebuildService>();
         services.AddScoped<ISubmissionWorkflowService, SubmissionWorkflowService>();

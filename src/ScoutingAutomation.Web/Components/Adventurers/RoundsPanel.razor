@@ -9,7 +9,7 @@
         Tijden zijn in de tijdzone van het spel. Laat het einde leeg voor @Runtime.RoundMinutes minuten.
     </p>
 
-    <AuthorizeView Roles="@KeyAuth.AdminRole">
+    <AuthorizeView Roles="@AppAuth.AdminRole">
         <Authorized>
             <details class="mb-3 generate-rounds" open="@(rows.Count == 0)">
                 <summary class="text-secondary small">Genereer rondes…</summary>
@@ -75,7 +75,7 @@
         </div>
     }
 
-    <AuthorizeView Roles="@KeyAuth.AdminRole">
+    <AuthorizeView Roles="@AppAuth.AdminRole">
         <Authorized>
             <div class="d-flex flex-wrap gap-2 mt-3">
                 <button type="button" class="btn btn-sm btn-outline-info add-round" @onclick="Add"><i class="bi bi-plus-lg me-1"></i> Ronde toevoegen</button>

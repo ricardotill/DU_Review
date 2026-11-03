@@ -80,18 +80,18 @@ Het dashboard toont live de stand, alle inzendingen en de bestanden zelf. Je hoe
 ### Inloggen
 
 1. Open het adres van de app dat je van de organisatie kreeg.
-2. Vul de toegangssleutel in. Hoofdletters en spaties maken niet uit.
+2. Vul je e-mailadres en wachtwoord in. De eerste keer kies je het wachtwoord via de link in de uitnodiging. Kies minstens 10 tekens; een zin werkt goed.
 3. Je browser blijft daarna 30 dagen ingelogd.
 
-Na 30 verkeerde sleutels binnen een minuut vanaf hetzelfde adres moet je even wachten voordat je het opnieuw kunt proberen.
+Na 5 verkeerde wachtwoorden staat je account 15 minuten op slot. Wachtwoord vergeten? Klik op **Wachtwoord vergeten?** op het loginscherm. Op **Account** (je naam onderaan het menu) wijzig je je wachtwoord.
 
-Groepen loggen in met hun eigen groepssleutel en zien alleen hun eigen groep; zie de [handleiding voor groepen](handleiding-groepen.md#het-dashboard-van-je-groep).
+Groepen loggen in met hun eigen groepsaccount en zien alleen hun eigen groep; zie de [handleiding voor groepen](handleiding-groepen.md#het-dashboard-van-je-groep).
 
 ### De pagina's
 
 | Pagina | Wat je er ziet en doet |
 | --- | --- |
-| **Dashboard** | Totalen, het scorebord met per groep wanneer ze voor het laatst iets instuurden, de punten in de loop van het spel en de voortgang per opdracht. In beheermodus ook **Exporteren**. |
+| **Dashboard** | Totalen, het scorebord met per groep wanneer ze voor het laatst iets instuurden, de punten in de loop van het spel en de voortgang per opdracht. Voor beheerders ook **Exporteren**. |
 | **Te beoordelen** | De open inzendingen, de langst wachtende eerst, met hoe lang ze al wachten. Klik om het bericht in Slack te openen. Inzendingen die geen punten meer kunnen opleveren staan apart onder **telt niet meer**. |
 | **Inzendingen** | Alle inzendingen. Zoek en filter op groep, opdracht, status en jurylid, of toon alleen je favorieten. Met de Avonturiers ook op soort. |
 | **Opdrachten** | Alle opdrachten. Per opdracht zie je de inzendingen van alle groepen naast elkaar, desgewenst alleen de open inzendingen. Daar start je ook een diavoorstelling van die opdracht. |
@@ -103,7 +103,7 @@ Groepen loggen in met hun eigen groepssleutel en zien alleen hun eigen groep; zi
 | **Diavoorstelling** | Alle foto's, video's en geluidsopnames achter elkaar, bijvoorbeeld op een beamer. Afgekeurde inzendingen worden overgeslagen. Kies een groep, een opdracht, alleen awesome of alleen favorieten, herhalen, door elkaar, het aantal seconden per foto, en of het scorebord tussendoor komt. |
 | **Gebeurtenissen** | Alles wat er live uit Slack binnenkomt, en wat de app ermee deed. Zie [Gebeurtenissen](#gebeurtenissen). |
 | **Configuratie** | De instellingen en de juryleden. Voor de organisatie; zie de [handleiding voor de organisatie](handleiding-beheer.md). |
-| **Beheer** | Naar beheermodus gaan en de sleutels beheren, ook die van de groepen. Voor de organisatie; zie de [handleiding voor de organisatie](handleiding-beheer.md#beheer-in-de-app). |
+| **Beheer** | Accounts beheren, ook die van de groepen en de beamer. Alleen voor beheerders; zie de [handleiding voor de organisatie](handleiding-beheer.md#beheer-in-de-app). |
 
 Lange lijsten op **Te beoordelen**, **Inzendingen** en **Gebeurtenissen** staan op pagina's van 50. Kies een ander filter, dan begin je weer op de eerste pagina.
 
@@ -178,7 +178,7 @@ Er komen geen meldingen bij opnieuw opbouwen uit Slack, en niet in de diavoorste
 | Een inzending verschijnt niet op het dashboard | Staat er een opdrachtnummer in het bericht? Zit er een bestand bij? Is de bot lid van het kanaal? Zie je een ❓ of ⚠️ van de bot, lees dan de thread. Op de pagina **Gebeurtenissen** zie je wat de app met het bericht deed. |
 | De emoji van een jurylid doet niets | Is het een beoordelings-emoji (zie de tabel bij [Beoordelen in Slack](#beoordelen-in-slack))? Staat het jurylid op **Configuratie**? Staat **Handmatige modus** uit? Vraag anders de organisatie. |
 | De status is anders dan het laatste emoji | Dat klopt als juryleden het oneens zijn: de beste beoordeling telt. Haal de emoji weg die niet meer moet tellen. |
-| Je kunt niet meer inloggen | Is de toegangssleutel net vernieuwd? Vraag de organisatie om de nieuwe sleutel. |
+| Je kunt niet meer inloggen | Gebruik **Wachtwoord vergeten?**, of vraag een beheerder om een nieuwe link. |
 | Een video speelt niet af in het dashboard | Download het bestand via de detailpagina; niet elke browser speelt elk videoformaat af. |
 
 Bij een rode melding over Slack bovenaan de pagina, of als er iets anders mis lijkt: waarschuw de organisatie.
