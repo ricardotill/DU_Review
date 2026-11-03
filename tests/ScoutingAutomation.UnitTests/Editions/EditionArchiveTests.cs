@@ -139,9 +139,11 @@ public class EditionArchiveTests : IDisposable
     [InlineData("C1", "C2", "C3", "C1", false, "Slack-kanaal")]
     [InlineData("C1", "C2", "C2", null, false, "Slack-kanaal")]
     [InlineData("C1", null, "C2", null, true, "team")]
-    public async Task Import_WithGroupsThatWouldClash_ShouldBeRefused(string first, string? firstAdventurers, string second, string? secondAdventurers, bool sameTeam, string problem)
+    [InlineData("C1", null, "C2", null, null, null)]
+    public async Task Import_ShouldRefuseGroupsSharingAChannelOrTeam_ButNotGroupsWithoutTeam(string first, string? firstAdventurers, string second, string? secondAdventurers, bool? sameTeam, string? problem)
     {
-        var team = Guid.NewGuid();
+        // sameTeam null: both groups without a team, which each get a new one
+        var team = sameTeam == null ? Guid.Empty : Guid.NewGuid();
         var data = new
         {
             format = EditionArchive.Format, version = 1, exportedAt = DateTimeOffset.UtcNow,
@@ -149,7 +151,7 @@ public class EditionArchiveTests : IDisposable
             groups = new[]
             {
                 new { id = Guid.NewGuid(), teamId = team, name = "A", slackChannelId = first, adventurersSlackChannelId = firstAdventurers, createdAt = DateTimeOffset.UtcNow },
-                new { id = Guid.NewGuid(), teamId = sameTeam ? team : Guid.NewGuid(), name = "B", slackChannelId = second, adventurersSlackChannelId = secondAdventurers, createdAt = DateTimeOffset.UtcNow }
+                new { id = Guid.NewGuid(), teamId = sameTeam != false ? team : Guid.NewGuid(), name = "B", slackChannelId = second, adventurersSlackChannelId = secondAdventurers, createdAt = DateTimeOffset.UtcNow }
             }
         };
         var zip = Path.Combine(_temp.Path, "botsing.zip");
@@ -161,6 +163,13 @@ public class EditionArchiveTests : IDisposable
         }
 
         var (edition, error) = await Archive(_db, _here).ImportAsync(zip);
+
+        if (problem == null)
+        {
+            error.Should().BeNull();
+            (await _db.Groups.IgnoreQueryFilters().Where(g => g.EditionId == edition!.Id).Select(g => g.TeamId).Distinct().CountAsync()).Should().Be(2);
+            return;
+        }
 
         edition.Should().BeNull();
         error.Should().Contain(problem);

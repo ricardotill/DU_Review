@@ -280,7 +280,7 @@ public sealed class EditionArchive
         var channels = data.Groups.SelectMany(g => new[] { g.SlackChannelId, g.AdventurersSlackChannelId })
             .Where(c => !string.IsNullOrWhiteSpace(c)).Select(c => c!.Trim()).ToList();
         if (channels.Distinct(StringComparer.Ordinal).Count() != channels.Count) return (null, "Een Slack-kanaal hoort bij meer dan één groep in het bestand.");
-        if (data.Groups.GroupBy(g => g.TeamId).Any(t => t.Count() > 1)) return (null, "Een team staat twee keer in het bestand.");
+        if (data.Groups.Where(g => g.TeamId != Guid.Empty).GroupBy(g => g.TeamId).Any(t => t.Count() > 1)) return (null, "Een team staat twee keer in het bestand.");
 
         var groupIds = data.Groups.Select(g => g.Id).ToHashSet();
         if (groupIds.Count != data.Groups.Count) return (null, "Een groep staat twee keer in het bestand.");
