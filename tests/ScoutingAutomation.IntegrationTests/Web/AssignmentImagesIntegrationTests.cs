@@ -8,6 +8,7 @@ using ScoutingAutomation.Domain.Interfaces;
 using ScoutingAutomation.Infrastructure.Accounts;
 using ScoutingAutomation.Infrastructure.Adventurers;
 using ScoutingAutomation.Infrastructure.Assignments;
+using ScoutingAutomation.Infrastructure.Settings;
 using Xunit;
 
 namespace ScoutingAutomation.IntegrationTests.Web;
@@ -82,6 +83,26 @@ public class AssignmentImagesIntegrationTests : IClassFixture<WebApplicationFact
         (await client.GetAsync($"/api/assignment-images/{_open.Id}")).StatusCode.Should().Be(HttpStatusCode.OK);
         (await client.GetAsync($"/api/assignment-images/{_locked.Id}")).StatusCode.Should().Be(HttpStatusCode.NotFound);
         (await client.GetAsync($"/api/assignment-images/{Guid.NewGuid()}")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task Group_BeforeTheStart_ShouldGetNoPictureButTheJuryShould()
+    {
+        // Before the start the group's page shows no assignments; a picture link kept from earlier must not open either
+        var runtime = _app.Factory.Services.GetRequiredService<RuntimeSettingsService>();
+        runtime.SetEventStart(GameTime.ToGameTime(DateTimeOffset.UtcNow.AddDays(1)).DateTime).Should().BeNull();
+        try
+        {
+            using var group = await CreateGroupClientAsync();
+            using var jury = await _app.CreateLoggedInClientAsync();
+
+            (await group.GetAsync($"/api/assignment-images/{_open.Id}")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+            (await jury.GetAsync($"/api/assignment-images/{_open.Id}")).StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+        finally
+        {
+            runtime.SetEventStart(null);
+        }
     }
 
     [Fact]

@@ -372,19 +372,23 @@ api.MapGet("/files/{id:guid}", async (
     return Results.File(stream, SafeContentType.For(submission.FileName), submission.FileName, enableRangeProcessing: true);
 }).RequireAuthorization().WithMetadata(new GroupAccessAttribute(), new BeamerAccessAttribute());
 
-// Pictures of the assignments: the jury gets all of them, a group only those of the assignments open to it.
+// Pictures of the assignments: the jury gets all of them, a group only those of the assignments open to it, from the start.
 // A locked one looks the same as one that does not exist.
 api.MapGet("/assignment-images/{id:guid}", async (
     HttpRequest request,
     Guid id,
     IAssignmentImageRepository images,
     AssignmentUnlockService unlocks,
-    IFileStorageService fileStorage) =>
+    IFileStorageService fileStorage,
+    RuntimeSettingsService runtime,
+    TimeProvider time) =>
 {
     var image = await images.GetAsync(id);
     if (image == null) return Results.NotFound();
     if (AppAuth.GroupId(request.HttpContext.User) is { } ownGroup)
     {
+        // Before the start a group sees no assignments on its page; a picture link kept from earlier stays shut too
+        if (runtime.EventStart is { } start && time.GetUtcNow() < start) return Results.NotFound();
         var state = await unlocks.ForGroupAsync(ownGroup);
         if (state == null || !state.IsOpen(image.AssignmentCode)) return Results.NotFound();
     }
