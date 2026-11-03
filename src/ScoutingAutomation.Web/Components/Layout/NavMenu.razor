@@ -164,6 +164,12 @@
                             <span class="nav-label fw-medium">Onze inzendingen</span>
                         </NavLink>
                     </div>
+                    <div class="nav-item">
+                        <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="edities">
+                            <i class="bi bi-calendar3" style="color: #a78bfa;"></i>
+                            <span class="nav-label fw-medium">Eerdere edities</span>
+                        </NavLink>
+                    </div>
                 </AuthorizeView>
                 @* The beamer screen only shows the scoreboard and the slideshow *@
                 <AuthorizeView Roles="@AppAuth.BeamerRole" Context="beamer">

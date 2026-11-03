@@ -19,9 +19,24 @@ public class Edition
 
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
+    /// <summary>
+    /// The folder of this edition's group folders, inside the storage root; null for the storage root itself (the
+    /// edition made from a database from before editions keeps its files where they were).
+    /// </summary>
+    public string? StorageFolder { get; set; }
+
+    /// <summary>When the edition was archived; null while it is not.</summary>
+    public DateTimeOffset? ArchivedAt { get; set; }
+
+    /// <summary>The final standing, saved when the edition was archived (JSON of <see cref="EditionStanding"/> rows).</summary>
+    public string? FinalStandingJson { get; set; }
+
     /// <summary>The name a new edition gets when the app makes it by itself: "DU" and the year.</summary>
     public static string DefaultName(int year) => $"DU {year}";
 }
+
+/// <summary>One group's place in the final standing of an edition.</summary>
+public sealed record EditionStanding(Guid TeamId, Guid GroupId, string GroupName, int Rank, int Score);
 
 public enum EditionStatus
 {

@@ -7,6 +7,7 @@ using ScoutingAutomation.Domain.Enums;
 using ScoutingAutomation.Domain.Interfaces;
 using ScoutingAutomation.Domain.Models;
 using ScoutingAutomation.Infrastructure.Data;
+using ScoutingAutomation.Infrastructure.Editions;
 using ScoutingAutomation.Infrastructure.Settings;
 using ScoutingAutomation.Infrastructure.Slack;
 using ScoutingAutomation.Infrastructure.Storage;
@@ -19,13 +20,16 @@ public partial class DatabaseInitializer
     private readonly IFileStorageService _fileStorage;
     private readonly IOptions<ScoutingSettings> _options;
     private readonly ILogger<DatabaseInitializer> _logger;
+    private readonly ActiveEdition? _activeEdition;
 
     public DatabaseInitializer(
         ScoutingDbContext context,
         IFileStorageService fileStorage,
         IOptions<ScoutingSettings> options,
-        ILogger<DatabaseInitializer> logger)
+        ILogger<DatabaseInitializer> logger,
+        ActiveEdition? activeEdition = null)
     {
+        _activeEdition = activeEdition;
         _context = context;
         _fileStorage = fileStorage;
         _options = options;
@@ -363,57 +367,43 @@ public partial class DatabaseInitializer
             }
         }
 
-        // FR-003: Synchronize Groups from appsettings.json
+        // The groups are kept per edition in the app (Beheer > Edities). The settings only fill an edition without
+        // groups: a new installation, or one from before groups were managed in the app.
         var configuredGroups = _options.Value.Groups;
         EnsureDistinctFolders(configuredGroups);
         EnsureDistinctChannels(configuredGroups);
         EnsureValidBonusCategories(_options.Value.BonusCategories);
-        if (configuredGroups != null && configuredGroups.Count > 0)
+        if (configuredGroups is { Count: > 0 } && !await _context.Groups.AnyAsync(ct))
         {
             foreach (var cfg in configuredGroups)
             {
-                var existing = await _context.Groups.FirstOrDefaultAsync(g => g.SlackChannelId == cfg.SlackChannelId, ct);
-                if (existing == null)
+                _context.Groups.Add(new Group
                 {
-                    _context.Groups.Add(new Group
-                    {
-                        Id = Guid.NewGuid(),
-                        Name = cfg.Name,
-                        Abbreviation = cfg.Abbreviation,
-                        SlackChannelId = cfg.SlackChannelId,
-                        AdventurersSlackChannelId = Blank(cfg.AdventurersSlackChannelId),
-                        MapToken = NewMapToken(),
-                        Description = cfg.Description
-                    });
-                }
-                else
-                {
-                    existing.Name = cfg.Name;
-                    existing.Abbreviation = cfg.Abbreviation;
-                    existing.AdventurersSlackChannelId = Blank(cfg.AdventurersSlackChannelId);
-                    existing.MapToken ??= NewMapToken();
-                    existing.Description = cfg.Description;
-                }
-
-                await _fileStorage.EnsureFolderStructureAsync(cfg.Name, ct);
-            }
-            // A group that left the settings may still hold an Avonturiers channel a configured group now uses
-            var configuredChannels = configuredGroups.Select(g => g.SlackChannelId).ToHashSet();
-            var adventurerChannels = configuredGroups.Select(g => Blank(g.AdventurersSlackChannelId)).OfType<string>().ToHashSet();
-            foreach (var old in await _context.Groups.Where(g => !configuredChannels.Contains(g.SlackChannelId) && g.AdventurersSlackChannelId != null).ToListAsync(ct))
-            {
-                if (adventurerChannels.Contains(old.AdventurersSlackChannelId!)) old.AdventurersSlackChannelId = null;
+                    Id = Guid.NewGuid(),
+                    Name = cfg.Name,
+                    Abbreviation = cfg.Abbreviation,
+                    SlackChannelId = cfg.SlackChannelId,
+                    AdventurersSlackChannelId = Blank(cfg.AdventurersSlackChannelId),
+                    MapToken = NewMapToken(),
+                    Description = cfg.Description
+                });
             }
 
             await _context.SaveChangesAsync(ct);
-
-            // Kept, as submissions may point to them, but they get no new submissions
-            var channels = configuredGroups.Select(g => g.SlackChannelId).ToHashSet();
-            foreach (var old in await _context.Groups.Where(g => !channels.Contains(g.SlackChannelId)).ToListAsync(ct))
-            {
-                _logger.LogWarning("Group {Group} ({Channel}) is in the database but no longer in the settings", old.Name, old.SlackChannelId);
-            }
+            _logger.LogInformation("Added {Count} groups from the settings to the active edition", configuredGroups.Count);
         }
+        else if (configuredGroups is { Count: > 0 })
+        {
+            _logger.LogInformation("The active edition has its groups; Scouting:Groups in the settings is not used (change groups in Beheer > Edities)");
+        }
+
+        foreach (var group in await _context.Groups.ToListAsync(ct))
+        {
+            group.MapToken ??= NewMapToken();
+            await _fileStorage.EnsureFolderStructureAsync(group.Name, ct);
+        }
+
+        await _context.SaveChangesAsync(ct);
 
         // Synchronize Assignments and their points from the CSV file
         if (configuredAssignments != null)

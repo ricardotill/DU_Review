@@ -170,7 +170,7 @@ public class GroupLoginComponentTests : PageTestBase
 
         var cut = Render<NavMenu>();
 
-        cut.FindAll("a.nav-link").Select(a => a.GetAttribute("href")).Should().Equal("", "submissions");
+        cut.FindAll("a.nav-link").Select(a => a.GetAttribute("href")).Should().Equal("", "submissions", "edities");
         cut.Markup.Should().Contain("De Wolven");
     }
 

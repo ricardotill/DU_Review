@@ -1,6 +1,6 @@
 # Handleiding voor groepen
 
-Laatst bijgewerkt: 6 oktober 2026
+Laatst bijgewerkt: 3 november 2026
 
 Jullie sturen opdrachten in via Slack. De jury beoordeelt ze daar, en in de app DU Review zien jullie je score en de stand.
 
@@ -11,6 +11,7 @@ Jullie sturen opdrachten in via Slack. De jury beoordeelt ze daar, en in de app 
 - Zet de bot een ❓, bewerk dan je bericht en zet het juiste nummer erin.
 - Zet de bot een ⚠️, lees de uitleg in de thread.
 - Met jullie groepsaccount zie je in de app jullie score, de stand en jullie inzendingen.
+- Onder **Eerdere edities** zie je de vorige jaren waarin jullie meededen, met jullie plaats en punten. Jullie account blijft van jaar tot jaar hetzelfde.
 - Avonturiers plaatsen hun foto's in hun eigen kanaal, met `Locatie 7` bij een check-in en `Thema 3` bij een themafoto. Zie **Voor de Avonturiers**.
 
 ## Een opdracht insturen

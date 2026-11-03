@@ -226,6 +226,28 @@ public class WorkflowHardeningTests : IDisposable
     }
 
     [Fact]
+    public async Task Override_InProgress_ShouldHoldOffAnEditionSwitchOrRebuild()
+    {
+        // Starting an edition closes the gate; an override that already loaded its submission must finish first,
+        // or it would move an archived submission's file into the new edition's folder
+        await Create().ProcessSlackMessageAsync(Message());
+        var id = Stored().Id;
+        var repository = _submissions;
+        repository.HoldReads = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var overriding = Create().OverrideStatusAsync(id, SubmissionStatus.Approved, "Slack lag eruit");
+        await repository.Reading.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        var closing = _gate.CloseAsync();
+        await Task.Delay(100);
+        closing.IsCompleted.Should().BeFalse("the override is still running");
+
+        repository.HoldReads.SetResult();
+        await overriding.WaitAsync(TimeSpan.FromSeconds(10));
+        using var closed = await closing.WaitAsync(TimeSpan.FromSeconds(10));
+        Stored().Status.Should().Be(SubmissionStatus.Approved);
+    }
+
+    [Fact]
     public async Task Override_WithAVeryLongReason_ShouldStoreItShortened()
     {
         await Create().ProcessSlackMessageAsync(Message());
@@ -249,7 +271,20 @@ public class WorkflowHardeningTests : IDisposable
         public bool FailUpdates { get; set; }
         public bool FailAdds { get; set; }
 
-        public Task<Submission?> GetByIdAsync(Guid id, CancellationToken ct = default) => inner.GetByIdAsync(id, ct);
+        /// <summary>When set, a lookup by id signals <see cref="Reading"/> and waits for this before it reads.</summary>
+        public TaskCompletionSource? HoldReads { get; set; }
+        public TaskCompletionSource Reading { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task<Submission?> GetByIdAsync(Guid id, CancellationToken ct = default)
+        {
+            if (HoldReads is { } hold)
+            {
+                Reading.TrySetResult();
+                await hold.Task.WaitAsync(ct);
+            }
+
+            return await inner.GetByIdAsync(id, ct);
+        }
         public Task<IReadOnlyList<Submission>> GetBySlackMessageIdAsync(string channelId, string messageId, CancellationToken ct = default) => inner.GetBySlackMessageIdAsync(channelId, messageId, ct);
         public Task<IReadOnlyList<Submission>> SearchSubmissionsAsync(SubmissionFilter filter, CancellationToken ct = default) => inner.SearchSubmissionsAsync(filter, ct);
         public Task<SubmissionStatistics> GetStatisticsAsync(CancellationToken ct = default) => inner.GetStatisticsAsync(ct);

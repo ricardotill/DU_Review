@@ -231,7 +231,8 @@ public class AccountIntegrationTests : IClassFixture<WebApplicationFactory<Progr
         using var admin = await _app.CreateLoggedInClientAsync(admin: true);
         using var jury = await _app.CreateLoggedInClientAsync();
 
-        (await admin.GetStringAsync("/admin")).Should().Contain("Accounts").And.Contain("Er is geen mailserver ingesteld");
+        (await admin.GetStringAsync("/admin")).Should().Contain("Accounts").And.Contain("Er is geen mailserver ingesteld")
+            .And.Contain("Edities").And.Contain($"DU {DateTimeOffset.UtcNow.Year}").And.Contain("De Zeearenden");
         (await jury.GetStringAsync("/admin")).Should().Contain("Alleen voor beheerders").And.NotContain(TestApp.AdminEmail);
     }
 

@@ -63,6 +63,20 @@ Op **Beheer** > **Mail** zie je of mail is ingesteld en stuur je een testmail. Z
 
 Kom je van een versie met sleutels (toegangssleutel, beheerderssleutel, groepssleutels)? Die werken niet meer. Bij de eerste start van de nieuwe versie krijgt de database de tabellen voor accounts erbij; inzendingen, punten en instellingen blijven staan. Zet `BOOTSTRAP_ADMIN_EMAIL` voor je de nieuwe versie start, kies je wachtwoord via de link, en maak dan de accounts voor de jury, de groepen en de beamer. `access-keys.json` mag weg.
 
+### Edities en groepen
+
+Elk jaar is een editie met eigen groepen, opdrachten en inzendingen; alleen de actieve editie verwerkt Slack. Alles staat op **Beheer** > **Edities** (zie ook de [README](../README.md#edities)).
+
+**Een nieuw jaar voorbereiden** (een paar weken vooraf):
+
+1. Maak bij **Nieuwe editie** de editie aan, bijvoorbeeld "DU 2027". Laat **Groepen van de actieve editie overnemen** aan als de meeste groepen weer meedoen.
+2. Kies **Bekijken** bij de nieuwe editie en zet de groepen goed: haal groepen weg die niet meedoen, voeg nieuwe toe (kies een bestaand team als een groep van eerder terugkomt, zodat haar account blijft werken), en controleer de Slack-kanalen. Hetzelfde kanaal als vorig jaar mag.
+3. Maak accounts voor nieuwe groepen op **Accounts**; je kunt daar ook teams kiezen die nog niet in de actieve editie zitten.
+
+**Op de speeldag** (of de avond ervoor): kies bij de nieuwe editie **Deze editie starten** en bevestig. De vorige editie wordt gearchiveerd met haar eindstand, groepen loggen opnieuw in, en vanaf dan gaat alles over de nieuwe editie. Zet daarna op **Configuratie** de start- en eindtijd; kijk ook of de juryleden, teksten en regels nog kloppen.
+
+Een groep met inzendingen kan niet uit een editie worden gehaald. Groepen in de actieve editie wijzigen kan altijd; de app pauzeert Slack daarvoor heel even. `Groups` in `appsettings.json` gebruikt de app alleen voor een installatie zonder groepen.
+
 ### Van één spel naar edities
 
 Vanaf deze versie hoort alles bij een **editie** (een jaar van het spel); zie de [README](../README.md#edities). Bij de eerste start wordt een bestaande database de eerste editie, genoemd naar het jaar van de eerste inzending ("DU 2025"). Groepen, opdrachten, locaties, inzendingen en punten blijven staan en groepsaccounts blijven werken.
@@ -111,7 +125,7 @@ Haal je een categorie weg, dan tellen de punten ervan niet meer mee, maar ze bli
 Het Avonturiers-deel staat standaard uit. Zo zet je het op:
 
 1. Maak per groep een tweede Slack-kanaal voor de Avonturiers en nodig de bot uit (`/invite @DU Review`).
-2. Zet in `appsettings.json` bij elke groep `AdventurersSlackChannelId`, en zet `Scouting:Adventurers:Enabled` op `true`. Een kanaal mag maar bij één groep horen; anders start de app niet.
+2. Vul op **Beheer** > **Edities** bij elke groep het Avonturiers-kanaal in, en zet `Scouting:Adventurers:Enabled` op `true`. Een kanaal mag maar bij één groep per editie horen.
 3. Zet `Scouting:PublicUrl` op het adres waarop de app van buiten bereikbaar is (bijvoorbeeld het adres van de [Cloudflare Tunnel](#via-internet-cloudflare-tunnel)). Zonder dat adres staat er "(de kaartlink volgt)" in plaats van de kaartlink.
 4. Herstart de app. In het menu staat nu **Avonturiers**.
 

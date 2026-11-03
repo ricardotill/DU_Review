@@ -27,10 +27,13 @@ public sealed class AccountClaimsFactory : UserClaimsPrincipalFactory<AppUser, I
         // The name pages show; the user name is the email address
         identity.RemoveClaim(identity.FindFirst(identity.NameClaimType));
         identity.AddClaim(new Claim(identity.NameClaimType, string.IsNullOrWhiteSpace(user.DisplayName) ? user.Email ?? "" : user.DisplayName));
-        if (user.GroupId is { } team && identity.HasClaim(identity.RoleClaimType, AppAuth.GroupRole)
-            && await _db.Groups.AsNoTracking().Where(g => g.TeamId == team).Select(g => (Guid?)g.Id).FirstOrDefaultAsync() is { } group)
+        if (user.GroupId is { } team && identity.HasClaim(identity.RoleClaimType, AppAuth.GroupRole))
         {
-            identity.AddClaim(new Claim(AppAuth.GroupIdClaim, group.ToString()));
+            identity.AddClaim(new Claim(AppAuth.TeamIdClaim, team.ToString()));
+            if (await _db.Groups.AsNoTracking().Where(g => g.TeamId == team).Select(g => (Guid?)g.Id).FirstOrDefaultAsync() is { } group)
+            {
+                identity.AddClaim(new Claim(AppAuth.GroupIdClaim, group.ToString()));
+            }
         }
 
         return identity;

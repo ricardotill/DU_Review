@@ -1118,6 +1118,9 @@ public class SubmissionWorkflowService : ISubmissionWorkflowService
             throw new InvalidOperationException("Opnieuw opbouwen uit Slack loopt; pas de status aan als dat klaar is");
         }
 
+        // Counts as live processing, like a Slack event: a rebuild or an edition switch waits until it is done, so the
+        // submission read here is still part of the game being played when its file moves
+        using var live = _gate == null ? null : await _gate.EnterAsync(ct);
         var submission = await _submissionRepository.GetByIdAsync(submissionId, ct)
             ?? throw new InvalidOperationException($"Submission {submissionId} not found");
 

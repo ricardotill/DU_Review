@@ -3,7 +3,7 @@
 
 <PageTitle>Beheer - DU Review</PageTitle>
 
-<PageHeader Title="Beheer" Subtitle="Beheerders maken de accounts voor jury, beamer en groepen, en beheren extra punten, puntencategorieën en vrijgegeven locaties." />
+<PageHeader Title="Beheer" Subtitle="Beheerders bereiden edities en hun groepen voor, maken de accounts voor jury, beamer en groepen, en beheren extra punten, puntencategorieën en vrijgegeven locaties." />
 
 @if (!IsAdmin)
 {
@@ -15,6 +15,10 @@
 else
 {
     <div class="row g-4">
+        <div class="col-12">
+            <EditionsPanel @rendermode="InteractiveServer" />
+        </div>
+
         <div class="col-12">
             <AccountsPanel @rendermode="InteractiveServer" />
         </div>

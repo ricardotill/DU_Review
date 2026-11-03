@@ -88,9 +88,8 @@
         WarnIfPlainHttp(user);
 
         // A group starts on its dashboard and the beamer on the scoreboard; a return link only leads jury pages
-        var roles = await Users.GetRolesAsync(user);
-        var principal = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(
-            roles.Select(r => new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Role, r)), AppAuth.Scheme));
+        // The same claims as the login cookie: a team without a group in the active edition starts on its earlier editions
+        var principal = await SignIn.CreateUserPrincipalAsync(user);
         Navigation.NavigateTo(AppAuth.StartPage(principal, ReturnUrl));
     }
 
