@@ -39,7 +39,7 @@ public class RuntimeSettingsPersistenceIntegrationTests : IClassFixture<WebAppli
     }
 
     [Fact]
-    public async Task SettingsChangedInTheApp_ShouldSurviveARestartExceptManualMode()
+    public async Task SettingsChangedInTheApp_ShouldSurviveARestart()
     {
         var start = GameTimeIn(TimeSpan.FromHours(-1));
         var end = GameTimeIn(TimeSpan.FromHours(3));
@@ -69,7 +69,8 @@ public class RuntimeSettingsPersistenceIntegrationTests : IClassFixture<WebAppli
         restarted.EventStartGameTime.Should().Be(start);
         restarted.EventEndGameTime.Should().Be(end);
         restarted.GameStartPostedAt(Channel).Should().Be(posted);
-        restarted.ManualMode.Should().BeFalse("manual mode starts from appsettings on every start");
+        restarted.ManualMode.Should().BeTrue("all instances share it, so a restart of one must not switch it for the others");
+        restarted.SetManualMode(false);
 
         // And the restarted app works with them: the added reviewer's emoji counts
         using var client = _app.CreateClient();
@@ -84,16 +85,33 @@ public class RuntimeSettingsPersistenceIntegrationTests : IClassFixture<WebAppli
     }
 
     [Fact]
-    public async Task DamagedSettingsFile_ShouldNotStopTheApp()
+    public async Task SettingsFileOfAnOlderVersion_ShouldBeReadInOnceAndThenNoLongerUsed()
     {
-        Runtime.AddReviewer("U_EXTRA").Should().BeNull();
+        // The app starts when first used: the file of an older version is there before that
+        var file = Path.Combine(_app.StorageRoot, "runtime-settings.json");
+        await File.WriteAllTextAsync(file, """{ "Reviewers": ["U_OUD"], "ReviewerNames": { "U_OUD": { "Name": "Olga", "FromSlack": false } } }""");
 
-        // The restarted app starts when first used: the file is damaged before that
+        Runtime.AddedReviewers.Should().Equal("U_OUD");
+        Runtime.NameOf("U_OUD").Should().Be("Olga");
+        File.Exists(file).Should().BeFalse();
+        File.Exists(file + ".imported").Should().BeTrue("kept, in case something went wrong");
+
+        // A file that shows up again is not read: the database has the settings now
+        Runtime.RemoveReviewer("U_OUD").Should().BeTrue();
+        File.Copy(file + ".imported", file);
         _app = await _app.RestartAsync();
-        await File.WriteAllTextAsync(Path.Combine(_app.StorageRoot, "runtime-settings.json"), "{ dit is geen json");
+        Runtime.AddedReviewers.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task DamagedSettingsFileOfAnOlderVersion_ShouldNotStopTheApp()
+    {
+        var file = Path.Combine(_app.StorageRoot, "runtime-settings.json");
+        await File.WriteAllTextAsync(file, "{ dit is geen json");
 
         Runtime.AddedReviewers.Should().BeEmpty();
         Runtime.IsReviewer(TestApp.Reviewer).Should().BeTrue("reviewers from appsettings still apply");
+        File.Exists(file).Should().BeTrue("left alone, so it can be fixed and read in at the next start");
         using var browser = await _app.CreateLoggedInClientAsync();
         (await browser.GetAsync("/configuration")).EnsureSuccessStatusCode();
     }

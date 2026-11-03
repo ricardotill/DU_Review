@@ -18,8 +18,7 @@ public class StandingSettingsTests : IDisposable
     public void Dispose() => _temp.Dispose();
 
     private RuntimeSettingsService Create() =>
-        new(Options.Create(new ScoutingSettings { RuntimeSettingsFile = Path.Combine(_temp.Path, "runtime-settings.json") }),
-            NullLogger<RuntimeSettingsService>.Instance);
+        TestRuntime.For(Options.Create(new ScoutingSettings { RuntimeSettingsFile = Path.Combine(_temp.Path, "runtime-settings.json") }));
 
     [Fact]
     public void ByDefault_ShouldShowTheStanding()

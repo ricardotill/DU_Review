@@ -32,9 +32,7 @@ public class BonusPointsPanelTests : BunitContext
         _points.Add(new GroupBonusPoints { GroupId = _wolves.Id, CategoryKey = "avonturiers", Points = 2 });
         _groups.GetAllAsync(Arg.Any<CancellationToken>()).Returns(new[] { _wolves });
         _groups.GetBonusPointsAsync(Arg.Any<CancellationToken>()).Returns(_ => _points.ToList());
-        _runtime = new RuntimeSettingsService(
-            Options.Create(new ScoutingSettings { RuntimeSettingsFile = Path.Combine(_temp.Path, "runtime-settings.json") }),
-            NullLogger<RuntimeSettingsService>.Instance);
+        _runtime = TestRuntime.For(Options.Create(new ScoutingSettings { RuntimeSettingsFile = Path.Combine(_temp.Path, "runtime-settings.json") }));
         Services.AddSingleton(_runtime);
         Services.AddSingleton(_groups);
         Services.AddSingleton(_notifier);

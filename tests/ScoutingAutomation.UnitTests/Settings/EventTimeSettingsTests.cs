@@ -18,12 +18,12 @@ public class EventTimeSettingsTests : IDisposable
     public void Dispose() => _temp.Dispose();
 
     private RuntimeSettingsService Create(DateTime? start = null, DateTime? end = null) =>
-        new(Options.Create(new ScoutingSettings
+        TestRuntime.For(Options.Create(new ScoutingSettings
         {
             EventStart = start,
             EventEnd = end,
             RuntimeSettingsFile = Path.Combine(_temp.Path, "runtime-settings.json")
-        }), NullLogger<RuntimeSettingsService>.Instance);
+        }));
 
     [Fact]
     public void Times_ShouldComeFromAppSettingsUntilChanged()

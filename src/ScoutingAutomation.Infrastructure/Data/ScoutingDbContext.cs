@@ -39,10 +39,20 @@ public class ScoutingDbContext : DbContext
     public DbSet<GroupBonusPoints> GroupBonusPoints => Set<GroupBonusPoints>();
     public DbSet<Location> Locations => Set<Location>();
     public DbSet<LocationUnlock> LocationUnlocks => Set<LocationUnlock>();
+    public DbSet<ScoutingAutomation.Infrastructure.Settings.RuntimeSettingsRecord> RuntimeSettings => Set<ScoutingAutomation.Infrastructure.Settings.RuntimeSettingsRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        // The settings made in the app: one row, shared by every instance
+        modelBuilder.Entity<ScoutingAutomation.Infrastructure.Settings.RuntimeSettingsRecord>(entity =>
+        {
+            entity.ToTable("RuntimeSettings");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.Json).IsRequired();
+        });
 
         // Group
         modelBuilder.Entity<Edition>(entity =>

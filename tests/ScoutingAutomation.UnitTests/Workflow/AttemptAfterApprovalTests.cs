@@ -50,7 +50,7 @@ public class AttemptAfterApprovalTests : IDisposable
                 Awesome = new List<string> { "heart" }
             }
         });
-        _runtime = new RuntimeSettingsService(_settings, NullLogger<RuntimeSettingsService>.Instance);
+        _runtime = TestRuntime.For(_settings);
 
         _groups.GetBySlackChannelIdAsync("C1", Arg.Any<CancellationToken>()).Returns(_group);
         _groups.GetByIdAsync(_group.Id, Arg.Any<CancellationToken>()).Returns(_group);

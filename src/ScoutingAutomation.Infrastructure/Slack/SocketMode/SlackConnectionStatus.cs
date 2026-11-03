@@ -8,7 +8,10 @@ public enum SlackConnectionState
     Disabled,
     Connecting,
     Connected,
-    Error
+    Error,
+
+    /// <summary>Another instance of the app is the leader and holds the Slack connection.</summary>
+    Standby
 }
 
 public static class SlackConnectionStateExtensions
@@ -19,6 +22,7 @@ public static class SlackConnectionStateExtensions
         SlackConnectionState.Connecting => "verbinden",
         SlackConnectionState.Connected => "verbonden",
         SlackConnectionState.Error => "fout",
+        SlackConnectionState.Standby => "via een andere instantie",
         _ => "uit"
     };
 }

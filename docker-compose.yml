@@ -54,7 +54,6 @@ services:
       - tunnel
     volumes:
       - app-data:/data
-      - app-keys:/home/app/.aspnet/DataProtection-Keys
       # Edits to the points file count after `docker compose restart app`, without a rebuild
       - ./src/ScoutingAutomation.Web/opdrachtenpunten.csv:/app/opdrachtenpunten.csv:ro
 
@@ -83,4 +82,3 @@ networks:
 volumes:
   db-data:
   app-data:
-  app-keys:

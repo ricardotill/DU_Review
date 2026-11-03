@@ -6,6 +6,8 @@ using ScoutingAutomation.Contracts.Configuration;
 using ScoutingAutomation.Contracts.Slack;
 using ScoutingAutomation.Domain.Interfaces;
 using ScoutingAutomation.Infrastructure.Accounts;
+using ScoutingAutomation.Infrastructure.Cluster;
+using Microsoft.AspNetCore.DataProtection;
 using ScoutingAutomation.Infrastructure.Data;
 using ScoutingAutomation.Infrastructure.Extensions;
 using ScoutingAutomation.Infrastructure.Settings;
@@ -61,6 +63,9 @@ if (isAspire && !string.IsNullOrWhiteSpace(connectionString) && !connectionStrin
     // PostgreSQL registered via Aspire component
     builder.AddNpgsqlDbContext<ScoutingDbContext>("scoutingdb");
     builder.AddNpgsqlDbContext<AccountsDbContext>("scoutingdb");
+    builder.AddNpgsqlDbContext<DataProtectionKeysDbContext>("scoutingdb");
+    // Several instances may share this database: locks, the leader and live updates go through PostgreSQL
+    builder.Services.AddPostgresCluster(connectionString);
 }
 else
 {
@@ -79,6 +84,7 @@ else
         options.UseSqlite(sqliteConnection);
     });
     builder.Services.AddDbContext<AccountsDbContext>(options => options.UseSqlite(sqliteConnection));
+    builder.Services.AddDbContext<DataProtectionKeysDbContext>(options => options.UseSqlite(sqliteConnection));
 }
 
 // Add Domain & Infrastructure services
@@ -118,6 +124,11 @@ builder.Services.AddIdentity<AppUser, IdentityRole<Guid>>(options =>
     .AddErrorDescriber<DutchIdentityErrorDescriber>()
     .AddClaimsPrincipalFactory<AccountClaimsFactory>()
     .AddDefaultTokenProviders();
+// The keys of the login cookie and the password links live in the database: every instance accepts the cookie of the
+// others, and a new container keeps everyone logged in
+builder.Services.AddDataProtection()
+    .SetApplicationName("DU Review")
+    .PersistKeysToDbContext<DataProtectionKeysDbContext>();
 // Invitation and password links
 builder.Services.Configure<DataProtectionTokenProviderOptions>(options => options.TokenLifespan = AccountService.LinkLifetime);
 // A blocked account or a changed password ends the login on the next request after this
@@ -153,8 +164,8 @@ if (!GameTime.Configure(scoutingSettings.TimeZone))
     app.Logger.LogWarning("Unknown time zone '{TimeZone}' in Scouting:TimeZone: using the server's time zone {Local}", scoutingSettings.TimeZone, TimeZoneInfo.Local.Id);
 }
 
-app.Logger.LogInformation("Database {Database}; storage {Storage}, settings {Settings}, assignment points {Points}",
-    databaseDescription, scoutingSettings.StorageRoot, scoutingSettings.RuntimeSettingsFile, scoutingSettings.AssignmentPointsFile);
+app.Logger.LogInformation("Database {Database}; storage {Storage}, assignment points {Points}",
+    databaseDescription, scoutingSettings.StorageRoot, scoutingSettings.AssignmentPointsFile);
 if (!scoutingSettings.Email.IsConfigured)
 {
     app.Logger.LogWarning("No SMTP server set (Scouting:Email): invitations and password mails are not sent; admins can copy the links instead");
@@ -199,6 +210,8 @@ using (var scope = app.Services.CreateScope())
 {
     try
     {
+        // Instances that start together set up the database one after the other
+        await using var setup = await scope.ServiceProvider.GetRequiredService<IClusterLocks>().AcquireAsync(ClusterLockNames.DatabaseSetup);
         var initializer = scope.ServiceProvider.GetRequiredService<DatabaseInitializer>();
         await initializer.InitializeAsync();
         await scope.ServiceProvider.GetRequiredService<AccountsInitializer>().InitializeAsync();

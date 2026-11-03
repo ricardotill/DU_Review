@@ -1,4 +1,8 @@
 using ScoutingAutomation.Infrastructure.Accounts;
+using ScoutingAutomation.Infrastructure.Cluster;
+using ScoutingAutomation.Infrastructure.Editions;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -31,6 +35,13 @@ public static class ServiceCollectionExtensions
     {
         services.Configure<ScoutingSettings>(configuration.GetSection(ScoutingSettings.SectionName));
 
+        // One instance unless AddPostgresCluster registered the PostgreSQL parts first
+        services.TryAddSingleton<IClusterLocks>(SingleInstance.Instance);
+        services.TryAddSingleton<IClusterLeadership>(SingleInstance.Instance);
+        services.TryAddSingleton<IClusterBus>(SingleInstance.Instance);
+        services.AddSingleton<ActiveEditionRefresher>();
+        services.AddHostedService<ClusterSync>();
+
         services.AddScoped<ISubmissionRepository, SubmissionRepository>();
         services.AddScoped<IGroupRepository, GroupRepository>();
         services.AddScoped<IAssignmentRepository, AssignmentRepository>();
@@ -48,17 +59,18 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISlackEventDispatcher, SlackEventDispatcher>();
         services.AddSingleton<SlackConnectionStatus>();
         services.AddHttpClient<ISlackSocketConnector, SlackSocketConnector>();
-        services.AddHostedService<SlackSocketModeService>();
+        services.AddSingleton<SlackSocketModeService>();
+        services.AddLeaderOnlyHostedService<SlackSocketModeService>();
         services.AddSingleton<SlackCatchUpService>();
         services.AddSingleton<ISlackCatchUpService>(sp => sp.GetRequiredService<SlackCatchUpService>());
-        services.AddHostedService(sp => sp.GetRequiredService<SlackCatchUpService>());
+        services.AddLeaderOnlyHostedService<SlackCatchUpService>();
         services.AddSingleton<SlackLinks>();
         services.AddSingleton<GameStartAnnouncer>();
-        services.AddHostedService(sp => sp.GetRequiredService<GameStartAnnouncer>());
+        services.AddLeaderOnlyHostedService<GameStartAnnouncer>();
         services.AddSingleton<GameEndAnnouncer>();
-        services.AddHostedService(sp => sp.GetRequiredService<GameEndAnnouncer>());
+        services.AddLeaderOnlyHostedService<GameEndAnnouncer>();
         services.AddSingleton<ReviewReminderService>();
-        services.AddHostedService(sp => sp.GetRequiredService<ReviewReminderService>());
+        services.AddLeaderOnlyHostedService<ReviewReminderService>();
 
         // Editions: the one being played, and making and switching editions
         services.AddSingleton<ScoutingAutomation.Infrastructure.Editions.ActiveEdition>();
@@ -72,11 +84,11 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<UnlockNotifier>();
         services.AddHostedService(sp => sp.GetRequiredService<UnlockNotifier>());
         services.AddSingleton<ThemeRoundAnnouncer>();
-        services.AddHostedService(sp => sp.GetRequiredService<ThemeRoundAnnouncer>());
+        services.AddLeaderOnlyHostedService<ThemeRoundAnnouncer>();
         services.AddSingleton<AdventurersStartAnnouncer>();
-        services.AddHostedService(sp => sp.GetRequiredService<AdventurersStartAnnouncer>());
+        services.AddLeaderOnlyHostedService<AdventurersStartAnnouncer>();
         services.AddSingleton<AdventurersFinalAnnouncer>();
-        services.AddHostedService(sp => sp.GetRequiredService<AdventurersFinalAnnouncer>());
+        services.AddLeaderOnlyHostedService<AdventurersFinalAnnouncer>();
 
         // Not the app-wide resilience handler: its 10 s attempt timeout breaks large video downloads,
         // and its retries could post a thread reply twice. SlackClient retries downloads itself.
@@ -92,6 +104,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<SlackProcessingGate>();
         services.AddSingleton<SlackChannelLocks>();
         services.AddSingleton<SlackOwnUploads>();
+        services.AddSingleton<IRuntimeSettingsStore, DatabaseRuntimeSettingsStore>();
         services.AddSingleton<RuntimeSettingsService>();
         services.AddScoped<ReviewerNameFetcher>();
         services.AddScoped<GroupMessageSender>();
@@ -106,4 +119,26 @@ public static class ServiceCollectionExtensions
 
         return services;
     }
+
+    /// <summary>
+    /// Lets several instances of the app share one PostgreSQL database: locks, the leader and messages between the
+    /// instances go through PostgreSQL. Call before <see cref="AddScoutingInfrastructure"/>.
+    /// </summary>
+    public static IServiceCollection AddPostgresCluster(this IServiceCollection services, string connectionString)
+    {
+        services.AddSingleton(_ => new PostgresClusterConnections(connectionString));
+        services.AddSingleton<IClusterLocks, PostgresClusterLocks>();
+        services.AddSingleton<PostgresLeadership>();
+        services.AddSingleton<IClusterLeadership>(sp => sp.GetRequiredService<PostgresLeadership>());
+        services.AddHostedService(sp => sp.GetRequiredService<PostgresLeadership>());
+        services.AddSingleton<PostgresClusterBus>();
+        services.AddSingleton<IClusterBus>(sp => sp.GetRequiredService<PostgresClusterBus>());
+        services.AddHostedService(sp => sp.GetRequiredService<PostgresClusterBus>());
+        return services;
+    }
+
+    /// <summary>Runs the singleton <typeparamref name="T"/> as a hosted service on the leader only.</summary>
+    private static void AddLeaderOnlyHostedService<T>(this IServiceCollection services) where T : class, IHostedService =>
+        services.AddHostedService(sp => new LeaderOnlyHostedService<T>(sp.GetRequiredService<T>(),
+            sp.GetRequiredService<IClusterLeadership>(), sp.GetRequiredService<ILogger<LeaderOnlyHostedService<T>>>()));
 }

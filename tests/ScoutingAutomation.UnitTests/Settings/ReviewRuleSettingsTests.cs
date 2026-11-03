@@ -15,12 +15,12 @@ public class ReviewRuleSettingsTests : IDisposable
     public void Dispose() => _temp.Dispose();
 
     private RuntimeSettingsService Create(bool block = false, int? minutes = null, string? channel = "C_JURY") =>
-        new(Options.Create(new ScoutingSettings
+        TestRuntime.For(Options.Create(new ScoutingSettings
         {
             RuntimeSettingsFile = Path.Combine(_temp.Path, "runtime-settings.json"),
             BlockAttemptsAfterApproval = block,
             ReviewReminder = new ReviewReminderConfig { AfterMinutes = minutes, ChannelId = channel }
-        }), NullLogger<RuntimeSettingsService>.Instance);
+        }));
 
     [Theory]
     [InlineData(true)]

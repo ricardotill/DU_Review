@@ -40,12 +40,12 @@ COPY --from=build /app .
 COPY src/ScoutingAutomation.Web/opdrachtenpunten.csv /app/opdrachtenpunten.csv
 
 # Everything the app writes lives in /data (a volume), owned by `app` so a new volume is writable.
-# The login cookie keys go there too: without them every restart logs everyone out.
+# The login cookie keys live in the database.
 # libgssapi-krb5-2: the PostgreSQL driver looks for it at every connection and logs an error without it
 RUN apt-get update && apt-get install -y --no-install-recommends libgssapi-krb5-2 && rm -rf /var/lib/apt/lists/*
 
-RUN mkdir -p /data/storage /home/app/.aspnet/DataProtection-Keys \
-    && chown -R app:app /data /home/app/.aspnet
+RUN mkdir -p /data/storage \
+    && chown -R app:app /data
 
 ENV ASPNETCORE_ENVIRONMENT=Production \
     ASPNETCORE_HTTP_PORTS=8080 \
@@ -56,5 +56,5 @@ ENV ASPNETCORE_ENVIRONMENT=Production \
 
 USER app
 EXPOSE 8080
-VOLUME ["/data", "/home/app/.aspnet/DataProtection-Keys"]
+VOLUME ["/data"]
 ENTRYPOINT ["dotnet", "ScoutingAutomation.Web.dll"]

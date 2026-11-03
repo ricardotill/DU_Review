@@ -175,7 +175,7 @@ Slack stuurt geen namen maar **member-ID's**. Die vind je zo: open iemands profi
 "Reviewers": [ "U04ABC123", "U05DEF456" ]
 ```
 
-Juryleden kun je ook tijdens het spel toevoegen, zonder herstart: op de pagina **Configuratie**, onder **Juryleden** (alleen voor beheerders). Die tellen meteen mee en blijven bewaard na een herstart (in `runtime-settings.json`, zie `Scouting:RuntimeSettingsFile`). Juryleden uit `appsettings.json` hebben daar een slotje en kun je alleen in dat bestand aanpassen.
+Juryleden kun je ook tijdens het spel toevoegen, zonder herstart: op de pagina **Configuratie**, onder **Juryleden** (alleen voor beheerders). Die tellen meteen mee en blijven bewaard na een herstart (in de database). Juryleden uit `appsettings.json` hebben daar een slotje en kun je alleen in dat bestand aanpassen.
 
 #### Namen van juryleden
 
@@ -189,7 +189,7 @@ Een member-ID zegt weinig. Geef juryleden daarom een naam; die zie je dan overal
    "ReviewerNames": { "U04ABC123": "Sanne", "U05DEF456": "Joris" }
    ```
 
-Namen uit de app worden bewaard in `runtime-settings.json`.
+Namen uit de app worden bewaard in de database.
 
 Heb je de Slack-app al eerder aangemaakt? Voeg dan `users:read` toe onder **OAuth & Permissions** → **Bot Token Scopes**, en installeer de app opnieuw.
 

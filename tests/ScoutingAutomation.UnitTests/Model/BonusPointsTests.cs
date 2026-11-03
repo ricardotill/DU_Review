@@ -373,6 +373,5 @@ public class BonusPointsTests
     }
 
     private static RuntimeSettingsService Runtime(TempDirectory temp) =>
-        new(Options.Create(new ScoutingSettings { RuntimeSettingsFile = Path.Combine(temp.Path, "runtime-settings.json") }),
-            NullLogger<RuntimeSettingsService>.Instance);
+        TestRuntime.For(Options.Create(new ScoutingSettings { RuntimeSettingsFile = Path.Combine(temp.Path, "runtime-settings.json") }));
 }

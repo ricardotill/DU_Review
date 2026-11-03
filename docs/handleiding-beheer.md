@@ -147,7 +147,7 @@ Het Avonturiers-deel staat standaard uit. Zo zet je het op:
 
 ### Handmatige modus
 
-Zet **Handmatige modus** aan met de schakelaar op het **Dashboard** als de organisatie alles zelf wil beoordelen. De app slaat dan alleen nog bestanden op met de juiste naam in de map van de groep. Er komen geen inzendingen op het dashboard, emoji's worden genegeerd en de bot zegt niets in Slack. Bovenaan elke pagina staat dan **Handmatige modus**. Na een herstart geldt weer de instelling `Scouting:ManualMode`.
+Zet **Handmatige modus** aan met de schakelaar op het **Dashboard** als de organisatie alles zelf wil beoordelen. De app slaat dan alleen nog bestanden op met de juiste naam in de map van de groep. Er komen geen inzendingen op het dashboard, emoji's worden genegeerd en de bot zegt niets in Slack. Bovenaan elke pagina staat dan **Handmatige modus**. De schakelaar blijft staan na een herstart en geldt voor alle instanties van de app.
 
 ### Automatisch inhalen
 
@@ -212,7 +212,7 @@ Start in de map van de repository:
 Het script doet het volgende:
 
 1. Het bouwt een Release-versie van de app in `~/du-app`.
-2. De eerste keer neemt het `runtime-settings.json` over uit de projectmap. Zo blijven de juryleden en regels hetzelfde. Staan ze al in `~/du-app`, dan blijven die staan.
+2. Staat er nog geen database in `~/du-app`, dan neemt het een `runtime-settings.json` uit de projectmap mee. De eerste start leest dat bestand één keer in de database in, zodat de juryleden en regels hetzelfde blijven. Daarna staan de instellingen alleen nog in de database.
 3. Het haalt de Slack-tokens en het adres van de eerste beheerder (zie [De eerste beheerder](#de-eerste-beheerder)) uit de user secrets. Ontbreekt de BotToken of de AppToken, dan stopt het script met een melding. De app start dan niet.
 4. Het start de app met SQLite. De database `scouting_dev.db` staat in `~/du-app`. Het puntenbestand `opdrachtenpunten.csv` leest de app uit de repository, dus een aanpassing daarin geldt na een herstart.
 5. Zolang de app draait, gaat de Mac niet in de slaapstand en blijft het scherm aan.
@@ -278,7 +278,7 @@ Het image van de app hoef je niet zelf te bouwen: GitHub bouwt het bij elke rele
 
 **Instellingen overnemen van een eerdere installatie**
 
-Heb je juryleden, regels en bottekst al ingesteld in `runtime-settings.json`? Zet dat bestand dan in de container en herstart de app:
+De app bewaart wat je in de app instelt in de database. Een oudere versie gebruikte daarvoor `runtime-settings.json`. Bij de overstap naar deze versie leest de app een bestaand `/data/runtime-settings.json` vanzelf één keer in en hernoemt het naar `runtime-settings.json.imported`. Wil je een bestand van een andere installatie overnemen, en zijn er nog geen instellingen in de database opgeslagen? Zet het bestand dan in de container en herstart de app:
 
 ```bash
 docker compose exec -T app sh -c 'cat > /data/runtime-settings.json' < src/ScoutingAutomation.Web/runtime-settings.json
@@ -317,8 +317,9 @@ Haalt de server nieuwe images automatisch op (bijvoorbeeld met Watchtower), zet 
 **Waar staat alles?**
 
 - De database staat in het Docker-volume `db-data`.
-- De accounts staan in de database. De bestanden en `runtime-settings.json` staan in het volume `app-data`, in de container onder `/data`. De bestanden van de groepen staan in `/data/storage`.
-- De sleutels voor de inlogcookies en de wachtwoordlinks staan in het volume `app-keys`. Daardoor blijft iedereen ingelogd na een herstart.
+- De accounts, de instellingen uit de app en de sleutels voor de inlogcookies en wachtwoordlinks staan in de database. Daardoor blijft iedereen ingelogd na een herstart.
+- De bestanden staan in het volume `app-data`, in de container onder `/data`. De bestanden van de groepen staan in `/data/storage`.
+- Na de overstap naar deze versie moet iedereen één keer opnieuw inloggen, omdat de sleutels voor de inlogcookies van het volume `app-keys` naar de database gaan. Dat volume is daarna niet meer nodig.
 - Het puntenbestand komt direct uit de repository: `src/ScoutingAutomation.Web/opdrachtenpunten.csv`.
 - Andere instellingen, zoals de start- en eindtijd, pas je aan in de app (als beheerder). Of je zet ze in `docker-compose.yml` onder `environment`, met `__` in plaats van `:`, bijvoorbeeld `Scouting__EventStart: "2026-10-03T09:00"`. Een waarde die je in de app hebt aangepast, gaat altijd voor.
 
@@ -329,6 +330,10 @@ Een kopie van alle bestanden maak je zo:
 ```bash
 docker compose cp app:/data/storage ./du-bestanden
 ```
+
+**Meer dan één instantie**
+
+De app kan met meerdere instanties op dezelfde PostgreSQL-database draaien, bijvoorbeeld voor meer capaciteit of om een server te kunnen herstarten zonder dat de app wegvalt. Er praat dan steeds één instantie met Slack; valt die weg, dan neemt een andere het binnen een paar seconden over. Zet er wel een load balancer met sticky sessions voor en geef alle instanties dezelfde map voor de bestanden. Zie [Meerdere instanties](../README.md#meerdere-instanties) in de README.
 
 Let op: de app draait zonder HTTPS. In een eigen netwerk is dat goed. Moet de app via internet bereikbaar zijn, gebruik dan een [Cloudflare Tunnel](#via-internet-cloudflare-tunnel).
 

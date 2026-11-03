@@ -86,7 +86,7 @@ Begin bij de lichtste stap en ga pas verder als die niet helpt. Alleen de laatst
 Bij catch-up en rebuild plaatst de bot geen berichten opnieuw. Dat geldt ook voor de Avonturiers:
 
 - **Vrijgespeelde opdrachten**: het aantal wordt uit de beoordelingen uitgerekend. Na een rebuild klopt het vanzelf, en de bot meldt het niet opnieuw in het Toeristen-kanaal.
-- **Rondeberichten, startinformatie en eindlocatie**: welke al geplaatst zijn, staat in `runtime-settings.json`. Een rebuild verandert dat niet, dus elk kanaal krijgt elk bericht maar één keer. Opnieuw sturen kan met de hand op **Avonturiers → Rondes**.
+- **Rondeberichten, startinformatie en eindlocatie**: welke al geplaatst zijn, staat in de database. Een rebuild verandert dat niet, dus elk kanaal krijgt elk bericht maar één keer. Opnieuw sturen kan met de hand op **Avonturiers → Rondes**.
 - **Rondepunten**: worden uitgerekend uit de tijd van het Slack-bericht, dus een rebuild geeft dezelfde uitslag.
 
 ## Wie mag wat

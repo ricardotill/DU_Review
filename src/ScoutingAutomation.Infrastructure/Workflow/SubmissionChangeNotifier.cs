@@ -1,4 +1,6 @@
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using ScoutingAutomation.Infrastructure.Cluster;
 
 namespace ScoutingAutomation.Infrastructure.Workflow;
 
@@ -13,8 +15,8 @@ public sealed record SubmissionCreatedNotification(
     DateTimeOffset PostedAt);
 
 /// <summary>
-/// In-process signal that submission data changed, so open pages can reload.
-/// Registered as a singleton; only reaches pages served by this app instance.
+/// Signal that submission data changed, so open pages can reload.
+/// Registered as a singleton; reaches the pages of the other instances of the app through <see cref="IClusterBus"/>.
 /// </summary>
 public interface ISubmissionChangeNotifier
 {
@@ -29,11 +31,23 @@ public interface ISubmissionChangeNotifier
 
 public class SubmissionChangeNotifier : ISubmissionChangeNotifier
 {
-    private readonly ILogger<SubmissionChangeNotifier> _logger;
+    public const string ChangedTopic = "submissions";
+    public const string CreatedTopic = "submission-created";
 
-    public SubmissionChangeNotifier(ILogger<SubmissionChangeNotifier> logger)
+    private readonly ILogger<SubmissionChangeNotifier> _logger;
+    private readonly IClusterBus _bus;
+
+    public SubmissionChangeNotifier(ILogger<SubmissionChangeNotifier> logger, IClusterBus? bus = null)
     {
         _logger = logger;
+        _bus = bus ?? SingleInstance.Instance;
+        _bus.Subscribe(ChangedTopic, _ => RaiseChanged());
+        _bus.Subscribe(CreatedTopic, payload =>
+        {
+            if (JsonSerializer.Deserialize<SubmissionCreatedNotification>(payload) is { } notification) RaiseCreated(notification);
+        });
+        // Messages may have been missed while the connection was down
+        _bus.Reconnected += RaiseChanged;
     }
 
     public event Action? Changed;
@@ -42,13 +56,25 @@ public class SubmissionChangeNotifier : ISubmissionChangeNotifier
 
     public void NotifyChanged()
     {
+        RaiseChanged();
+        _bus.Publish(ChangedTopic);
+    }
+
+    public void NotifyCreated(SubmissionCreatedNotification notification)
+    {
+        RaiseCreated(notification);
+        _bus.Publish(CreatedTopic, JsonSerializer.Serialize(notification));
+    }
+
+    private void RaiseChanged()
+    {
         foreach (var handler in Handlers(Changed).Cast<Action>())
         {
             Invoke(() => handler());
         }
     }
 
-    public void NotifyCreated(SubmissionCreatedNotification notification)
+    private void RaiseCreated(SubmissionCreatedNotification notification)
     {
         foreach (var handler in Handlers(Created).Cast<Action<SubmissionCreatedNotification>>())
         {
