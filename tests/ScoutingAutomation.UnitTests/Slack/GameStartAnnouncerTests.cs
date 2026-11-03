@@ -223,7 +223,7 @@ public class GameStartAnnouncerTests : IDisposable
         var time = new FixedTimeProvider(GameTime.FromGameTime(start).AddMinutes(minutesLate));
         var (announcer, _) = Create(Settings(eventStart: start), time);
 
-        await RunAsync(announcer, () => Posted >= 2);
+        await RunAsync(announcer, () => Posted >= 2, posts ? null : NothingWithin);
 
         _posted.Should().HaveCount(posts ? 2 : 0);
     }
@@ -234,8 +234,8 @@ public class GameStartAnnouncerTests : IDisposable
         var (withoutStart, _) = Create(Settings(eventStart: null));
         var (switchedOff, _) = Create(Settings(eventStart: DateTimeOffset.UtcNow.ToGameTime().DateTime, autoPost: false));
 
-        await RunAsync(withoutStart, () => false);
-        await RunAsync(switchedOff, () => false);
+        await RunAsync(withoutStart, () => false, NothingWithin);
+        await RunAsync(switchedOff, () => false, NothingWithin);
 
         _posted.Should().BeEmpty();
     }
@@ -271,12 +271,19 @@ public class GameStartAnnouncerTests : IDisposable
     }
 
     /// <summary>Runs the announcer until <paramref name="done"/> holds or a short time passed, then stops it.</summary>
-    internal static async Task RunAsync(ScheduledAnnouncer announcer, Func<bool> done)
+    /// <summary>How long a test watches for a post that should not come.</summary>
+    internal static readonly TimeSpan NothingWithin = TimeSpan.FromMilliseconds(500);
+
+    /// <param name="timeout">
+    /// How long to wait for <paramref name="done"/>: 5 seconds by default, because the first start of the service (scope,
+    /// database) can take seconds on a busy CI machine; <see cref="NothingWithin"/> when nothing should happen.
+    /// </param>
+    internal static async Task RunAsync(ScheduledAnnouncer announcer, Func<bool> done, TimeSpan? timeout = null)
     {
         await announcer.StartAsync(CancellationToken.None);
         try
         {
-            await WaitForAsync(done, TimeSpan.FromMilliseconds(500));
+            await WaitForAsync(done, timeout ?? TimeSpan.FromSeconds(5));
         }
         finally
         {

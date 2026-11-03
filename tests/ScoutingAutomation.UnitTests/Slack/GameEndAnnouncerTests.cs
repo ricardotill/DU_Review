@@ -115,7 +115,7 @@ public class GameEndAnnouncerTests : IDisposable
         var time = new FixedTimeProvider(GameTime.FromGameTime(End).AddMinutes(minutesLate));
         var (announcer, _) = Create(Settings(End), time);
 
-        await RunAsync(announcer, () => Posted >= 2);
+        await RunAsync(announcer, () => Posted >= 2, posts ? null : NothingWithin);
 
         _posted.Should().HaveCount(posts ? 2 : 0);
     }
@@ -126,8 +126,8 @@ public class GameEndAnnouncerTests : IDisposable
         var (withoutEnd, _) = Create(Settings(eventEnd: null));
         var (switchedOff, _) = Create(Settings(eventEnd: DateTimeOffset.UtcNow.ToGameTime().DateTime, autoPost: false));
 
-        await RunAsync(withoutEnd, () => false);
-        await RunAsync(switchedOff, () => false);
+        await RunAsync(withoutEnd, () => false, NothingWithin);
+        await RunAsync(switchedOff, () => false, NothingWithin);
 
         _posted.Should().BeEmpty();
     }
