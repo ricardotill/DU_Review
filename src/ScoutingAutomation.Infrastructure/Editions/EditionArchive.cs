@@ -69,6 +69,44 @@ public sealed class EditionArchive
     /// <returns>The files that were in the database but no longer on disk; they are listed, not in the ZIP.</returns>
     public async Task<IReadOnlyList<string>> ExportAsync(Guid editionId, Stream output, CancellationToken ct = default)
     {
+        // The rows and the standing are read under the edition lock, so an edition started meanwhile cannot mix in;
+        // the files are streamed outside it, so a long download does not hold up other edition changes
+        var (edition, submissions, files, data) = await EditionService.OneAtATimeAsync(() => ReadForExportAsync(editionId, ct), ct);
+
+        var missing = new List<string>();
+        await using var zip = await ZipArchive.CreateAsync(output, ZipArchiveMode.Create, leaveOpen: true, entryNameEncoding: null, ct);
+        var dataEntry = zip.CreateEntry(DataEntry, CompressionLevel.Optimal);
+        await using (var stream = await dataEntry.OpenAsync(ct))
+        {
+            await JsonSerializer.SerializeAsync(stream, data, Json, ct);
+        }
+
+        foreach (var submission in submissions)
+        {
+            await using var source = await _storage.OpenReadStreamAsync(submission.StoragePath, ct);
+            if (source == null)
+            {
+                missing.Add(files[submission.Id]);
+                continue;
+            }
+
+            var entry = zip.CreateEntry(files[submission.Id], Compression(submission.ContentType));
+            await using var target = await entry.OpenAsync(ct);
+            await source.CopyToAsync(target, ct);
+        }
+
+        if (missing.Count > 0)
+        {
+            _logger.LogWarning("Export of edition {Edition}: {Count} files are no longer on disk", edition.Name, missing.Count);
+        }
+
+        _logger.LogInformation("Exported edition {Edition}: {Groups} groups, {Submissions} submissions", edition.Name, data.Groups.Count, submissions.Count);
+        return missing;
+    }
+
+    private async Task<(Edition Edition, List<Submission> Submissions, Dictionary<Guid, string> Files, ArchiveData Data)> ReadForExportAsync(
+        Guid editionId, CancellationToken ct)
+    {
         var edition = await FindAsync(editionId, ct) ?? throw new InvalidOperationException("Edition not found");
         var groups = await _db.Groups.IgnoreQueryFilters().AsNoTracking().Include(g => g.Team)
             .Where(g => g.EditionId == editionId).OrderBy(g => g.Name).ToListAsync(ct);
@@ -108,35 +146,7 @@ public sealed class EditionArchive
             await _db.LocationUnlocks.IgnoreQueryFilters().AsNoTracking().Where(u => groupIds.Contains(u.GroupId))
                 .Select(u => new UnlockData(u.GroupId, u.LocationNumber, u.UnlockedAt)).ToListAsync(ct));
 
-        var missing = new List<string>();
-        await using var zip = await ZipArchive.CreateAsync(output, ZipArchiveMode.Create, leaveOpen: true, entryNameEncoding: null, ct);
-        var dataEntry = zip.CreateEntry(DataEntry, CompressionLevel.Optimal);
-        await using (var stream = await dataEntry.OpenAsync(ct))
-        {
-            await JsonSerializer.SerializeAsync(stream, data, Json, ct);
-        }
-
-        foreach (var submission in submissions)
-        {
-            await using var source = await _storage.OpenReadStreamAsync(submission.StoragePath, ct);
-            if (source == null)
-            {
-                missing.Add(files[submission.Id]);
-                continue;
-            }
-
-            var entry = zip.CreateEntry(files[submission.Id], Compression(submission.ContentType));
-            await using var target = await entry.OpenAsync(ct);
-            await source.CopyToAsync(target, ct);
-        }
-
-        if (missing.Count > 0)
-        {
-            _logger.LogWarning("Export of edition {Edition}: {Count} files are no longer on disk", edition.Name, missing.Count);
-        }
-
-        _logger.LogInformation("Exported edition {Edition}: {Groups} groups, {Submissions} submissions", edition.Name, groups.Count, submissions.Count);
-        return missing;
+        return (edition, submissions, files, data);
     }
 
     private string EditionRoot(string? storageFolder) =>
