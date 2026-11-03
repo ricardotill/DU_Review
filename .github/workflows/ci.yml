@@ -96,7 +96,7 @@ jobs:
               exit 1
             fi
             echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-            if [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            if [[ "$GITHUB_REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
               echo "stable=true" >> "$GITHUB_OUTPUT"
             else
               echo "stable=false" >> "$GITHUB_OUTPUT"
