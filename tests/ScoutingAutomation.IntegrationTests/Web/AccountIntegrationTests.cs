@@ -20,7 +20,8 @@ public class AccountIntegrationTests : IClassFixture<WebApplicationFactory<Progr
     public AccountIntegrationTests(WebApplicationFactory<Program> factory)
     {
         _factory = factory;
-        _app = new TestApp(factory, services: s =>
+        // Links asked for without a login only use the configured address, never the request's Host header
+        _app = new TestApp(factory, new Dictionary<string, string?> { ["Scouting:PublicUrl"] = "https://du.test" }, services: s =>
         {
             s.AddSingleton<IAccountMailer>(_mailer);
             // Checked at every request, so a blocked account is out at once instead of within a minute
@@ -178,6 +179,19 @@ public class AccountIntegrationTests : IClassFixture<WebApplicationFactory<Progr
         using var other = _app.CreateClient();
         (await TestApp.LogInAsync(other, "eva@du.test", TestApp.Password)).StatusCode.Should().Be(HttpStatusCode.OK, "the old password no longer works");
         (await TestApp.LogInAsync(other, "eva@du.test", newPassword)).StatusCode.Should().Be(HttpStatusCode.Redirect);
+    }
+
+    [Fact]
+    public async Task ForgottenPassword_WithAForgedHost_ShouldStillLinkToThePublicAddress()
+    {
+        await _app.EnsureAccountAsync("eva@du.test");
+        using var client = _app.CreateClient();
+        client.DefaultRequestHeaders.Host = "evil.example";
+
+        await TestApp.PostFormAsync(client, "/wachtwoord-vergeten", "forgot-password", new() { ["Input.Email"] = "eva@du.test" });
+
+        var body = _mailer.Sent.Last(m => m.To == "eva@du.test").Body;
+        body.Should().Contain("https://du.test/wachtwoord-instellen?").And.NotContain("evil.example");
     }
 
     [Fact]

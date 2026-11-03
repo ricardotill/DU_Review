@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using FluentAssertions;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -15,13 +16,14 @@ public sealed class AccountServiceTests : IAsyncLifetime, IAsyncDisposable
 {
     private readonly ServiceProvider _services;
     private readonly FakeMailer _mailer = new();
+    private readonly LogLines _log = new();
     private readonly ScoutingSettings _settings = new() { Accounts = { BootstrapAdminEmail = "admin@du.test" } };
 
     public AccountServiceTests()
     {
         var database = Guid.NewGuid().ToString();
         var services = new ServiceCollection()
-            .AddLogging()
+            .AddLogging(b => b.AddProvider(_log))
             .AddDataProtection().Services
             .AddDbContext<AccountsDbContext>(o => o.UseInMemoryDatabase(database))
             .AddSingleton<IOptions<ScoutingSettings>>(Options.Create(_settings))
@@ -225,6 +227,41 @@ public sealed class AccountServiceTests : IAsyncLifetime, IAsyncDisposable
         (await With((s, _) => s.SetPasswordAsync(Guid.NewGuid().ToString(), query["code"], NewPassword))).Error.Should().Contain("verlopen");
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("/")]
+    [InlineData("javascript:alert(1)")]
+    public async Task PasswordReset_WithoutThePublicUrl_ShouldSendNothing(string? baseUrl)
+    {
+        // The page passes Scouting:PublicUrl only; never the request's own address, which a forged Host header controls
+        await With((s, _) => s.CreateAsync("eva@du.test", "Eva", AccountKind.Jury, null));
+        _mailer.Sent.Clear();
+
+        await With(async (s, _) => { await s.SendPasswordResetAsync("eva@du.test", baseUrl); return 0; });
+
+        _mailer.Sent.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task FirstStart_WithMail_ShouldNotLogTheLink()
+    {
+        _log.Lines.Should().NotContain(l => l.Contains("wachtwoord-instellen"), "the link went by mail; a log is read by more people");
+    }
+
+    [Fact]
+    public async Task FirstStart_WithoutMail_ShouldLogTheLinkAsTheOnlyWayIn()
+    {
+        _settings.Accounts.BootstrapAdminEmail = "second@du.test";
+        _mailer.CanSend = false;
+        await RemoveAdminRoleAsync();
+
+        await InitializeAsync();
+
+        _log.Lines.Should().Contain(l => l.Contains("second@du.test") && l.Contains("/wachtwoord-instellen?id="));
+        _mailer.Sent.Should().NotContain(m => m.To == "second@du.test");
+    }
+
     [Fact]
     public async Task PasswordReset_ForAnUnknownAddress_ShouldSendNothing()
     {
@@ -251,12 +288,33 @@ public sealed class AccountServiceTests : IAsyncLifetime, IAsyncDisposable
     private sealed class FakeMailer : IAccountMailer
     {
         public List<AccountMail> Sent { get; } = [];
-        public bool CanSend => true;
+        public bool CanSend { get; set; } = true;
 
         public Task SendAsync(AccountMail mail, CancellationToken ct = default)
         {
+            if (!CanSend) return Task.CompletedTask;
             Sent.Add(mail);
             return Task.CompletedTask;
         }
+    }
+
+    private sealed class LogLines : ILoggerProvider, ILogger
+    {
+        private readonly List<string> _lines = [];
+
+        public IReadOnlyList<string> Lines { get { lock (_lines) return _lines.ToList(); } }
+
+        public ILogger CreateLogger(string categoryName) => this;
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            lock (_lines) _lines.Add(formatter(state, exception));
+        }
+
+        public void Dispose() { }
     }
 }

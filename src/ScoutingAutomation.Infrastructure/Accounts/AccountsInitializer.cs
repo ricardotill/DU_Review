@@ -118,16 +118,23 @@ public class AccountsInitializer
             return;
         }
 
-        var link = await _accounts.CreatePasswordLinkAsync(user, _options.Value.PublicUrl ?? "");
-        // Logged on purpose: it is the only way in on a fresh install without mail. Valid for a few days, and only once.
-        _logger.LogWarning("First admin {Email}: choose a password at {Link}", email, link);
-        try
+        var link = await _accounts.CreatePasswordLinkAsync(user, _options.Value.PublicUrl?.TrimEnd('/') ?? "");
+        if (_mailer.CanSend)
         {
-            await _mailer.SendAsync(AccountMails.Invitation(user, link));
+            try
+            {
+                await _mailer.SendAsync(AccountMails.Invitation(user, link));
+                _logger.LogWarning("First admin {Email}: a link to choose a password was mailed", email);
+                return;
+            }
+            catch (AccountMailException)
+            {
+                // Logged by the mailer; fall back to the log below
+            }
         }
-        catch (AccountMailException)
-        {
-            // Logged by the mailer; the link above still works
-        }
+
+        // Only without working mail: then the log is the only way in on a fresh install. The link works once, for a few days,
+        // and anyone who can read this log already controls the server.
+        _logger.LogWarning("First admin {Email}: no mail could be sent, choose a password at {Link}", email, link);
     }
 }

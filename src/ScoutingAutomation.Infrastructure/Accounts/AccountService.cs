@@ -187,10 +187,19 @@ public class AccountService
     }
 
     /// <summary>Mails a link to choose a new password; does nothing for an unknown or blocked address.</summary>
+    /// <param name="baseUrl">
+    /// The configured public address of the app. Never the address of the request: anyone can ask for a reset, and a
+    /// forged Host header would otherwise put the link, and so the token, on the asker's site.
+    /// </param>
     /// <remarks>The page always shows the same message, so it does not tell which addresses have an account.</remarks>
-    public async Task SendPasswordResetAsync(string? email, string baseUrl)
+    public async Task SendPasswordResetAsync(string? email, string? baseUrl)
     {
         if (string.IsNullOrWhiteSpace(email)) return;
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var publicUrl) || (publicUrl.Scheme != Uri.UriSchemeHttps && publicUrl.Scheme != Uri.UriSchemeHttp))
+        {
+            _logger.LogWarning("Password reset asked, but Scouting:PublicUrl is not set: no link mailed. An admin can make one on Beheer");
+            return;
+        }
 
         var user = await _users.FindByEmailAsync(email.Trim());
         if (user == null || user.IsDisabled)
@@ -199,7 +208,7 @@ public class AccountService
             return;
         }
 
-        var link = await CreatePasswordLinkAsync(user, baseUrl);
+        var link = await CreatePasswordLinkAsync(user, baseUrl!.TrimEnd('/'));
         try
         {
             await _mailer.SendAsync(AccountMails.PasswordReset(user, link));

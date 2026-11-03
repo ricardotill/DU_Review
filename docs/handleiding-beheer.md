@@ -29,7 +29,7 @@ Beheertaken doe je met een **beheerdersaccount**. Een juryaccount is genoeg om t
   dotnet user-secrets set "Scouting:Accounts:BootstrapAdminEmail" "jij@example.nl" --project src/ScoutingAutomation.Web
   ```
 
-- Die beheerder krijgt een mail met een link om een wachtwoord te kiezen. Zonder mailserver staat de link in het logboek (`docker compose logs app | grep wachtwoord-instellen`). De link is 3 dagen geldig.
+- Die beheerder krijgt een mail met een link om een wachtwoord te kiezen. Alleen als er geen mail kan worden verstuurd, staat de link in het logboek (`docker compose logs app | grep wachtwoord-instellen`). De link is 3 dagen geldig.
 - Is er geen beheerder en geen adres ingesteld, dan start de app niet en zegt het logboek wat er mist.
 - **Wachtwoord kwijt?** Gebruik **Wachtwoord vergeten?** op het loginscherm, of laat een andere beheerder op **Beheer** > **Accounts** een link maken. Maak daarom altijd een tweede beheerder aan.
 
@@ -55,7 +55,7 @@ De app mailt uitnodigingen en links voor **Wachtwoord vergeten?**. Stel de mails
 | `SMTP_SECURITY` | `StartTls` (poort 587, standaard), `SslOnConnect` (poort 465) of `None`. |
 | `SMTP_USERNAME`, `SMTP_PASSWORD` | Inloggegevens van de mailserver. |
 | `SMTP_FROM` | Het afzenderadres. |
-| `PUBLIC_URL` | Het adres van de app van buiten, bijvoorbeeld `https://du.jouwdomein.nl`. De links in de mails beginnen hiermee. |
+| `PUBLIC_URL` | Het adres van de app van buiten, bijvoorbeeld `https://du.jouwdomein.nl`. De links in de mails beginnen hiermee. Zonder dit adres mailt **Wachtwoord vergeten?** niets; een beheerder maakt de link dan op **Beheer** > **Accounts**. |
 
 Op **Beheer** > **Mail** zie je of mail is ingesteld en stuur je een testmail. Zonder mailserver werkt alles ook: maak de links dan met **Link maken** en stuur ze zelf door.
 
@@ -243,7 +243,7 @@ Het image van de app hoef je niet zelf te bouwen: GitHub bouwt het bij elke rele
 
    De app wacht tot de database klaar is. Wil je een eigen aanpassing draaien die nog niet is uitgebracht? Bouw het image dan zelf met `docker compose up -d --build` (dat duurt een paar minuten).
 
-6. Kies je wachtwoord via de link in de mail. Zonder mailserver staat de link in het logboek:
+6. Kies je wachtwoord via de link in de mail. Alleen als er geen mail kan worden verstuurd, staat de link in het logboek:
 
    ```bash
    docker compose logs app | grep wachtwoord-instellen
