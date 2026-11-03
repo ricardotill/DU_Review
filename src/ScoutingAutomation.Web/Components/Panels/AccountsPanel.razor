@@ -47,7 +47,7 @@
                         <option value="">Kies…</option>
                         @foreach (var g in groups)
                         {
-                            <option value="@g.Id">@g.Name</option>
+                            <option value="@g.TeamId">@g.Name</option>
                         }
                     </InputSelect>
                 }
@@ -110,7 +110,7 @@
                                             <option value="">Kies…</option>
                                             @foreach (var g in groups)
                                             {
-                                                <option value="@g.Id">@g.Name</option>
+                                                <option value="@g.TeamId">@g.Name</option>
                                             }
                                         </select>
                                     }
@@ -209,10 +209,10 @@
         accounts = await service.ListAsync();
         groups = (await scope.ServiceProvider.GetRequiredService<IGroupRepository>().GetAllAsync()).OrderBy(g => g.Name).ToList();
         var withAccount = accounts.Where(a => a.Kind == AccountKind.Group).Select(a => a.GroupId).ToHashSet();
-        groupsWithoutAccount = groups.Where(g => !withAccount.Contains(g.Id)).ToList();
+        groupsWithoutAccount = groups.Where(g => !withAccount.Contains(g.TeamId)).ToList();
     }
 
-    private string GroupName(Guid? id) => groups.FirstOrDefault(g => g.Id == id)?.Name ?? "onbekende groep";
+    private string GroupName(Guid? id) => groups.FirstOrDefault(g => g.TeamId == id)?.Name ?? "onbekende groep";
 
     private string BaseUri => BaseUrl.Of(Options.Value, Navigation.BaseUri);
 

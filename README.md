@@ -261,6 +261,12 @@ De kaarten gebruiken [Leaflet](https://leafletjs.com) uit de app zelf en de kaar
 
 De Avonturiers-punten zijn de rondepunten (maximaal `ThemeMaxPoints`, standaard 14) plus het eindspel (maximaal `FinalMaxPoints`, standaard 14). Het eindspel, en een eventuele startbonus voor groepen met eigen vervoer, vul je met de hand in op **Beheer** onder **Extra punten**, in de categorie `FinalGameCategoryKey` (standaard `avonturiers`). Overal waar die categorie staat (dashboard, stand, export) staat het uitgerekende Avonturiers-totaal; in de grafiek stijgen de rondepunten aan het einde van elke ronde.
 
+## Edities
+
+Elk jaar is een **editie** (bijvoorbeeld "DU 2026"), met haar eigen groepen, opdrachten, locaties en inzendingen. Er is altijd één actieve editie: alleen die verwerkt Slack, en alle pagina's tonen die. Een groep is daarnaast een vast **team** dat elk jaar mee kan doen; een groepsaccount hoort bij het team en komt na het inloggen bij de groep van dat team in de actieve editie. Doet het team niet mee aan de actieve editie, dan ziet het account geen groepspagina's.
+
+Een database van voor edities wordt bij de eerste start één editie, genoemd naar het jaar van de eerste inzending. Elke groep wordt een team met hetzelfde id, zodat groepsaccounts blijven werken; inzendingen, punten, locaties en instellingen blijven staan. Bij SQLite staat vooraf een kopie van de database in `scouting_storage/_backup/pre-editions-{tijdstip}.db`; bij PostgreSQL maak je zelf eerst een back-up (`pg_dump`).
+
 ## Opslag
 
 ```text

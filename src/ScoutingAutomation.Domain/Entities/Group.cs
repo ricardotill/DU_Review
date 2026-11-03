@@ -1,8 +1,17 @@
 namespace ScoutingAutomation.Domain.Entities;
 
-public class Group
+/// <summary>A group as it takes part in one edition; the same group in another year is another row of the same <see cref="Team"/>.</summary>
+public class Group : IEditionScoped
 {
     public Guid Id { get; set; } = Guid.NewGuid();
+
+    public Guid EditionId { get; set; }
+    public Edition? Edition { get; set; }
+
+    /// <summary>The lasting group this row is part of; set to a new team (with this group's id) when left empty.</summary>
+    public Guid TeamId { get; set; }
+    public Team? Team { get; set; }
+
     public string Name { get; set; } = string.Empty;
     public string? Abbreviation { get; set; }
     public string SlackChannelId { get; set; } = string.Empty;

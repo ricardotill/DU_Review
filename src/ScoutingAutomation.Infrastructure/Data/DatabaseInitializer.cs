@@ -13,7 +13,7 @@ using ScoutingAutomation.Infrastructure.Storage;
 
 namespace ScoutingAutomation.Infrastructure.Data;
 
-public class DatabaseInitializer
+public partial class DatabaseInitializer
 {
     private readonly ScoutingDbContext _context;
     private readonly IFileStorageService _fileStorage;
@@ -66,6 +66,7 @@ public class DatabaseInitializer
         await MoveToBonusCategoriesAsync(ct);
         await MoveToAssignmentCodesAsync(ct);
         await AddAdventurersSchemaAsync(ct);
+        await MoveToEditionsAsync(ct);
     }
 
     /// <summary>
@@ -93,9 +94,6 @@ public class DatabaseInitializer
 
         await _context.Database.ExecuteSqlRawAsync(
             $"CREATE INDEX IF NOT EXISTS \"{ScoutingDbContext.SubmissionKindIndexName}\" ON \"Submissions\" (\"Kind\")", ct);
-        await _context.Database.ExecuteSqlRawAsync(
-            $"CREATE UNIQUE INDEX IF NOT EXISTS \"{ScoutingDbContext.AdventurersChannelIndexName}\" ON \"Groups\" " +
-            "(\"AdventurersSlackChannelId\") WHERE \"AdventurersSlackChannelId\" IS NOT NULL", ct);
         await _context.Database.ExecuteSqlRawAsync(
             $"CREATE UNIQUE INDEX IF NOT EXISTS \"{ScoutingDbContext.MapTokenIndexName}\" ON \"Groups\" " +
             "(\"MapToken\") WHERE \"MapToken\" IS NOT NULL", ct);
@@ -242,8 +240,6 @@ public class DatabaseInitializer
         }
 
         await _context.Database.ExecuteSqlRawAsync(
-            $"CREATE UNIQUE INDEX IF NOT EXISTS \"{ScoutingDbContext.AssignmentCodeIndexName}\" ON \"Assignments\" (\"Code\")", ct);
-        await _context.Database.ExecuteSqlRawAsync(
             $"CREATE INDEX IF NOT EXISTS \"{ScoutingDbContext.SubmissionAssignmentCodeIndexName}\" ON \"Submissions\" (\"AssignmentCode\")", ct);
     }
 
@@ -343,6 +339,7 @@ public class DatabaseInitializer
         {
             await _context.Database.EnsureCreatedAsync(ct);
             await AddMissingColumnsAsync(ct);
+            await EnsureActiveEditionAsync(ct);
         }
         catch (Exception ex)
         {

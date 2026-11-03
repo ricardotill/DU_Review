@@ -2,9 +2,11 @@ using ScoutingAutomation.Domain.Enums;
 
 namespace ScoutingAutomation.Domain.Entities;
 
-public class Assignment
+public class Assignment : IEditionScoped
 {
     public Guid Id { get; set; } = Guid.NewGuid();
+
+    public Guid EditionId { get; set; }
     /// <summary>The number ("12") or, for a special assignment, the letters ("A"); see <see cref="Models.AssignmentCode"/>.</summary>
     public string Code { get; set; } = string.Empty;
 

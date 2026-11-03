@@ -16,6 +16,14 @@ public class LocationServiceTests
 
     private LocationService Service() => new(new LocationRepository(_db), _notifier, TimeProvider.System);
 
+    private async Task<Guid> AddGroupAsync()
+    {
+        var group = new Group { Name = "Groep", SlackChannelId = "C" + Guid.NewGuid().ToString("N")[..8] };
+        _db.Groups.Add(group);
+        await _db.SaveChangesAsync();
+        return group.Id;
+    }
+
     private static Stream Text(string content) => new MemoryStream(Encoding.UTF8.GetBytes(content));
 
     [Fact]
@@ -50,7 +58,7 @@ public class LocationServiceTests
     public async Task Delete_ShouldRemoveTheLocationAndItsUnlocks()
     {
         var service = Service();
-        var group = Guid.NewGuid();
+        var group = await AddGroupAsync();
         await service.SaveAsync(new Location { Number = 7, Name = "Molen", Latitude = 51.6, Longitude = 5.0 });
         await service.SetUnlockedAsync(group, 7, true);
 
@@ -64,7 +72,7 @@ public class LocationServiceTests
     public async Task SetUnlocked_ShouldOnlyReportARealChange()
     {
         var service = Service();
-        var group = Guid.NewGuid();
+        var group = await AddGroupAsync();
 
         (await service.SetUnlockedAsync(group, 7, true)).Should().BeTrue();
         (await service.SetUnlockedAsync(group, 7, true)).Should().BeFalse();

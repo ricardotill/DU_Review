@@ -63,6 +63,13 @@ Op **Beheer** > **Mail** zie je of mail is ingesteld en stuur je een testmail. Z
 
 Kom je van een versie met sleutels (toegangssleutel, beheerderssleutel, groepssleutels)? Die werken niet meer. Bij de eerste start van de nieuwe versie krijgt de database de tabellen voor accounts erbij; inzendingen, punten en instellingen blijven staan. Zet `BOOTSTRAP_ADMIN_EMAIL` voor je de nieuwe versie start, kies je wachtwoord via de link, en maak dan de accounts voor de jury, de groepen en de beamer. `access-keys.json` mag weg.
 
+### Van één spel naar edities
+
+Vanaf deze versie hoort alles bij een **editie** (een jaar van het spel); zie de [README](../README.md#edities). Bij de eerste start wordt een bestaande database de eerste editie, genoemd naar het jaar van de eerste inzending ("DU 2025"). Groepen, opdrachten, locaties, inzendingen en punten blijven staan en groepsaccounts blijven werken.
+
+- **SQLite** (`run-gameday.sh`, lokaal draaien): de app bewaart vooraf een kopie in `scouting_storage/_backup/pre-editions-{tijdstip}.db`. Gaat er iets mis, zet dan die kopie terug als database en start de vorige versie.
+- **PostgreSQL** (Docker Compose): maak vóór de update zelf een back-up, bijvoorbeeld met `docker compose exec db pg_dump -U postgres scoutingdb > voor-edities.sql`. De omzetting gebeurt in één keer; lukt die niet, dan blijft de database zoals hij was en start de app niet.
+
 ### Juryleden
 
 Op **Configuratie** voeg je juryleden toe met hun Slack member-ID, haal je ze weg en pas je hun namen aan. Alleen emoji's van juryleden op deze lijst tellen. Wijzigingen gelden direct, zonder herstart.
