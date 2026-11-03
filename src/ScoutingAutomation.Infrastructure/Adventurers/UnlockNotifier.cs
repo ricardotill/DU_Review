@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using ScoutingAutomation.Domain.Interfaces;
 using ScoutingAutomation.Infrastructure.Settings;
 using ScoutingAutomation.Infrastructure.Slack;
+using ScoutingAutomation.Infrastructure.Slack.Events;
 using ScoutingAutomation.Infrastructure.Workflow;
 
 namespace ScoutingAutomation.Infrastructure.Adventurers;
@@ -27,6 +28,7 @@ public sealed class UnlockNotifier : BackgroundService
     private readonly ILogger<UnlockNotifier> _logger;
     private readonly IClusterLocks _cluster;
     private readonly TimeProvider _time;
+    private readonly SlackProcessingGate? _gate;
     private readonly object _wakeLock = new();
     private CancellationTokenSource _wake = new();
     private int _pending;
@@ -37,13 +39,14 @@ public sealed class UnlockNotifier : BackgroundService
     private readonly Dictionary<Guid, int> _pagesTold = new();
 
     public UnlockNotifier(IServiceScopeFactory scopeFactory, RuntimeSettingsService runtime, ILogger<UnlockNotifier> logger,
-        IClusterLocks? cluster = null, TimeProvider? time = null)
+        IClusterLocks? cluster = null, TimeProvider? time = null, SlackProcessingGate? gate = null)
     {
         _scopeFactory = scopeFactory;
         _runtime = runtime;
         _logger = logger;
         _cluster = cluster ?? SingleInstance.Instance;
         _time = time ?? TimeProvider.System;
+        _gate = gate;
     }
 
     /// <summary>Groups queued and not handled yet; for tests and the events page.</summary>
@@ -191,6 +194,10 @@ public sealed class UnlockNotifier : BackgroundService
     /// <returns>True when a message was posted.</returns>
     public async Task<bool> NotifyAsync(Guid groupId, CancellationToken ct = default)
     {
+        // Not while a rebuild from Slack runs: its half-imported check-ins would give a wrong count, posted and kept.
+        // After the rebuild the count is read again and only a real change is posted.
+        using var live = _gate == null ? null : await _gate.EnterAsync(ct);
+
         // Another instance may handle a check-in of the same group at the same moment: one at a time per group, and
         // with the last posted count as saved by the other instance, so a notice is not posted twice
         await using var groupLock = await _cluster.AcquireAsync(ClusterLockNames.Unlock(groupId), ct);
