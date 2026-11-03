@@ -253,7 +253,7 @@ Het image van de app hoef je niet zelf te bouwen: GitHub bouwt het bij elke rele
    ```
 
 3. Vul in `.env` in:
-   - `DATABASE_CONNECTION_STRING`: hoe de app de database bereikt, bijvoorbeeld `Host=host.docker.internal;Database=scoutingdb;Username=du;Password=een-lang-wachtwoord`.
+   - `DATABASE_CONNECTION_STRING`: hoe de app de database bereikt, bijvoorbeeld `Host=host.docker.internal;Database=scoutingdb;Username=du;Password=een-lang-wachtwoord`. Staat de database op een andere machine, zet er dan `;SSL Mode=VerifyFull` achter (of minstens `;SSL Mode=Require`). Anders gaan het wachtwoord en alle gegevens onversleuteld over het netwerk.
    - `SLACK_BOT_TOKEN` (`xoxb-...`) en `SLACK_APP_TOKEN` (`xapp-...`): de tokens uit [Slack koppelen](slack-koppelen.md).
    - Optioneel `PORT`, de poort op deze computer (standaard `5231`).
    - `BOOTSTRAP_ADMIN_EMAIL`: jouw e-mailadres. Daarvoor maakt de app bij de eerste start het eerste beheerdersaccount.
