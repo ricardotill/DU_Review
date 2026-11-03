@@ -188,6 +188,8 @@ Laat de Mac aan de stroom hangen en houd het deksel open: met het deksel dicht g
 
 In de repository staan een `Dockerfile` en een `docker-compose.yml`. Samen starten ze twee containers: een PostgreSQL-database (`db`) en de app (`app`). De app draait als productieversie, met Socket Mode en zonder simulatiemodus.
 
+Het image van de app hoef je niet zelf te bouwen: GitHub bouwt het bij elke release en zet het in de GitHub Container Registry (`ghcr.io/ricardotill/du_review`), voor `amd64` en `arm64` (bijvoorbeeld een Mac met Apple-chip of een Raspberry Pi). Zie [Updates en versies](#updates-en-versies).
+
 **De eerste keer**
 
 1. Installeer Docker (op een Mac: Docker Desktop) en start het.
@@ -205,15 +207,22 @@ In de repository staan een `Dockerfile` en een `docker-compose.yml`. Samen start
 
    `.env` bevat geheimen en staat niet in Git. Ontbreekt een verplichte waarde, dan start Docker Compose niet en noemt het de ontbrekende waarde.
 
-4. Bouw en start de app:
+4. Log eenmalig in bij de registry. Het image is privé; maak op GitHub een token (classic) met alleen het recht `read:packages` en gebruik dat als wachtwoord:
 
    ```bash
-   docker compose up -d --build
+   docker login ghcr.io -u <je GitHub-gebruikersnaam>
    ```
 
-   De eerste keer duurt het bouwen een paar minuten. De app wacht tot de database klaar is.
+5. Haal het image op en start de app:
 
-5. Zoek de sleutels op. Bij de eerste start maakt de app een toegangssleutel en een beheerderssleutel aan:
+   ```bash
+   docker compose pull
+   docker compose up -d
+   ```
+
+   De app wacht tot de database klaar is. Wil je een eigen aanpassing draaien die nog niet is uitgebracht? Bouw het image dan zelf met `docker compose up -d --build` (dat duurt een paar minuten).
+
+6. Zoek de sleutels op. Bij de eerste start maakt de app een toegangssleutel en een beheerderssleutel aan:
 
    ```bash
    docker compose logs app | grep "Generated"
@@ -221,7 +230,7 @@ In de repository staan een `Dockerfile` en een `docker-compose.yml`. Samen start
 
    Kwijt na een herstart? Zie **Sleutel kwijt?** bij [Sleutels](#sleutels).
 
-6. Open <http://localhost:5231>, of in het netwerk het adres van de computer, zoals `http://192.168.1.20:5231`. Controleer bovenaan de pagina de Slack-status: **Verbonden met Slack**.
+7. Open <http://localhost:5231>, of in het netwerk het adres van de computer, zoals `http://192.168.1.20:5231`. Controleer bovenaan de pagina de Slack-status: **Verbonden met Slack**.
 
 **Instellingen overnemen van een eerdere installatie**
 
@@ -242,9 +251,24 @@ Gebruik dit commando en niet `docker compose cp`: met `cp` hoort het bestand bij
 | Stoppen | `docker compose down` |
 | Logboek volgen | `docker compose logs -f app` |
 | Herstarten, bijvoorbeeld na een aanpassing in `opdrachtenpunten.csv` | `docker compose restart app` |
-| Nieuwe versie van de code | `git pull` en daarna `docker compose up -d --build` |
+| Nieuwe versie | `docker compose pull app` en daarna `docker compose up -d app` (of vanzelf, zie [Updates en versies](#updates-en-versies)) |
+| Eigen versie van de code bouwen | `git pull` en daarna `docker compose up -d --build` |
 
 Gaat de computer opnieuw aan, dan starten de containers vanzelf mee zodra Docker draait.
+
+#### Updates en versies
+
+GitHub Actions test elke wijziging en bouwt daarna het image:
+
+| Tag | Wanneer | Gebruik |
+|---|---|---|
+| `latest` | bij elke release (een Git-tag `v1.4.0`) | standaard in `docker-compose.yml` |
+| `1.4.0`, `1.4` | bij die release | een vaste versie, met `APP_VERSION=1.4.0` in `.env` |
+| `main`, `sha-<code>` | bij elke wijziging op `main` | testen van een versie die nog niet is uitgebracht |
+
+Een release maak je met een tag op `main`, bijvoorbeeld `git tag v1.4.0 && git push origin v1.4.0`, of via **Releases** op GitHub. Alleen dan schuift `latest`: een wijziging op `main` komt dus nooit vanzelf op de server.
+
+Haalt de server nieuwe images automatisch op (bijvoorbeeld met Watchtower), zet dan voor de speeldag `APP_VERSION` op de huidige versie en start opnieuw met `docker compose up -d app`. Zo herstart de app niet midden in het spel. Haal de regel na de speeldag weer weg.
 
 **Waar staat alles?**
 

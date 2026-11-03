@@ -1,5 +1,5 @@
 # DU Review in production: PostgreSQL plus the app, data in Docker volumes.
-# Fill in .env first (copy .env.example), then: docker compose up -d --build
+# Fill in .env first (copy .env.example), then: docker compose pull && docker compose up -d
 # See docs/handleiding-beheer.md, "Met Docker Compose".
 
 services:
@@ -19,8 +19,10 @@ services:
       retries: 20
 
   app:
+    # The image CI builds and pushes (see .github/workflows/ci.yml); APP_VERSION in .env pins a release.
+    # `docker compose up -d --build` builds it from this repository instead.
+    image: ghcr.io/ricardotill/du_review:${APP_VERSION:-latest}
     build: .
-    image: du-review
     restart: unless-stopped
     # The app prepares the database at startup: wait until PostgreSQL accepts connections
     depends_on:
