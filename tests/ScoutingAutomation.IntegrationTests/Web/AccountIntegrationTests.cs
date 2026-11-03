@@ -157,6 +157,7 @@ public class AccountIntegrationTests : IClassFixture<WebApplicationFactory<Progr
     [Fact]
     public async Task ForgottenPassword_ShouldMailALinkThatSetsANewPasswordAndLogsIn()
     {
+        var newPassword = TestApp.NewPassword();
         await _app.EnsureAccountAsync("eva@du.test");
         using var client = _app.CreateClient();
 
@@ -168,15 +169,15 @@ public class AccountIntegrationTests : IClassFixture<WebApplicationFactory<Progr
         {
             ["Input.Id"] = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri("http://x" + link).Query)["id"]!,
             ["Input.Code"] = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri("http://x" + link).Query)["code"]!,
-            ["Input.Password"] = "een nieuw lang wachtwoord",
-            ["Input.Repeat"] = "een nieuw lang wachtwoord"
+            ["Input.Password"] = newPassword,
+            ["Input.Repeat"] = newPassword
         });
 
         set.StatusCode.Should().Be(HttpStatusCode.Redirect, await set.Content.ReadAsStringAsync());
         (await IsLoggedIn(client)).Should().BeTrue();
         using var other = _app.CreateClient();
         (await TestApp.LogInAsync(other, "eva@du.test", TestApp.Password)).StatusCode.Should().Be(HttpStatusCode.OK, "the old password no longer works");
-        (await TestApp.LogInAsync(other, "eva@du.test", "een nieuw lang wachtwoord")).StatusCode.Should().Be(HttpStatusCode.Redirect);
+        (await TestApp.LogInAsync(other, "eva@du.test", newPassword)).StatusCode.Should().Be(HttpStatusCode.Redirect);
     }
 
     [Fact]
@@ -193,6 +194,7 @@ public class AccountIntegrationTests : IClassFixture<WebApplicationFactory<Progr
     [Fact]
     public async Task ChangedPassword_ShouldEndOtherLoginsButKeepThisOne()
     {
+        var newPassword = TestApp.NewPassword();
         await _app.EnsureAccountAsync("eva@du.test");
         using var phone = await _app.CreateClientForAsync("eva@du.test");
         using var laptop = await _app.CreateClientForAsync("eva@du.test");
@@ -200,8 +202,8 @@ public class AccountIntegrationTests : IClassFixture<WebApplicationFactory<Progr
         var changed = await TestApp.PostFormAsync(laptop, "/account", "change-password", new()
         {
             ["Input.Current"] = TestApp.Password,
-            ["Input.Password"] = "een nieuw lang wachtwoord",
-            ["Input.Repeat"] = "een nieuw lang wachtwoord"
+            ["Input.Password"] = newPassword,
+            ["Input.Repeat"] = newPassword
         });
 
         (await changed.Content.ReadAsStringAsync()).Should().Contain("Je wachtwoord is gewijzigd");

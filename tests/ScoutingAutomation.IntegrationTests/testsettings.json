@@ -11,8 +11,7 @@
     "AssignmentPointsFile": "./opdrachtenpunten.csv",
     "ManualMode": false,
     "Accounts": {
-      "BootstrapAdminEmail": "admin@du.test",
-      "BootstrapAdminPassword": "test-admin-wachtwoord"
+      "BootstrapAdminEmail": "admin@du.test"
     },
     "SupportedExtensions": [ ".jpg", ".jpeg", ".png", ".gif", ".mp4", ".mov", ".m4a", ".mp3", ".pdf", ".doc", ".docx" ],
     "SupportedMimeTypePrefixes": [ "image/", "audio/", "video/" ],

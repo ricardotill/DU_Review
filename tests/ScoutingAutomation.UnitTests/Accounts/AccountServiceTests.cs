@@ -58,6 +58,9 @@ public sealed class AccountServiceTests : IAsyncLifetime, IAsyncDisposable
         return await action(scope.ServiceProvider.GetRequiredService<AccountService>(), scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>());
     }
 
+    /// <summary>Made per run, so no password sits in the repository.</summary>
+    private static readonly string NewPassword = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(12));
+
     private Task<bool> RemoveAdminRoleAsync() =>
         With(async (_, users) => (await users.RemoveFromRoleAsync((await users.FindByEmailAsync("admin@du.test"))!, AccountRoles.Admin)).Succeeded);
 
@@ -94,13 +97,13 @@ public sealed class AccountServiceTests : IAsyncLifetime, IAsyncDisposable
     public async Task BootstrapPassword_ShouldBeSetSoTheAdminCanLogInStraightAway()
     {
         _settings.Accounts.BootstrapAdminEmail = "second@du.test";
-        _settings.Accounts.BootstrapAdminPassword = "een lang wachtwoord";
+        _settings.Accounts.BootstrapAdminPassword = NewPassword;
         await RemoveAdminRoleAsync();
 
         await InitializeAsync();
 
         var second = await With((_, users) => users.FindByEmailAsync("second@du.test"));
-        (await With((_, users) => users.CheckPasswordAsync(second!, "een lang wachtwoord"))).Should().BeTrue();
+        (await With((_, users) => users.CheckPasswordAsync(second!, NewPassword))).Should().BeTrue();
     }
 
     [Theory]
@@ -200,11 +203,11 @@ public sealed class AccountServiceTests : IAsyncLifetime, IAsyncDisposable
         link.Should().StartWith("https://du.test/wachtwoord-instellen?id=");
         var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(link).Query);
 
-        var (set, error) = await With((s, _) => s.SetPasswordAsync(query["id"], query["code"], "een lang wachtwoord"));
+        var (set, error) = await With((s, _) => s.SetPasswordAsync(query["id"], query["code"], NewPassword));
 
         error.Should().BeNull();
         set!.EmailConfirmed.Should().BeTrue();
-        (await With((_, users) => users.CheckPasswordAsync(set, "een lang wachtwoord"))).Should().BeTrue();
+        (await With((_, users) => users.CheckPasswordAsync(set, NewPassword))).Should().BeTrue();
         var (again, againError) = await With((s, _) => s.SetPasswordAsync(query["id"], query["code"], "nog een wachtwoord"));
         again.Should().BeNull("a new password changes the security stamp, which ends the link");
         againError.Should().Contain("verlopen of al gebruikt");
@@ -218,8 +221,8 @@ public sealed class AccountServiceTests : IAsyncLifetime, IAsyncDisposable
         var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(link).Query);
 
         (await With((s, _) => s.SetPasswordAsync(query["id"], query["code"], "kort"))).Error.Should().Be("Een wachtwoord heeft minstens 10 tekens.");
-        (await With((s, _) => s.SetPasswordAsync(query["id"], "!!niet-base64!!", "een lang wachtwoord"))).Error.Should().Contain("verlopen");
-        (await With((s, _) => s.SetPasswordAsync(Guid.NewGuid().ToString(), query["code"], "een lang wachtwoord"))).Error.Should().Contain("verlopen");
+        (await With((s, _) => s.SetPasswordAsync(query["id"], "!!niet-base64!!", NewPassword))).Error.Should().Contain("verlopen");
+        (await With((s, _) => s.SetPasswordAsync(Guid.NewGuid().ToString(), query["code"], NewPassword))).Error.Should().Contain("verlopen");
     }
 
     [Fact]

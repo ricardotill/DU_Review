@@ -57,6 +57,7 @@ public sealed class TestApp : IAsyncDisposable
             builder.UseSetting("Scouting:AssignmentPointsFile", PointsFile);
             builder.UseSetting("Scouting:RuntimeSettingsFile", Path.Combine(StorageRoot, "runtime-settings.json"));
             builder.UseSetting("Scouting:Slack:SimulationMode", "true");
+            builder.UseSetting("Scouting:Accounts:BootstrapAdminPassword", AdminPassword);
             foreach (var (key, value) in settings ?? new Dictionary<string, string?>())
             {
                 builder.UseSetting(key, value);
@@ -173,13 +174,18 @@ public sealed class TestApp : IAsyncDisposable
 
     /// <summary>The first admin, made from testsettings.json at the first start.</summary>
     public const string AdminEmail = "admin@du.test";
-    public const string AdminPassword = "test-admin-wachtwoord";
+
+    /// <summary>Made per test run, so no password sits in the repository.</summary>
+    public static readonly string AdminPassword = NewPassword();
 
     /// <summary>The jury account of <see cref="CreateLoggedInClientAsync"/>.</summary>
     public const string JuryEmail = "jury@du.test";
 
     /// <summary>The password of accounts made with <see cref="EnsureAccountAsync"/>.</summary>
-    public const string Password = "test-wachtwoord";
+    public static readonly string Password = NewPassword();
+
+    /// <summary>A fresh password that meets the rules: long enough and enough different characters.</summary>
+    public static string NewPassword() => Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(12));
 
     public HttpClient CreateClient() => Factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
@@ -213,10 +219,10 @@ public sealed class TestApp : IAsyncDisposable
     }
 
     /// <summary>A client logged in with this account.</summary>
-    public async Task<HttpClient> CreateClientForAsync(string email, string password = Password)
+    public async Task<HttpClient> CreateClientForAsync(string email, string? password = null)
     {
         var client = CreateClient();
-        var response = await LogInAsync(client, email, password);
+        var response = await LogInAsync(client, email, password ?? Password);
         if (response.StatusCode != System.Net.HttpStatusCode.Redirect)
         {
             throw new InvalidOperationException($"Login of {email} failed: {response.StatusCode}");
