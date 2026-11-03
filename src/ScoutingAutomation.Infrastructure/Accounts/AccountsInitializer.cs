@@ -91,7 +91,7 @@ public class AccountsInitializer
         var user = await _users.FindByEmailAsync(email);
         if (user == null)
         {
-            var (created, error) = await _accounts.CreateAsync(email, "Beheerder", AccountKind.Admin, null);
+            var (created, error) = await _accounts.CreateAsync(email, "Beheerder", AccountKind.Admin, null, actingUserId: null);
             user = created ?? throw new StartupConfigurationException($"De eerste beheerder ({email}) kon niet worden gemaakt: {error}");
         }
         else

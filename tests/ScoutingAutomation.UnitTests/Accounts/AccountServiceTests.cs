@@ -117,7 +117,7 @@ public sealed class AccountServiceTests : IAsyncLifetime, IAsyncDisposable
     {
         var group = kind == AccountKind.Group ? Guid.NewGuid() : (Guid?)null;
 
-        var (user, error) = await With((service, _) => service.CreateAsync(" eva@du.test ", " Eva ", kind, group));
+        var (user, error) = await With((service, _) => service.CreateAsync(" eva@du.test ", " Eva ", kind, group, null));
 
         error.Should().BeNull();
         user!.Email.Should().Be("eva@du.test");
@@ -129,44 +129,50 @@ public sealed class AccountServiceTests : IAsyncLifetime, IAsyncDisposable
     [Fact]
     public async Task Create_ShouldRefuseMissingFieldsAndDuplicates()
     {
-        (await With((s, _) => s.CreateAsync("", "Eva", AccountKind.Jury, null))).Error.Should().Be("Vul een e-mailadres in.");
-        (await With((s, _) => s.CreateAsync("eva@du.test", " ", AccountKind.Jury, null))).Error.Should().Be("Vul een naam in.");
-        (await With((s, _) => s.CreateAsync("eva@du.test", "Eva", AccountKind.Group, null))).Error.Should().Be("Kies de groep van dit account.");
-        (await With((s, _) => s.CreateAsync("geen-adres", "Eva", AccountKind.Jury, null))).Error.Should().Contain("geen geldig e-mailadres");
+        (await With((s, _) => s.CreateAsync("", "Eva", AccountKind.Jury, null, null))).Error.Should().Be("Vul een e-mailadres in.");
+        (await With((s, _) => s.CreateAsync("eva@du.test", " ", AccountKind.Jury, null, null))).Error.Should().Be("Vul een naam in.");
+        (await With((s, _) => s.CreateAsync("eva@du.test", "Eva", AccountKind.Group, null, null))).Error.Should().Be("Kies de groep van dit account.");
+        (await With((s, _) => s.CreateAsync("geen-adres", "Eva", AccountKind.Jury, null, null))).Error.Should().Contain("geen geldig e-mailadres");
 
-        await With((s, _) => s.CreateAsync("eva@du.test", "Eva", AccountKind.Jury, null));
-        (await With((s, _) => s.CreateAsync("EVA@du.test", "Eva 2", AccountKind.Jury, null))).Error.Should().Contain("Er is al een account");
+        await With((s, _) => s.CreateAsync("eva@du.test", "Eva", AccountKind.Jury, null, null));
+        (await With((s, _) => s.CreateAsync("EVA@du.test", "Eva 2", AccountKind.Jury, null, null))).Error.Should().Contain("Er is al een account");
     }
 
     [Fact]
-    public async Task LastAdmin_ShouldNotBeDemotedBlockedOrRemoved()
+    public async Task NonAdmin_ShouldNotChangeAccounts_EvenWithAStaleAdminLogin()
     {
+        // As if a tab still had the admin role in its login while the account was just demoted: the database decides
         var admin = await AdminAsync();
-        var (jury, _) = await With((s, _) => s.CreateAsync("eva@du.test", "Eva", AccountKind.Jury, null));
+        var (jury, _) = await With((s, _) => s.CreateAsync("eva@du.test", "Eva", AccountKind.Jury, null, null));
 
-        (await With((s, _) => s.UpdateAsync(admin.Id, jury!.Id, "Beheerder", AccountKind.Jury, null))).Should().Be("Dit is de laatste beheerder.");
-        (await With((s, _) => s.SetDisabledAsync(admin.Id, jury!.Id, true))).Should().Be("Dit is de laatste beheerder.");
-        (await With((s, _) => s.DeleteAsync(admin.Id, jury!.Id))).Should().Be("Dit is de laatste beheerder.");
+        (await With((s, _) => s.UpdateAsync(admin.Id, jury!.Id, "Beheerder", AccountKind.Jury, null))).Should().Be(AccountService.NotAdminMessage);
+        (await With((s, _) => s.SetDisabledAsync(admin.Id, jury!.Id, true))).Should().Be(AccountService.NotAdminMessage);
+        (await With((s, _) => s.DeleteAsync(admin.Id, jury!.Id))).Should().Be(AccountService.NotAdminMessage);
+        (await With((s, _) => s.CreateAsync("nieuw@du.test", "Nieuw", AccountKind.Admin, null, jury!.Id))).Error.Should().Be(AccountService.NotAdminMessage);
+        var invite = () => With((s, _) => s.SendInvitationAsync(admin.Id, "https://du.test", jury!.Id));
+        await invite.Should().ThrowAsync<InvalidOperationException>().WithMessage(AccountService.NotAdminMessage);
+        (await With((_, users) => users.FindByEmailAsync("nieuw@du.test"))).Should().BeNull();
     }
 
     [Fact]
     public async Task TwoAdmins_BlockingEachOtherAtOnce_ShouldLeaveOneAdmin()
     {
         var first = await AdminAsync();
-        var (second, _) = await With((s, _) => s.CreateAsync("tweede@du.test", "Tweede", AccountKind.Admin, null));
+        var (second, _) = await With((s, _) => s.CreateAsync("tweede@du.test", "Tweede", AccountKind.Admin, null, null));
 
         var results = await Task.WhenAll(
             Task.Run(() => With((s, _) => s.SetDisabledAsync(second!.Id, first.Id, true))),
             Task.Run(() => With((s, _) => s.SetDisabledAsync(first.Id, second!.Id, true))));
 
-        results.Should().ContainSingle(r => r == null).And.ContainSingle(r => r == "Dit is de laatste beheerder.");
+        // Whoever comes second is blocked already, so no admin any more
+        results.Should().ContainSingle(r => r == null).And.ContainSingle(r => r == AccountService.NotAdminMessage);
     }
 
     [Fact]
     public async Task Admin_ShouldNotDemoteBlockOrRemoveThemselves()
     {
         var admin = await AdminAsync();
-        await With((s, _) => s.CreateAsync("second@du.test", "Tweede", AccountKind.Admin, null));
+        await With((s, _) => s.CreateAsync("second@du.test", "Tweede", AccountKind.Admin, null, null));
 
         (await With((s, _) => s.UpdateAsync(admin.Id, admin.Id, "Beheerder", AccountKind.Jury, null))).Should().Contain("jezelf");
         (await With((s, _) => s.SetDisabledAsync(admin.Id, admin.Id, true))).Should().Contain("jezelf");
@@ -177,7 +183,7 @@ public sealed class AccountServiceTests : IAsyncLifetime, IAsyncDisposable
     public async Task Update_ShouldChangeTheRolesAndEndTheSessions()
     {
         var admin = await AdminAsync();
-        var (user, _) = await With((s, _) => s.CreateAsync("eva@du.test", "Eva", AccountKind.Jury, null));
+        var (user, _) = await With((s, _) => s.CreateAsync("eva@du.test", "Eva", AccountKind.Jury, null, null));
         var changed = new List<Guid>();
         _services.GetRequiredService<AccountChangeNotifier>().Changed += changed.Add;
 
@@ -195,7 +201,7 @@ public sealed class AccountServiceTests : IAsyncLifetime, IAsyncDisposable
     public async Task BlockedAccount_ShouldBeLockedOutAndGetNoResetMail()
     {
         var admin = await AdminAsync();
-        var (user, _) = await With((s, _) => s.CreateAsync("eva@du.test", "Eva", AccountKind.Jury, null));
+        var (user, _) = await With((s, _) => s.CreateAsync("eva@du.test", "Eva", AccountKind.Jury, null, null));
         _mailer.Sent.Clear();
 
         await With((s, _) => s.SetDisabledAsync(user!.Id, admin.Id, true));
@@ -213,8 +219,9 @@ public sealed class AccountServiceTests : IAsyncLifetime, IAsyncDisposable
     [Fact]
     public async Task PasswordLink_ShouldSetThePasswordOnceAndConfirmTheAddress()
     {
-        var (user, _) = await With((s, _) => s.CreateAsync("eva@du.test", "Eva", AccountKind.Jury, null));
-        var link = await With((s, _) => s.SendInvitationAsync(user!.Id, "https://du.test/"));
+        var admin = await AdminAsync();
+        var (user, _) = await With((s, _) => s.CreateAsync("eva@du.test", "Eva", AccountKind.Jury, null, null));
+        var link = await With((s, _) => s.SendInvitationAsync(user!.Id, "https://du.test/", admin.Id));
         link.Should().StartWith("https://du.test/wachtwoord-instellen?id=");
         var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(link).Query);
 
@@ -231,8 +238,9 @@ public sealed class AccountServiceTests : IAsyncLifetime, IAsyncDisposable
     [Fact]
     public async Task PasswordLink_ShouldRefuseAShortPasswordAndABrokenCode()
     {
-        var (user, _) = await With((s, _) => s.CreateAsync("eva@du.test", "Eva", AccountKind.Jury, null));
-        var link = await With((s, _) => s.SendInvitationAsync(user!.Id, "https://du.test"));
+        var admin = await AdminAsync();
+        var (user, _) = await With((s, _) => s.CreateAsync("eva@du.test", "Eva", AccountKind.Jury, null, null));
+        var link = await With((s, _) => s.SendInvitationAsync(user!.Id, "https://du.test", admin.Id));
         var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(link).Query);
 
         (await With((s, _) => s.SetPasswordAsync(query["id"], query["code"], "kort"))).Error.Should().Be("Een wachtwoord heeft minstens 10 tekens.");
@@ -248,7 +256,7 @@ public sealed class AccountServiceTests : IAsyncLifetime, IAsyncDisposable
     public async Task PasswordReset_WithoutThePublicUrl_ShouldSendNothing(string? baseUrl)
     {
         // The page passes Scouting:PublicUrl only; never the request's own address, which a forged Host header controls
-        await With((s, _) => s.CreateAsync("eva@du.test", "Eva", AccountKind.Jury, null));
+        await With((s, _) => s.CreateAsync("eva@du.test", "Eva", AccountKind.Jury, null, null));
         _mailer.Sent.Clear();
 
         await With(async (s, _) => { await s.SendPasswordResetAsync("eva@du.test", baseUrl); return 0; });
@@ -289,7 +297,7 @@ public sealed class AccountServiceTests : IAsyncLifetime, IAsyncDisposable
     public async Task List_ShouldShowKindGroupAndWhetherAPasswordIsSet()
     {
         var group = Guid.NewGuid();
-        await With((s, _) => s.CreateAsync("wolven@du.test", "De Wolven", AccountKind.Group, group));
+        await With((s, _) => s.CreateAsync("wolven@du.test", "De Wolven", AccountKind.Group, group, null));
 
         var list = await With((s, _) => s.ListAsync());
 

@@ -198,7 +198,7 @@ public sealed class TestApp : IAsyncDisposable
         if (await users.FindByEmailAsync(email) is { } existing) return existing;
 
         var (user, error) = await scope.ServiceProvider.GetRequiredService<Infrastructure.Accounts.AccountService>()
-            .CreateAsync(email, email.Split('@')[0], kind, groupId);
+            .CreateAsync(email, email.Split('@')[0], kind, groupId, actingUserId: null);
         if (user == null) throw new InvalidOperationException(error);
         var password = await users.AddPasswordAsync(user, Password);
         if (!password.Succeeded) throw new InvalidOperationException(Infrastructure.Accounts.AccountService.Describe(password));

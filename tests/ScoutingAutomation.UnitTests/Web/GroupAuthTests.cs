@@ -110,6 +110,19 @@ public class GroupAuthTests
     }
 
     [Fact]
+    public async Task GroupLogin_WithoutItsGroup_ShouldOpenNothing()
+    {
+        var noGroup = Login(new Claim(ClaimTypes.Role, AppAuth.GroupRole));
+        var brokenGroup = Login(new Claim(ClaimTypes.Role, AppAuth.GroupRole), new Claim(AppAuth.GroupIdClaim, "geen-guid"));
+
+        foreach (var user in new[] { noGroup, brokenGroup })
+        {
+            (await AuthorizeAsync(user, new ComponentRouteData(typeof(Home), new Dictionary<string, object?>()))).Should().BeFalse();
+            (await AuthorizeAsync(user, Request("/api/files/x", new GroupAccessAttribute()))).Should().BeFalse();
+        }
+    }
+
+    [Fact]
     public async Task Handler_ShouldCheckTheEndpointOfARequest()
     {
         var marked = Request("/api/files/x", new GroupAccessAttribute());

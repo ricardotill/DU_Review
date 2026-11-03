@@ -221,14 +221,15 @@
     private async Task CreateAsync()
     {
         link = null;
+        var acting = await ActingUserAsync();
         error = await AdminActions.RunTaskAsync(AuthState, async () =>
         {
             await using var scope = ScopeFactory.CreateAsyncScope();
             var service = scope.ServiceProvider.GetRequiredService<AccountService>();
-            var (user, problem) = await service.CreateAsync(newAccount.Email, newAccount.Name, newAccount.Kind, newAccount.GroupId);
+            var (user, problem) = await service.CreateAsync(newAccount.Email, newAccount.Name, newAccount.Kind, newAccount.GroupId, acting);
             if (user == null) return problem;
 
-            await ShowLinkAsync(service, user.Id, user.Email!);
+            await ShowLinkAsync(service, user.Id, user.Email!, acting);
             newAccount = new() { Kind = newAccount.Kind };
             return null;
         });
@@ -238,20 +239,22 @@
     private async Task SendLinkAsync(AccountInfo account)
     {
         link = null;
+        var acting = await ActingUserAsync();
         error = await AdminActions.RunTaskAsync(AuthState, async () =>
         {
             await using var scope = ScopeFactory.CreateAsyncScope();
-            await ShowLinkAsync(scope.ServiceProvider.GetRequiredService<AccountService>(), account.Id, account.Email);
+            await ShowLinkAsync(scope.ServiceProvider.GetRequiredService<AccountService>(), account.Id, account.Email, acting);
             return null;
         });
     }
 
     // Mails the link when a mail server is set, and always shows it: the admin can pass it on if the mail does not arrive
-    private async Task ShowLinkAsync(AccountService service, Guid id, string email)
+    private async Task ShowLinkAsync(AccountService service, Guid id, string email, Guid acting)
     {
         try
         {
-            link = await service.SendInvitationAsync(id, BaseUri);
+            // Checks that the acting user is still an admin before anything is made or sent
+            link = await service.SendInvitationAsync(id, BaseUri, acting);
             linkNote = service.CanSendMail
                 ? $"Link gemaild naar {email}. Komt de mail niet aan? Stuur deze link zelf door:"
                 : $"Stuur deze link zelf door naar {email}:";

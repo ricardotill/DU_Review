@@ -15,7 +15,8 @@ public sealed class GroupAccessHandler : AuthorizationHandler<StaffOrGroupPageRe
     protected override Task HandleRequirementAsync(AuthorizationHandlerContext context, StaffOrGroupPageRequirement requirement)
     {
         if (context.User.IsInRole(AppAuth.JuryRole)
-            || (AppAuth.IsGroup(context.User) && Allows<GroupAccessAttribute>(context.Resource))
+            // A group login without its group (claim missing or broken) gets nothing: pages would read "no group" as "all groups"
+            || (AppAuth.GroupId(context.User) != null && Allows<GroupAccessAttribute>(context.Resource))
             || (context.User.IsInRole(AppAuth.BeamerRole) && Allows<BeamerAccessAttribute>(context.Resource)))
         {
             context.Succeed(requirement);

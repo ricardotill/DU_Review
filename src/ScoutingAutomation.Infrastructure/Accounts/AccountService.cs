@@ -60,8 +60,10 @@ public class AccountService
     }
 
     /// <returns>The new account, or the reason it was not made.</returns>
-    public async Task<(AppUser? User, string? Error)> CreateAsync(string? email, string? displayName, AccountKind kind, Guid? groupId)
+    /// <param name="actingUserId">The admin who makes it, checked against the database; null only for the app itself (the first admin).</param>
+    public async Task<(AppUser? User, string? Error)> CreateAsync(string? email, string? displayName, AccountKind kind, Guid? groupId, Guid? actingUserId)
     {
+        if (actingUserId is { } acting && await NotAdminAsync(acting) is { } notAdmin) return (null, notAdmin);
         email = email?.Trim();
         displayName = displayName?.Trim();
         if (string.IsNullOrEmpty(email)) return (null, "Vul een e-mailadres in.");
@@ -97,6 +99,7 @@ public class AccountService
 
     private async Task<string?> UpdateCoreAsync(Guid id, Guid actingUserId, string? displayName, AccountKind kind, Guid? groupId)
     {
+        if (await NotAdminAsync(actingUserId) is { } notAdmin) return notAdmin;
         var user = await _users.FindByIdAsync(id.ToString());
         if (user == null) return "Dit account bestaat niet meer.";
 
@@ -113,17 +116,19 @@ public class AccountService
             if (await IsLastActiveAdminAsync(user)) return "Dit is de laatste beheerder.";
         }
 
-        user.DisplayName = displayName;
-        user.GroupId = kind == AccountKind.Group ? groupId : null;
-        var updated = await _users.UpdateAsync(user);
-        if (!updated.Succeeded) return Describe(updated);
-
+        // Roles before the group: if the roles fail, nothing changed. A group role without a group is refused everywhere
+        // (no group claim), so a failure in between never opens up other groups' data.
         if (currentKind != kind)
         {
             var removed = await _users.RemoveFromRolesAsync(user, currentRoles);
             var added = removed.Succeeded ? await _users.AddToRolesAsync(user, AccountKinds.RolesOf(kind)) : removed;
             if (!added.Succeeded) return Describe(added);
         }
+
+        user.DisplayName = displayName;
+        user.GroupId = kind == AccountKind.Group ? groupId : null;
+        var updated = await _users.UpdateAsync(user);
+        if (!updated.Succeeded) return Describe(updated);
 
         // Ends the account's open sessions, so its new rights (or group) count at once
         await _users.UpdateSecurityStampAsync(user);
@@ -138,6 +143,7 @@ public class AccountService
 
     private async Task<string?> SetDisabledCoreAsync(Guid id, Guid actingUserId, bool disabled)
     {
+        if (await NotAdminAsync(actingUserId) is { } notAdmin) return notAdmin;
         var user = await _users.FindByIdAsync(id.ToString());
         if (user == null) return "Dit account bestaat niet meer.";
         if (disabled && id == actingUserId) return "Je kunt jezelf niet blokkeren.";
@@ -163,6 +169,7 @@ public class AccountService
 
     private async Task<string?> DeleteCoreAsync(Guid id, Guid actingUserId)
     {
+        if (await NotAdminAsync(actingUserId) is { } notAdmin) return notAdmin;
         var user = await _users.FindByIdAsync(id.ToString());
         if (user == null) return null;
         if (id == actingUserId) return "Je kunt je eigen account niet verwijderen.";
@@ -187,8 +194,10 @@ public class AccountService
     /// <summary>Mails the invitation to choose a password.</summary>
     /// <returns>The link, so the admin can pass it on when no mail could be sent.</returns>
     /// <exception cref="AccountMailException">The mail could not be sent.</exception>
-    public async Task<string> SendInvitationAsync(Guid id, string baseUrl)
+    /// <exception cref="InvalidOperationException">The acting user is no admin (any more), or the account is gone.</exception>
+    public async Task<string> SendInvitationAsync(Guid id, string baseUrl, Guid actingUserId)
     {
+        if (await NotAdminAsync(actingUserId) is { } notAdmin) throw new InvalidOperationException(notAdmin);
         var user = await _users.FindByIdAsync(id.ToString()) ?? throw new InvalidOperationException("Dit account bestaat niet meer.");
         var link = await CreatePasswordLinkAsync(user, baseUrl);
         await _mailer.SendAsync(AccountMails.Invitation(user, link));
@@ -290,6 +299,19 @@ public class AccountService
             AdminChanges.Release();
         }
     }
+
+    /// <summary>
+    /// Whether <paramref name="actingUserId"/> is an active admin right now, read from the database. A page checks the
+    /// login's roles too, but those can lag behind for a moment after the account was changed.
+    /// </summary>
+    /// <returns>Null for an admin, otherwise the reason.</returns>
+    private async Task<string?> NotAdminAsync(Guid actingUserId)
+    {
+        var acting = await _users.FindByIdAsync(actingUserId.ToString());
+        return acting != null && !acting.IsDisabled && await _users.IsInRoleAsync(acting, AccountRoles.Admin) ? null : NotAdminMessage;
+    }
+
+    public const string NotAdminMessage = "Alleen voor beheerders.";
 
     private async Task<bool> IsLastActiveAdminAsync(AppUser user)
     {
