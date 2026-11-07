@@ -8,6 +8,7 @@
     <File Path="docs\slack-sync.md" />
   </Folder>
   <Folder Name="/SolutionFolder/">
+    <File Path=".env.example" />
     <File Path="README.md" />
     <File Path="run-gameday.sh" />
   </Folder>

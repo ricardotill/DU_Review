@@ -13,7 +13,7 @@
 <h1 class="h5 text-white text-center mb-3">Inloggen</h1>
 
 <EditForm Model="Input" method="post" OnSubmit="LogInAsync" FormName="login">
-    <InputText type="email" class="form-control form-control-dark mb-2" @bind-Value="Input.Email"
+    <InputText type="text" inputmode="email" class="form-control form-control-dark mb-2" @bind-Value="Input.Email"
                placeholder="E-mailadres" autocomplete="username" aria-label="E-mailadres" autofocus />
     <InputText type="password" class="form-control form-control-dark mb-2" @bind-Value="Input.Password"
                placeholder="Wachtwoord" autocomplete="current-password" aria-label="Wachtwoord" />
@@ -61,7 +61,9 @@
             return;
         }
 
-        var user = string.IsNullOrWhiteSpace(Input.Email) ? null : await Users.FindByEmailAsync(Input.Email.Trim());
+        var login = Input.Email?.Trim();
+        // By address; the account "admin" made without a first admin address (AccountsInitializer) logs in by its name
+        var user = string.IsNullOrEmpty(login) ? null : await Users.FindByEmailAsync(login) ?? await Users.FindByNameAsync(login);
         if (user == null || user.IsDisabled)
         {
             // The same answer as a wrong password: the page does not tell which addresses have an account

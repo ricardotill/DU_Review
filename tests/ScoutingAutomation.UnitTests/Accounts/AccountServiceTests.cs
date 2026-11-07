@@ -96,6 +96,25 @@ public sealed class AccountServiceTests : IAsyncLifetime, IAsyncDisposable
     }
 
     [Fact]
+    public async Task WithoutAnAdminBootstrapAddressOrMailServer_ShouldMakeAdminWithPasswordAdmin()
+    {
+        _settings.Accounts.BootstrapAdminEmail = null;
+        _mailer.CanSend = false;
+        await RemoveAdminRoleAsync();
+
+        await InitializeAsync();
+
+        var admin = await With((_, users) => users.FindByNameAsync(AccountsInitializer.FallbackAdminName));
+        admin.Should().NotBeNull();
+        (await With((_, users) => users.GetRolesAsync(admin!))).Should().BeEquivalentTo([AccountRoles.Admin, AccountRoles.Jury]);
+        (await With((_, users) => users.CheckPasswordAsync(admin!, "admin"))).Should().BeTrue();
+
+        // A second start with the admin in place changes nothing
+        await InitializeAsync();
+        (await With((_, users) => Task.FromResult(users.Users.Count(u => u.UserName == "admin")))).Should().Be(1);
+    }
+
+    [Fact]
     public async Task BootstrapPassword_ShouldBeSetSoTheAdminCanLogInStraightAway()
     {
         _settings.Accounts.BootstrapAdminEmail = "second@du.test";

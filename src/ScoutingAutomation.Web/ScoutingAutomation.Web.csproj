@@ -8,7 +8,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Aspire.Npgsql.EntityFrameworkCore.PostgreSQL" Version="13.6.0" />
+    <PackageReference Include="Aspire.Npgsql.EntityFrameworkCore.PostgreSQL" Version="13.6.4" />
   </ItemGroup>
 
   <!-- Created at runtime and holding secrets or local state: never copy them to build or publish output -->
@@ -60,6 +60,9 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+    <!-- blazor.web.js comes from a package the SDK only restores when it sees .razor files. The Dockerfile restores
+         with just the .csproj files (for layer caching), so without this the image has no _framework/ scripts -->
+    <RequiresAspNetWebAssets>true</RequiresAspNetWebAssets>
     <UserSecretsId>5428a4d7-5c7a-4f39-a9a0-1422bcf32bb6</UserSecretsId>
   </PropertyGroup>
 

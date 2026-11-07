@@ -84,6 +84,44 @@ public class AccountIntegrationTests : IClassFixture<WebApplicationFactory<Progr
     }
 
     [Fact]
+    public async Task LoginFormSentAgain_AfterLoggingIn_ShouldGoToTheStartPageInsteadOf400()
+    {
+        await _app.EnsureAccountAsync("eva@du.test");
+        using var client = _app.CreateClient();
+        const string page = "/login?ReturnUrl=%2Fgroups";
+        var html = await client.GetStringAsync(page);
+        var token = System.Text.RegularExpressions.Regex.Match(html, "name=\"__RequestVerificationToken\"[^>]*value=\"([^\"]+)\"").Groups[1].Value;
+        FormUrlEncodedContent Form() => new(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = token, ["_handler"] = "login",
+            ["Input.Email"] = "eva@du.test", ["Input.Password"] = TestApp.Password,
+        });
+
+        (await client.PostAsync(page, Form())).StatusCode.Should().Be(HttpStatusCode.Redirect);
+        // The same form again, now with the login cookie: its token was made for an anonymous visitor
+        var again = await client.PostAsync(page, Form());
+
+        again.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        again.Headers.Location!.OriginalString.Should().Be("/groups");
+        (await IsLoggedIn(client)).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task LoginForm_WithoutAValidToken_ShouldStillBeRefused()
+    {
+        await _app.EnsureAccountAsync("eva@du.test");
+        using var client = _app.CreateClient();
+
+        var response = await client.PostAsync("/login", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["_handler"] = "login", ["Input.Email"] = "eva@du.test", ["Input.Password"] = TestApp.Password,
+        }));
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await IsLoggedIn(client)).Should().BeFalse();
+    }
+
+    [Fact]
     public async Task WrongPassword_AndUnknownAddress_ShouldGetTheSameAnswer()
     {
         await _app.EnsureAccountAsync("eva@du.test");
@@ -260,12 +298,34 @@ public class AccountIntegrationTests : IClassFixture<WebApplicationFactory<Progr
     }
 
     [Fact]
-    public async Task WithoutAnyAdmin_AndNoBootstrapAddress_TheAppShouldNotStart()
+    public async Task WithoutAnyAdmin_AndNoBootstrapAddress_ButAMailServer_TheAppShouldNotStart()
     {
-        await using var app = new TestApp(_factory, new Dictionary<string, string?> { ["Scouting:Accounts:BootstrapAdminEmail"] = "" });
+        await using var app = new TestApp(_factory, new Dictionary<string, string?>
+        {
+            ["Scouting:Accounts:BootstrapAdminEmail"] = "",
+            ["Scouting:Email:Host"] = "smtp.du.test",
+            ["Scouting:Email:FromAddress"] = "noreply@du.test",
+        });
 
         var act = () => app.CreateClient();
 
         act.Should().Throw<Exception>().Which.ToString().Should().Contain("BOOTSTRAP_ADMIN_EMAIL");
+    }
+
+    [Fact]
+    public async Task WithoutAnyAdmin_BootstrapAddressOrMailServer_AdminAdminShouldLogIn()
+    {
+        await using var app = new TestApp(_factory, new Dictionary<string, string?>
+        {
+            ["Scouting:Accounts:BootstrapAdminEmail"] = "",
+            ["Scouting:Accounts:BootstrapAdminPassword"] = "",
+        });
+        using var client = app.CreateClient();
+
+        var response = await TestApp.LogInAsync(client, "admin", "admin");
+
+        response.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        (await IsLoggedIn(client)).Should().BeTrue();
+        (await client.GetAsync("/admin")).StatusCode.Should().Be(HttpStatusCode.OK, "the account is an admin");
     }
 }

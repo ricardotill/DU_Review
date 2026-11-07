@@ -209,6 +209,7 @@ app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseAntiforgery();
+app.UseRepeatedLoginRedirect();
 app.MapStaticAssets();
 
 // Initialize database schema and synchronize groups on startup

@@ -30,7 +30,8 @@ Beheertaken doe je met een **beheerdersaccount**. Een juryaccount is genoeg om t
   ```
 
 - Die beheerder krijgt een mail met een link om een wachtwoord te kiezen. Alleen als er geen mail kan worden verstuurd, staat de link in het logboek (`docker compose logs app | grep wachtwoord-instellen`). De link is 3 dagen geldig.
-- Is er geen beheerder en geen adres ingesteld, dan start de app niet en zegt het logboek wat er mist.
+- Is er geen beheerder en geen adres ingesteld, maar wel een mailserver, dan start de app niet en zegt het logboek wat er mist.
+- Is er geen beheerder, geen adres én geen mailserver, dan maakt de app een beheerder met inlognaam `admin` en wachtwoord `admin`. Log daarmee in en maak meteen een echte beheerder aan (of zet een ander wachtwoord): iedereen kent dit wachtwoord.
 - **Wachtwoord kwijt?** Gebruik **Wachtwoord vergeten?** op het loginscherm, of laat een andere beheerder op **Beheer** > **Accounts** een link maken. Maak daarom altijd een tweede beheerder aan.
 
 ### Accounts

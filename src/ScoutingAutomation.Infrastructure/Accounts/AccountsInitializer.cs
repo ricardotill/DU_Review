@@ -23,6 +23,11 @@ public class AccountsInitializer
     private readonly IOptions<ScoutingSettings> _options;
     private readonly ILogger<AccountsInitializer> _logger;
 
+    /// <summary>The login name of the admin made when neither a first admin address nor a mail server is set.</summary>
+    public const string FallbackAdminName = "admin";
+    public const string FallbackAdminPassword = "admin";
+    private const string FallbackAdminEmail = "admin@localhost";
+
     public AccountsInitializer(
         AccountsDbContext context,
         UserManager<AppUser> users,
@@ -100,8 +105,14 @@ public class AccountsInitializer
         var email = settings.BootstrapAdminEmail?.Trim();
         if (string.IsNullOrEmpty(email))
         {
-            throw new StartupConfigurationException(
-                "Er is nog geen beheerder. Zet Scouting:Accounts:BootstrapAdminEmail (in .env: BOOTSTRAP_ADMIN_EMAIL) op je e-mailadres en start opnieuw.");
+            if (_mailer.CanSend)
+            {
+                throw new StartupConfigurationException(
+                    "Er is nog geen beheerder. Zet Scouting:Accounts:BootstrapAdminEmail (in .env: BOOTSTRAP_ADMIN_EMAIL) op je e-mailadres en start opnieuw.");
+            }
+
+            await EnsureFallbackAdminAsync();
+            return;
         }
 
         var user = await _users.FindByEmailAsync(email);
@@ -112,14 +123,7 @@ public class AccountsInitializer
         }
         else
         {
-            // An existing account named in the settings becomes admin again, e.g. after the last admin was blocked by hand in the database
-            user.IsDisabled = false;
-            user.LockoutEnd = null;
-            await _users.UpdateAsync(user);
-            foreach (var role in AccountKinds.RolesOf(AccountKind.Admin))
-            {
-                if (!await _users.IsInRoleAsync(user, role)) await _users.AddToRoleAsync(user, role);
-            }
+            await MakeAdminAgainAsync(user);
         }
 
         if (!string.IsNullOrEmpty(settings.BootstrapAdminPassword) && user.PasswordHash == null)
@@ -155,5 +159,53 @@ public class AccountsInitializer
         // Only without working mail: then the log is the only way in on a fresh install. The link works once, for a few days,
         // and anyone who can read this log already controls the server.
         _logger.LogWarning("First admin {Email}: no mail sent (no mail server or no Scouting:PublicUrl), choose a password at {Link}", email, link);
+    }
+
+    /// <summary>
+    /// Neither a first admin address nor a mail server is set: make the account "admin" with password "admin", so a fresh
+    /// install can be opened at all. Logged loudly; the admin should change the password (or the account) straight away.
+    /// </summary>
+    private async Task EnsureFallbackAdminAsync()
+    {
+        var user = await _users.FindByNameAsync(FallbackAdminName);
+        if (user == null)
+        {
+            user = new AppUser { UserName = FallbackAdminName, Email = FallbackAdminEmail, DisplayName = "Beheerder", EmailConfirmed = true };
+            // Hashed by hand: "admin" is far shorter than the password rules allow for chosen passwords
+            user.PasswordHash = _users.PasswordHasher.HashPassword(user, FallbackAdminPassword);
+            var created = await _users.CreateAsync(user);
+            if (!created.Succeeded)
+            {
+                throw new StartupConfigurationException($"De standaardbeheerder ({FallbackAdminName}) kon niet worden gemaakt: {AccountService.Describe(created)}");
+            }
+
+            await MakeAdminAgainAsync(user);
+            _logger.LogWarning(
+                "No Scouting:Accounts:BootstrapAdminEmail and no mail server: made admin account '{Name}' with password '{Password}'. Change it straight away",
+                FallbackAdminName, FallbackAdminPassword);
+            return;
+        }
+
+        // Made before and since blocked or demoted by hand: it is the way in again, with the password it has now
+        await MakeAdminAgainAsync(user);
+        if (user.PasswordHash == null)
+        {
+            user.PasswordHash = _users.PasswordHasher.HashPassword(user, FallbackAdminPassword);
+            await _users.UpdateAsync(user);
+        }
+
+        _logger.LogWarning("No admin left and no Scouting:Accounts:BootstrapAdminEmail: account '{Name}' is admin again", FallbackAdminName);
+    }
+
+    // An existing account becomes admin again, e.g. after the last admin was blocked by hand in the database
+    private async Task MakeAdminAgainAsync(AppUser user)
+    {
+        user.IsDisabled = false;
+        user.LockoutEnd = null;
+        await _users.UpdateAsync(user);
+        foreach (var role in AccountKinds.RolesOf(AccountKind.Admin))
+        {
+            if (!await _users.IsInRoleAsync(user, role)) await _users.AddToRoleAsync(user, role);
+        }
     }
 }

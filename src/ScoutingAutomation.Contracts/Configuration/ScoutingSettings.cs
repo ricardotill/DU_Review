@@ -308,7 +308,8 @@ public class AccountSettings
 {
     /// <summary>
     /// The email address of the first admin. When no admin account exists at startup, one is made for this address;
-    /// without it (and without any admin) the app does not start.
+    /// without it (and without any admin) the app does not start, unless no mail server is set either: then the
+    /// account "admin" with password "admin" is made.
     /// </summary>
     public string? BootstrapAdminEmail { get; set; }
 
