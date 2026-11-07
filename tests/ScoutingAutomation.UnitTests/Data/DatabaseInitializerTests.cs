@@ -328,7 +328,10 @@ public class DatabaseInitializerTests : IDisposable
                 DROP INDEX "IX_Groups_MapToken";
                 ALTER TABLE "Groups" DROP COLUMN "AdventurersSlackChannelId";
                 ALTER TABLE "Groups" DROP COLUMN "MapToken";
-                DROP TABLE "LocationUnlocks";
+                ALTER TABLE "Groups" DROP COLUMN "OpenLocations";
+                ALTER TABLE "Assignments" DROP COLUMN "EditedAt";
+                DROP INDEX "IX_AssignmentImages_EditionId_AssignmentCode";
+                DROP TABLE "AssignmentImages";
                 DROP TABLE "Locations";
                 """);
             await db.Database.ExecuteSqlRawAsync("""
@@ -352,11 +355,60 @@ public class DatabaseInitializerTests : IDisposable
             wolves.AdventurersSlackChannelId.Should().BeNull();
             wolves.MapToken.Should().NotBeNullOrWhiteSpace("every group gets a map link");
 
+            wolves.OpenLocations.Should().BeNull("a group starts with the number every group has");
             db.Locations.Add(new Location { Number = 7, Name = "Molen", Latitude = 51.6, Longitude = 5.0 });
-            db.LocationUnlocks.Add(new LocationUnlock { GroupId = groupId, LocationNumber = 7, UnlockedAt = DateTimeOffset.UtcNow });
+            db.AssignmentImages.Add(new AssignmentImage { AssignmentCode = "2", FileName = "a.jpg", StoragePath = "/s/a.jpg", UploadedAt = DateTimeOffset.UtcNow });
             await db.SaveChangesAsync();
-            (await new LocationRepository(db).GetUnlocksAsync(groupId)).Should().ContainSingle();
+            (await new LocationRepository(db).SetOpenLocationsAsync(groupId, 12)).Should().BeTrue();
+            (await db.Groups.AsNoTracking().SingleAsync(g => g.Id == groupId)).OpenLocations.Should().Be(12);
+            (await new AssignmentImageRepository(db).GetForAssignmentAsync("2")).Should().ContainSingle();
         }
+    }
+
+    [Fact]
+    public async Task InitializeAsync_AssignmentEditedInTheApp_ShouldKeepItsValuesAndUpdateTheOthers()
+    {
+        var name = $"Init_{Guid.NewGuid():N}";
+        var settings = Settings();
+        await using (var db = TestDb.Create(name))
+        {
+            await Create(db, settings).InitializeAsync();
+            var edited = await db.Assignments.SingleAsync(a => a.Code == "2");
+            edited.Title = "Bewerkt";
+            edited.StandardPoints = 9;
+            edited.EditedAt = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync();
+        }
+
+        File.WriteAllText(settings.AssignmentPointsFile, "Opdracht,standaard,awesome,titel\n1,5,10,Een\n2,6,12,Twee\n");
+
+        await using (var db = TestDb.Create(name))
+        {
+            await Create(db, settings).InitializeAsync();
+
+            var kept = await db.Assignments.SingleAsync(a => a.Code == "2");
+            (kept.Title, kept.StandardPoints).Should().Be(("Bewerkt", 9));
+            var updated = await db.Assignments.SingleAsync(a => a.Code == "1");
+            (updated.Title, updated.StandardPoints).Should().Be(("Een", 5));
+        }
+    }
+
+    [Fact]
+    public async Task InitializeAsync_Sqlite_ShouldUseTheWriteAheadLog()
+    {
+        // Otherwise two writes at the same moment (an unlock notice and a jury change) fail with "database is locked"
+        var options = new DbContextOptionsBuilder<ScoutingDbContext>().UseSqlite($"Data Source={Path.Combine(_temp.Path, "wal.db")}").Options;
+        await using (var db = new ScoutingDbContext(options))
+        {
+            await Create(db, Settings()).InitializeAsync();
+        }
+
+        await using (var db = new ScoutingDbContext(options))
+        {
+            (await db.Database.SqlQueryRaw<string>("PRAGMA journal_mode").ToListAsync()).Should().Equal("wal");
+        }
+
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
     }
 
     [Fact]
@@ -399,7 +451,6 @@ public class DatabaseInitializerTests : IDisposable
                 INSERT INTO "Assignments" ("Id", "Code", "StandardPoints", "AwesomePoints", "CreatedAt")
                     VALUES ('7C9E6679-7425-40DE-944B-E07FC1F90AE7', '2', 1, 1, '2025-09-01 10:00:00+00:00');
                 INSERT INTO "Locations" VALUES (7, 'Molen', 51.6, 5.0, NULL);
-                INSERT INTO "LocationUnlocks" VALUES ({0}, 7, '2025-10-04 10:00:00+00:00');
                 INSERT INTO "Submissions" ("Id", "GroupId", "AssignmentCode", "SlackChannelId", "SlackMessageId", "Submitter",
                     "FileName", "StoragePath", "FileSizeBytes", "ContentType", "Status", "CreatedAt")
                 VALUES ('0F8FAD5B-D9CB-469F-A165-70867728950E', {0}, '2', 'C1', '1727700000.000100', 'U1',
@@ -426,7 +477,7 @@ public class DatabaseInitializerTests : IDisposable
             (await db.Teams.Select(t => t.Name).ToListAsync()).Should().BeEquivalentTo("De Wolven", "Oud team");
             (await db.Assignments.Select(a => a.Code).ToListAsync()).Should().Contain("2");
             (await db.Locations.SingleAsync()).Name.Should().Be("Molen");
-            (await new LocationRepository(db).GetUnlocksAsync(Guid.Parse(wolves))).Should().ContainSingle();
+            groups.Should().OnlyContain(g => g.OpenLocations == null, "every group starts with the locations every group has");
             (await db.Submissions.SingleAsync()).GroupId.Should().Be(Guid.Parse(wolves));
 
             var indexes = await db.Database.SqlQueryRaw<string>(

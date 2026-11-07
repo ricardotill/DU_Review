@@ -179,7 +179,7 @@ public sealed class EditionService
             _db.Assignments.Add(new Assignment
             {
                 EditionId = edition.Id, Code = assignment.Code, Title = assignment.Title, Description = assignment.Description,
-                StandardPoints = assignment.StandardPoints, AwesomePoints = assignment.AwesomePoints
+                StandardPoints = assignment.StandardPoints, AwesomePoints = assignment.AwesomePoints, EditedAt = assignment.EditedAt
             });
         }
 
@@ -319,6 +319,7 @@ public sealed class EditionService
         _db.Groups.RemoveRange(await AllGroups.Where(g => g.EditionId == editionId).ToListAsync(ct));
         _db.Assignments.RemoveRange(await _db.Assignments.IgnoreQueryFilters().Where(a => a.EditionId == editionId).ToListAsync(ct));
         _db.Locations.RemoveRange(await _db.Locations.IgnoreQueryFilters().Where(l => l.EditionId == editionId).ToListAsync(ct));
+        _db.AssignmentImages.RemoveRange(await _db.AssignmentImages.IgnoreQueryFilters().Where(i => i.EditionId == editionId).ToListAsync(ct));
         _db.Editions.Remove(edition);
         await _db.SaveChangesAsync(ct);
         _logger.LogInformation("Deleted edition {Edition}", edition.Name);

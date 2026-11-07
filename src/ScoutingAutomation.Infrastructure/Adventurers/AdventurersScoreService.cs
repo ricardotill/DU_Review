@@ -8,24 +8,23 @@ namespace ScoutingAutomation.Infrastructure.Adventurers;
 
 /// <summary>Everything the Avonturiers pages show, read in one go.</summary>
 /// <param name="Submissions">Check-ins and themes, newest first.</param>
-/// <param name="Unlocks">Locations unlocked per group on the dashboard.</param>
+/// <param name="Unlocks">Per group: its open locations and the assignments its Avonturiers opened.</param>
 public sealed record AdventurersOverview(
     IReadOnlyList<Group> Groups,
     AdventurersStanding Standing,
     IReadOnlyList<Submission> Submissions,
     IReadOnlyList<Location> Locations,
-    IReadOnlyDictionary<Guid, IReadOnlySet<int>> Unlocks,
-    IReadOnlyList<string> UnlockPool,
+    IReadOnlyDictionary<Guid, UnlockState> Unlocks,
     DateTimeOffset Now)
 {
     public ThemeRound? RunningRound => Standing.Rounds.FirstOrDefault(r => r.IsRunning)?.Round;
 
     public ThemeRound? NextRound => Standing.Rounds.Where(r => r.Round.Start > Now).OrderBy(r => r.Round.Start).FirstOrDefault()?.Round;
 
-    /// <summary>The total of unlockable assignments: the pool, or else the number of locations; null when neither is set.</summary>
-    public int? UnlockTotal => UnlockPool.Count > 0 ? UnlockPool.Count : Locations.Count > 0 ? Locations.Count : null;
+    public UnlockState? UnlocksOf(Guid groupId) => Unlocks.GetValueOrDefault(groupId);
 
-    public IReadOnlySet<int> UnlocksOf(Guid groupId) => Unlocks.GetValueOrDefault(groupId) ?? new HashSet<int>();
+    /// <summary>Whether the location is open for the group; true for a group that is not known.</summary>
+    public bool IsLocationOpen(Guid groupId, int number) => UnlocksOf(groupId)?.IsLocationOpen(number) ?? true;
 }
 
 /// <summary>Reads the Avonturiers data and computes the standing; nothing of it is stored.</summary>
@@ -34,12 +33,14 @@ public sealed class AdventurersScoreService
     private readonly ScoutingDbContext _context;
     private readonly RuntimeSettingsService _runtime;
     private readonly TimeProvider _time;
+    private readonly AssignmentUnlockService _unlocks;
 
-    public AdventurersScoreService(ScoutingDbContext context, RuntimeSettingsService runtime, TimeProvider time)
+    public AdventurersScoreService(ScoutingDbContext context, RuntimeSettingsService runtime, TimeProvider time, AssignmentUnlockService unlocks)
     {
         _context = context;
         _runtime = runtime;
         _time = time;
+        _unlocks = unlocks;
     }
 
     public async Task<AdventurersOverview> GetOverviewAsync(CancellationToken ct = default)
@@ -55,13 +56,11 @@ public sealed class AdventurersScoreService
         var final = (await _context.GroupBonusPoints.AsNoTracking().Where(p => p.CategoryKey == options.FinalGameCategoryKey).ToListAsync(ct))
             .ToDictionary(p => p.GroupId, p => p.Points);
         var locations = await _context.Locations.AsNoTracking().OrderBy(l => l.Number).ToListAsync(ct);
-        var unlocks = (await _context.LocationUnlocks.AsNoTracking().ToListAsync(ct))
-            .GroupBy(u => u.GroupId)
-            .ToDictionary(g => g.Key, g => (IReadOnlySet<int>)g.Select(u => u.LocationNumber).ToHashSet());
+        var unlocks = await _unlocks.ForAllAsync(ct);
 
         var now = _time.GetUtcNow();
         var standing = AdventurersScoring.Compute(groups.Select(g => g.Id), submissions, _runtime.ThemeRounds, final,
-            options.ThemeMaxPoints, options.FinalMaxPoints, now);
-        return new AdventurersOverview(groups, standing, submissions.OrderByDescending(s => s.CreatedAt).ToList(), locations, unlocks, _runtime.UnlockPool, now);
+            _runtime.ThemeMaxPoints, _runtime.FinalMaxPoints, now);
+        return new AdventurersOverview(groups, standing, submissions.OrderByDescending(s => s.CreatedAt).ToList(), locations, unlocks, now);
     }
 }

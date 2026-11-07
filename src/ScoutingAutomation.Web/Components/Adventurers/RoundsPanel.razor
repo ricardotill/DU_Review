@@ -3,9 +3,9 @@
 
 @* The theme rounds as a grid: admins edit, add, remove or generate them; the jury only sees them. *@
 <div class="glass-panel p-4">
-    <h2 class="panel-title"><i class="bi bi-stopwatch-fill text-info"></i> Themarondes</h2>
+    <h2 class="panel-title"><i class="bi bi-stopwatch-fill text-info"></i> Rondes van de half-uur opdrachten</h2>
     <p class="text-secondary small">
-        Een thema-inzending telt voor een ronde als de tijd van het Slack-bericht binnen de ronde valt en het themanummer bij die ronde hoort.
+        Een half-uur opdracht telt voor een ronde als de tijd van het Slack-bericht binnen de ronde valt en het opdrachtnummer bij die ronde hoort.
         Tijden zijn in de tijdzone van het spel. Laat het einde leeg voor @Runtime.RoundMinutes minuten.
     </p>
 
@@ -30,7 +30,7 @@
                         <button type="button" class="btn btn-sm btn-scout-secondary w-100 generate" @onclick="Generate"><i class="bi bi-magic me-1"></i> Genereer</button>
                     </div>
                 </div>
-                <div class="stat-caption mt-1">Vervangt de rondes hieronder; pas ze daarna aan en sla op. Thema N hoort dan bij ronde N.</div>
+                <div class="stat-caption mt-1">Vervangt de rondes hieronder; pas ze daarna aan en sla op. Half-uur opdracht N hoort dan bij ronde N.</div>
             </details>
         </Authorized>
     </AuthorizeView>
@@ -44,7 +44,7 @@
         <div class="table-responsive">
             <table class="custom-table rounds-grid">
                 <thead>
-                    <tr><th>Ronde</th><th>Start</th><th>Einde</th><th>Thema's</th><th>Tekst bij de opening</th><th></th></tr>
+                    <tr><th>Ronde</th><th>Start</th><th>Einde</th><th>Half-uur opdrachten</th><th>Tekst bij de opening</th><th></th></tr>
                 </thead>
                 <tbody>
                     @foreach (var row in rows)

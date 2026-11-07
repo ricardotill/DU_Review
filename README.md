@@ -54,9 +54,11 @@ Iedereen logt in met een eigen **account**: een e-mailadres en een wachtwoord. D
 **Groepsaccounts.** Elke groep kan een eigen account krijgen. Een groep ziet alleen:
 
 - een eigen dashboard met haar score, plaats, de stand en de punten in de loop van het spel;
-- haar eigen inzendingen (**Onze inzendingen**) met de beoordeling, en de bestanden zelf.
+- de opdrachten die ze nu kan doen (**Onze opdrachten**), met de afbeeldingen; zie **Onze opdrachten**;
+- met de Avonturiers aan: haar kaart, locaties en de half-uur opdracht van nu (**Onze kaart**); zie **Kaarten**;
+- haar eigen inzendingen (**Onze inzendingen**) met de beoordeling. De bestanden zelf haalt een groep niet uit de app, om de verbinding op de locatie te sparen: bij elke inzending staat een knop **Bekijk in Slack** (de Slack-app) en een link voor de browser, die naar het bericht in het groepskanaal gaan. Ook `/api/files/{id}` stuurt een groep door naar dat bericht. Zolang de app de Slack-workspace niet kent (bijvoorbeeld in simulatiemodus), is er geen link en zegt de pagina in welk bericht de foto staat. Op **Onze kaart** staat bij een check-in ook een link naar Slack in plaats van de foto.
 
-Meldingen van nieuwe inzendingen (rechtsonder) krijgt alleen de jury; een groep ziet zo niet wat andere groepen insturen.
+Meldingen van nieuwe inzendingen (rechtsonder) krijgt alleen de jury; een groep ziet zo niet wat andere groepen insturen. Een groep krijgt alleen een melding als haar eigen Avonturiers opdrachten hebben vrijgespeeld.
 
 Inzendingen en bestanden van andere groepen, de namen van juryleden, opmerkingen bij beoordelingen en alle pagina's voor de jury (zoals **Te beoordelen**, **Groepen**, **Opdrachten**, **Scorebord** en **Configuratie**) zijn voor een groep afgeschermd; die komt dan op **Geen toegang** uit. Nieuwe pagina's zijn standaard ook afgeschermd: alleen pagina's met `[GroupAccess]` staan open voor groepen (en met `[BeamerAccess]` voor de beamer), en zulke pagina's tonen een groep alleen haar eigen gegevens. Op **Beheer** > **Accounts** staat welke groepen nog geen account hebben. De beamer krijgt geen bestanden van afgekeurde inzendingen.
 
@@ -114,6 +116,13 @@ A,3,6,Speciale toren,"Bouw een toren, minstens 2 meter hoog"
 
 De app leest dit bestand bij elke start. Wijzigingen gelden dus na een herstart.
 
+### Opdrachten aanpassen in de app
+
+De jury en beheerders passen een opdracht ook aan in de app: op de opdrachtpagina met **Bewerken**. Daar verander je de titel, de beschrijving (die zien de groepen) en de punten. De scores rekenen meteen met de nieuwe punten.
+
+- Een opdracht die in de app is aangepast, krijgt de badge **aangepast**. Die waarden winnen van het puntenbestand, ook na een herstart. Met **Terug naar puntenbestand** haal je titel, beschrijving en punten weer uit het bestand.
+- **Afbeeldingen**: voeg er per opdracht een of meer toe (JPG, PNG, GIF of WebP, maximaal 10 MB per stuk, 20 per opdracht), zet ze in een andere volgorde of verwijder ze. De groepen zien ze op **Onze opdrachten** zodra de opdracht voor hen open is; een groep kan de afbeeldingen van een opdracht op slot niet openen. De afbeeldingen staan in `scouting_storage/_opdrachten/` en horen niet bij Slack: opnieuw opbouwen uit Slack laat ze staan.
+
 ## Het opdrachtnummer
 
 De app herkent deze schrijfwijzen:
@@ -134,19 +143,19 @@ Een los getal ergens in de tekst telt **niet**. Zo wordt "we deden het met 3 man
 |---|---|
 | **Dashboard** | Totalen, het scorebord met **Laatst actief** per groep, de punten in de loop van het spel en de voortgang per opdracht. Als beheerder ook de schakelaar voor **Handmatige modus** en **Exporteren**. Zie **Scorebord en export**. |
 | **Te beoordelen** | De open inzendingen per Slack-bericht, de langst wachtende eerst, met de wachttijd. Een klik opent het bericht in de Slack-app; ernaast staat een link naar het bericht in de browser. Zie **Te beoordelen**. |
-| **Inzendingen** | Alle inzendingen, met zoeken en filteren op groep, opdracht, status en jurylid (op naam of Slack-ID), en alleen je favorieten. Met de Avonturiers aan ook op soort: Toeristen, check-in of thema. |
-| **Opdrachten** | Alle opdrachten. Per opdracht een pagina met de inzendingen van alle groepen naast elkaar. Met **Alleen open inzendingen** beoordeel je één opdracht in één keer; sneltoetsen ← en → gaan naar de vorige en volgende opdracht, **N** naar de volgende met open inzendingen. |
+| **Inzendingen** | Alle inzendingen, met zoeken en filteren op groep, opdracht, status en jurylid (op naam of Slack-ID), en alleen je favorieten. Met de Avonturiers aan ook op soort: Toeristen, check-in of half-uur opdracht. |
+| **Opdrachten** | Alle opdrachten. Per opdracht een pagina met de inzendingen van alle groepen naast elkaar, en **Bewerken** voor titel, beschrijving, punten en afbeeldingen (zie **Opdrachten aanpassen in de app**). Met **Alleen open inzendingen** beoordeel je één opdracht in één keer; sneltoetsen ← en → gaan naar de vorige en volgende opdracht, **N** naar de volgende met open inzendingen. |
 | **Groepen** | Alle groepen. Per groep een pagina met score, plaats, de punten in de loop van het spel (de andere groepen in grijs ter vergelijking) en alle opdrachten. |
 | **Scorebord** | De totalen van de inzendingen, het scorebord in grote letters en de punten in de loop van het spel, voor een beamer. |
 | **Diavoorstelling** | Alle foto's, video's en geluidsopnames achter elkaar, bijvoorbeeld op een beamer. Afgekeurde inzendingen worden overgeslagen. Kies een groep, een opdracht, alleen awesome of alleen favorieten, en of het scorebord tussendoor komt. |
 | **Gebeurtenissen** | Live elke Slack-gebeurtenis (bericht, bewerking, verwijdering, emoji erbij of eraf) met wat de app ermee deed: verwerkt, genegeerd met reden, of mislukt. Ook de verbinding met Slack (verbonden, weggevallen, vernieuwd), elke inhaalronde, en elke fout die de app logt. Valt de verbinding weg, dan staat er een rode balk bovenaan tot hij terug is. Toont de laatste 500 sinds de start van de app; na een herstart begint de lijst leeg. |
-| **Avonturiers** | Alleen als het Avonturiers-deel aan staat. **Overzicht**: per groep de goedgekeurde locaties, de vrijgespeelde opdrachten, de rondepunten en het totaal, plus alle rondes met hun uitslag. **Kaart**: alle groepen op één kaart. **Rondes**: de themarondes en de berichten van de bot. **Locaties**: de locaties beheren en importeren. Zie **Avonturiers**. |
+| **Avonturiers** | Alleen als het Avonturiers-deel aan staat. **Overzicht**: per groep de goedgekeurde locaties (doorgestreept: nog niet open, telt nog niet), t/m welke locatie de groep open heeft, hoeveel opdrachten open zijn, de rondepunten en het totaal, plus alle rondes met hun uitslag. **Kaart**: alle groepen op één kaart. **Rondes**: de rondes van de half-uur opdrachten en de berichten van de bot. **Locaties**: de locaties beheren en importeren. Zie **Avonturiers**. |
 | **Slack-simulator** | Nep-inzendingen en -reacties versturen om te testen. Alleen zichtbaar in simulatiemodus. |
 | **Configuratie** | Alle instellingen, de juryleden met hun namen, de **Beoordelingsregels**, en **Opnieuw opbouwen uit Slack** (zie hieronder). |
 | **Stand voor groepen** | De stand verbergen voor groepen (en desgewenst op de beamer), periodes plannen en een tussenstand publiceren. Zie **Stand verbergen**. |
 | **Beheer** | Accounts beheren, mail controleren, extra punten en puntencategorieën. Alleen voor beheerders. |
 
-Een groepsaccount ziet alleen **Dashboard** en **Onze inzendingen**, de beamer alleen **Scorebord** en **Diavoorstelling**. Je naam onderaan het menu opent **Account**. Zie **Toegang**.
+Een groepsaccount ziet alleen **Dashboard**, **Onze opdrachten**, **Onze kaart** (met de Avonturiers aan), **Onze inzendingen** en **Eerdere edities**, de beamer alleen **Scorebord** en **Diavoorstelling**. Je naam onderaan het menu opent **Account**. Zie **Toegang**.
 
 Beoordelen gebeurt in Slack. Voor noodgevallen kan een status op de detailpagina van een inzending handmatig worden aangepast, onder **Status handmatig aanpassen** (alleen voor beheerders). Dit vraagt om een reden en wordt vastgelegd in de beoordelingsgeschiedenis. Net als een emoji in Slack geldt de aanpassing voor alle bestanden van hetzelfde bericht: anders zou bij twee foto's de andere foto haar status houden, en omdat de beste beoordeling telt, zouden de punten niet veranderen. Een latere emoji in Slack overschrijft zo'n aanpassing weer.
 
@@ -211,7 +220,7 @@ Wacht een bericht langer dan `Scouting:ReviewReminder:AfterMinutes` minuten op e
 
 ## Avonturiers
 
-Naast de Toeristen (de opdrachten in het groepskanaal) heeft elke groep **Avonturiers**: lopers die locaties bezoeken en themafoto's maken. Ze plaatsen hun foto's in een tweede Slack-kanaal per groep. Zet het deel aan met `Scouting:Adventurers:Enabled` en geef elke groep een Avonturiers-kanaal (op **Beheer** > **Edities**). Staat het uit, dan negeert de app die kanalen en zijn de Avonturiers-pagina's verborgen.
+Naast de Toeristen (de opdrachten in het groepskanaal) heeft elke groep **Avonturiers**: lopers die locaties bezoeken en elk half uur een foto-opdracht doen: de **half-uur opdrachten**. Ze plaatsen hun foto's in een tweede Slack-kanaal per groep. Zet het deel aan met `Scouting:Adventurers:Enabled` en geef elke groep een Avonturiers-kanaal (op **Beheer** > **Edities**). Staat het uit, dan negeert de app die kanalen en zijn de Avonturiers-pagina's verborgen.
 
 ### Check-ins op locaties
 
@@ -220,46 +229,78 @@ Naast de Toeristen (de opdrachten in het groepskanaal) heeft elke groep **Avontu
 - De jury beoordeelt met dezelfde emoji als bij de Toeristen. Awesome telt bij de Avonturiers als goedgekeurd; er zijn geen extra punten voor.
 - De beste beoordeling telt en elke locatie telt één keer per groep.
 - Een nummer dat niet in de lijst van **Locaties** staat, krijgt ❓ en een uitleg. Zolang er nog geen locaties zijn ingevoerd, telt elk nummer.
-- Met **Jury waarschuwen** (op **Beheer**, onder **Vrijgespeelde locaties**, of `RequireUnlockedLocation`) krijgt een check-in op een locatie die niet voor die groep is vrijgespeeld 🚧 en een waarschuwing voor de jury in de thread.
+- Een groep heeft **locatie 1 tot en met een nummer** open. Bij de start is dat voor iedereen `InitialOpenLocations` (standaard 10). De organisatie verhoogt het nummer per groep tijdens het spel, op **Beheer** onder **Open locaties per groep**.
+- Een check-in op een locatie die nog niet open is voor de groep, wordt opgeslagen en de bot zet er 🚧 op met een uitleg. Hij telt nog niet, maar wel vanzelf zodra de organisatie het nummer van de groep zo ver verhoogt.
 
 ### Opdrachten vrijspelen
 
-Elke goedgekeurde locatie speelt één opdracht vrij voor de Toeristen van dezelfde groep. Het aantal wordt steeds uitgerekend uit de beoordelingen, dus het volgt een late beoordeling en een herbouw vanzelf. Verandert het aantal, dan plaatst de bot een bericht in het Toeristen-kanaal ("Jullie Avonturiers hebben opdracht 4 van 12 vrijgespeeld!"). Wordt een goedkeuring teruggedraaid, dan volgt een correctie.
+De eerste `InitialOpenAssignments` opdrachten (standaard 30, de laagste nummers) zijn altijd open. De andere genummerde opdrachten gaan open naar rato van de locaties: met k van de L locaties geteld zijn de eerste
 
-Er zijn twee manieren:
+> `InitialOpenAssignments + (aantal opdrachten − InitialOpenAssignments) × k ÷ L` (naar beneden afgerond)
 
-- **Alleen tellen** (standaard): de Toeristen kiezen zelf welke opdracht ze doen, bijvoorbeeld van een lijst op papier.
-- **Vaste volgorde**: zet de opdrachten in `UnlockPool`, of op **Configuratie** onder **Avonturiers**. De bot noemt dan de nieuwe opdracht, en een inzending voor een opdracht uit de lijst die nog niet is vrijgespeeld krijgt 🔒, wordt niet opgeslagen en telt niet. Opdrachten die niet in de lijst staan, zijn altijd open.
+opdrachten open, in nummervolgorde. Met 160 opdrachten, 30 open bij de start en 100 locaties opent elke locatie er 1 of 2: na 1 locatie is opdracht 31 open, na 4 locaties t/m 35, na 10 t/m 43 en na alle 100 alle 160 (zonder supercoördinaten). Welke locatie het was, maakt niet uit, behalve bij een supercoördinaat.
 
-### Themarondes
+- **Geteld** is een locatie met een goedgekeurde (of awesome) check-in, die open is voor de groep. Elke locatie telt één keer.
+- **Supercoördinaten** (`SuperLocations`, standaard aan op 10, 20, 30 … 100): een supercoördinaat telt als twee locaties, zowel in k als in L. Hij opent dus twee keer zoveel opdrachten, en alle locaties samen openen nog steeds alle opdrachten. Met 100 locaties waarvan 10 super is L = 110: een gewone locatie opent er gemiddeld 1,2, een supercoördinaat 2,4. Aan/uit en de nummers pas je aan op **Configuratie → Avonturiers** (**Elke 10e** vult 10, 20, 30 … tot de hoogste locatie in). Een nummer dat geen locatie is, doet niets. De kaarten tonen een supercoördinaat met een gele rand en een ★, en **Onze opdrachten** zegt hoeveel opdrachten de volgende supercoördinaat opent, zolang de groep er nog een open heeft die ze niet heeft bezocht. Op **Configuratie → Avonturiers** staan nummers die geen locatie zijn apart (een tikfout telt dan niet), en na de start van de Avonturiers een waarschuwing dat een wijziging meteen voor alle groepen telt. Een wijziging telt meteen voor alle groepen; de bot meldt nieuwe opdrachten (of een correctie) in de Toeristen-kanalen.
+- **Per ronde**: een check-in telt pas vanaf het einde van de eerste ronde (half-uur opdracht) die eindigt na het moment waarop hij in Slack is geplaatst. Een check-in tijdens ronde 3 opent dus opdrachten aan het einde van ronde 3, ook een check-in vóór de eerste ronde of tussen twee rondes wacht op het einde van de volgende ronde. Na de laatste ronde, of zonder rondes, telt een check-in meteen. Wordt de check-in pas na het einde van zijn ronde goedgekeurd, dan telt hij vanaf de goedkeuring. **Onze opdrachten** en **Open locaties per groep** laten zien hoeveel locaties nog wachten op het einde van de ronde.
+- Opdrachten met letters zijn altijd open. Zolang er geen locaties zijn ingevoerd, zijn alle opdrachten open.
+- Een inzending van de Toeristen voor een opdracht die nog op slot zit, krijgt 🔒, wordt niet opgeslagen en telt niet. Een inzending die al in de app staat, gaat nooit achteraf op slot. Wie het bericht bewerkt naar een opdracht op slot, krijgt ook 🔒; de inzending houdt dan haar oude nummer.
+- Worden de eerste locaties ingevoerd terwijl er al check-ins zijn, dan begint de telling opnieuw vanaf de opdrachten die altijd open zijn, zonder correctieberichten.
+- Het aantal wordt steeds uitgerekend uit de beoordelingen en de open locaties, dus het volgt een late beoordeling, een herbouw en een later geopende locatie vanzelf.
+- Gaan er opdrachten open (meestal aan het einde van een ronde), dan plaatst de bot een bericht in het Toeristen-kanaal ("Jullie kunnen nu opdracht 31 en 32 doen. Jullie hebben nu 32 van de 160 opdrachten open."), en krijgt de groep een melding in de app (zie **Onze opdrachten**). Gaat het aantal omlaag, bijvoorbeeld omdat een goedkeuring is teruggedraaid, dan volgt een correctie.
 
-Op **Avonturiers → Rondes** stel je de rondes in: nummer, begin, einde, de themanummers en een tekst voor de opening. **Genereer rondes** vult rondes van 30 minuten tussen twee tijden, bijvoorbeeld 12:00 tot 16:30 geeft 9 rondes, met thema N in ronde N. Rondes mogen niet overlappen en een themanummer hoort bij één ronde. De rondes worden bewaard in `runtime-settings.json`.
+### Onze opdrachten
 
-- Een loper plaatst een foto met `Thema 3`, `T3`, of zoals bij opdrachten `Opdracht 3`, `Opdr 3` of `O3`. In het Toeristen-kanaal blijven die woorden gewoon een opdracht.
-- Een thema telt voor een ronde als de **tijd van het Slack-bericht** binnen de ronde valt en het nummer bij die ronde hoort. Wanneer de jury beoordeelt, maakt niet uit.
-- Een thema van een andere ronde, of een thema terwijl er geen ronde loopt, wordt opgeslagen maar telt niet. De bot zet er ⌛ op met een uitleg.
-- Per ronde telt per groep het aantal verschillende goedgekeurde thema's. De beste groep krijgt 2 punten, de tweede 1. Gelijke groepen delen de plaats en de volgende plaats vervalt: twee groepen op 3 krijgen allebei 2 punten en niemand krijgt 1. Een groep zonder goedgekeurd thema krijgt niets.
+Een groep die is ingelogd met haar groepsaccount, ziet op **Onze opdrachten** (`/mijn-opdrachten`) alle opdrachten die ze nu kan doen: nummer, titel, beschrijving, punten, afbeeldingen en de eigen beoordeling. Er is een filter **Alleen nog te doen** en een zoekveld. Van de opdrachten op slot ziet de groep alleen het aantal. Nieuwe opdrachten staan bovenaan met **nieuw**.
+
+- Gaan er opdrachten open, dan krijgt elke open pagina van de groep een melding. Met het belletje rechtsboven kiest een groep, net als de jury, wat er gebeurt: **Meldingen tonen** (standaard aan), **Geluid afspelen** (standaard uit) en **Melding van telefoon of computer** (standaard uit), die ook komt als het tabblad op de achtergrond staat. Die laatste vraagt de browser om toestemming; **Meldingen aanzetten** op **Onze opdrachten** doet hetzelfde. Dat werkt alleen via https (of op localhost), en niet als de browser helemaal dicht is. De keuzes gelden per browser en staan los van die van de jury.
+- De jury opent dezelfde pagina via **Open opdrachten** op de pagina van een groep, met een keuzelijst voor de groep.
+
+### Half-uur opdrachten
+
+Op **Avonturiers → Rondes** stel je de rondes in: nummer, begin, einde, de nummers van de half-uur opdrachten en een tekst voor de opening. **Genereer rondes** vult rondes van 30 minuten tussen twee tijden, bijvoorbeeld 12:00 tot 16:30 geeft 9 rondes, met half-uur opdracht N in ronde N. Rondes mogen niet overlappen en een half-uur opdracht hoort bij één ronde. De rondes worden bewaard in de database, met de andere instellingen uit de app.
+
+- Een loper plaatst een foto met `Opdracht 3`, `Half-uur opdracht 3`, `Opdr 3` of `O3` (ook `Thema 3` en `T3` werken nog). In het Avonturiers-kanaal is dat altijd een half-uur opdracht; in het Toeristen-kanaal blijven die woorden een gewone opdracht. De app slaat hem op als `{afkorting} T3 {tijd}`.
+- Een half-uur opdracht telt voor een ronde als de **tijd van het Slack-bericht** binnen de ronde valt en het nummer bij die ronde hoort. Wanneer de jury beoordeelt, maakt niet uit.
+- Een half-uur opdracht van een andere ronde, of een half-uur opdracht terwijl er geen ronde loopt, wordt opgeslagen maar telt niet. De bot zet er ⌛ op met een uitleg.
+- Per ronde telt per groep het aantal verschillende goedgekeurde half-uur opdrachten. De beste groep krijgt 2 punten, de tweede 1. Gelijke groepen delen de plaats en de volgende plaats vervalt: twee groepen op 3 krijgen allebei 2 punten en niemand krijgt 1. Een groep zonder goedgekeurd thema krijgt niets.
 - Een ronde staat op **Voorlopig** zolang er nog inzendingen open staan. Rondepunten tellen pas mee als de ronde voorbij is.
 
-De bot plaatst in elk Avonturiers-kanaal de opening bij de start van een ronde, een sluiting aan het einde en de uitslag zodra de jury alles van die ronde heeft beoordeeld ("Uitslag ronde 4: 1. Team A (3), 2. Team B (2)"). Elk kanaal krijgt elk bericht één keer, ook na een herstart. Start de app meer dan een uur na zo'n moment, dan plaatst hij het bericht niet meer zelf. Onder **Berichten per ronde** stuur je een bericht met de hand, eventueel met een foto, of opnieuw naar iedereen.
+De bot plaatst in elk Avonturiers-kanaal de opening bij de start van een ronde, een sluiting aan het einde en de uitslag zodra de jury alles van die ronde heeft beoordeeld ("Uitslag ronde 4: 1. Team A (3), 2. Team B (2)"). Begint een ronde op het moment dat de vorige eindigt, dan plaatst de bot één overgangsbericht in plaats van de sluiting en de nieuwe opening (`Scouting:Adventurers:RoundHandoverMessage`, ook aan te passen op **Avonturiers → Rondes**; leeg = die twee los). Elk kanaal krijgt elk bericht één keer, ook na een herstart. Start de app meer dan een uur na zo'n moment, dan plaatst hij het bericht niet meer zelf. Onder **Berichten per ronde** stuur je een bericht met de hand, eventueel met een foto, of opnieuw naar iedereen.
 
 ### Berichten aan de Avonturiers
 
-- **Startinformatie** en **Eindlocatie**: op **Avonturiers → Rondes**, met een tijd waarop de bot ze zelf plaatst, of met de hand (eventueel met een foto). Plaatshouders: `{group}`, `{map}` (de kaartlink van de groep), `{time}` (de eindtijd), `{approved}` en `{rejected}`. Voor `{map}` moet `Scouting:PublicUrl` het adres van de app zijn.
+- **Startinformatie** en **Eindlocatie**: op **Avonturiers → Rondes**, met een tijd waarop de bot ze zelf plaatst, of met de hand (eventueel met een foto). Die tijden zijn ook de **start en het einde van de Avonturiers**, die anders kunnen zijn dan die van het spel (zie **Speeltijd van de Avonturiers**). Plaatshouders: `{group}`, `{map}` (de kaartlink van de groep), `{time}` (de eindtijd), `{approved}` en `{rejected}`. Voor `{map}` moet `Scouting:PublicUrl` het adres van de app zijn.
 - **Losse berichten**: op **Bericht sturen** kies je Toeristen, Avonturiers of beide, of in één klik **Alle Avonturiers**.
+
+### Speeltijd van de Avonturiers
+
+De Avonturiers kunnen eerder of later beginnen en stoppen dan de Toeristen. Hun start is de tijd van de startinformatie (`Scouting:Adventurers:StartAnnouncement:PostAt`), hun einde de tijd van de eindlocatie (`FinalAnnouncement:PostAt`). Zonder eigen tijd gelden `EventStart` en `EventEnd`. Beide zijn aan te passen op **Avonturiers → Rondes**, met **Terug naar appsettings**.
+
+- Berichten in een Avonturiers-kanaal van vóór hun start tellen niet en krijgen geen reactie, net als bij `EventStart`.
+- Check-ins en foto's vanaf hun einde tellen niet; de bot reageert met `:alarm_clock:` (`SlackFeedback:TooLate`, `{end}` is dan het einde van de Avonturiers).
+- Catch-up en opnieuw opbouwen lezen vanaf de vroegste start en passen per kanaal de eigen tijden toe.
+- Vóór hun start ziet een groep op **Onze kaart** en via de kaartlink in Slack nog geen locaties, alleen hoe laat de kaart verschijnt. De jury ziet alles, met een melding dat groepen het nog niet zien.
+- `{time}` in de startinformatie en eindlocatie blijft het einde van het spel (`EventEnd`): de tijd waarop iedereen bij Destination Unknown moet zijn.
 
 ### Kaarten
 
-De kaarten gebruiken [Leaflet](https://leafletjs.com) uit de app zelf en de kaarttegels van OpenStreetMap; er is geen Google-account of API-sleutel nodig. Tegelserver en bronvermelding zijn instellingen (`MapTileUrl`, `MapAttribution`).
+De kaarten gebruiken [Leaflet](https://leafletjs.com) uit de app zelf en de kaarttegels van OpenStreetMap; er is geen Google-account of API-sleutel nodig. Tegelserver en bronvermelding zijn instellingen (`MapTileUrl`, `MapAttribution`). Bij het ophalen van de tegels stuurt de browser alleen het adres van de site mee (zonder pagina, dus zonder de geheime code van een groepskaart): OpenStreetMap weigert tegels zonder die afzender met een 403.
 
-- **Locaties** (beheerders): toevoegen met een klik op de kaart, aanpassen, verwijderen, of importeren uit een GeoJSON-, GPX- of CSV-bestand (bijvoorbeeld uit Google My Maps of uMap). Het nummer komt uit een kolom `nummer` of vooraan de naam (`7 Molen`, `Locatie 7 - Molen`). Een CSV heeft kolommen `nummer;naam;lat;lon;hint`; puntkomma's en decimale komma's van Nederlandse Excel mogen.
-- **Vrijgespeelde locaties** (op **Beheer**): per groep een vinkje per locatie. Alleen die locaties staan op de kaart van de groep.
+- **Locaties** (beheerders): toevoegen met een klik op de kaart, aanpassen, verwijderen, of importeren uit een KML-, KMZ-, GeoJSON-, GPX- of CSV-bestand. Het nummer komt vooraan de naam (`15 Opdracht`, `Locatie 7 - Molen`) of uit een kolom `nummer`. Een CSV heeft kolommen `nummer;naam;lat;lon;hint`; puntkomma's en decimale komma's van Nederlandse Excel mogen.
+- **Uit Google My Maps**: geef elke locatie de naam `{nummer} {naam}`, bijvoorbeeld `15 Opdracht`, en zet de uitleg in de beschrijving. Kies in het menu van de laag (de drie puntjes) **Gegevens exporteren** → **KML/KMZ**, en importeer het bestand (KMZ, of KML met het vinkje voor een .KML-bestand). Alle lagen in het bestand worden gelezen. De beschrijving wordt de hint, met de regels zoals in My Maps; foto's in de beschrijving vallen weg, en een beschrijving langer dan 1000 tekens wordt ingekort (dat staat in de meldingen). Lijnen, vlakken en punten zonder nummer worden overgeslagen en gemeld.
+- **Open locaties per groep** (op **Beheer**, beheerders): per groep het nummer t/m waar de locaties open zijn, met **+1** om er één bij te doen. Leeg is het startaantal (`InitialOpenLocations`, ook aan te passen op **Configuratie** onder **Avonturiers**). Ernaast: hoeveel check-ins zijn goedgekeurd, hoeveel daarvan tellen (en hoeveel nog wachten op het einde van de ronde), en hoeveel opdrachten open zijn. Alleen de open locaties staan op de kaart van de groep.
 - **Kaart van de groep**: `/kaart/{code}`, zonder inloggen; de geheime code in de link is de sleutel. De link staat op de pagina van de groep en komt via `{map}` in de startinformatie. Kleuren: grijs nog niet bezocht, oranje wacht op beoordeling, groen goedgekeurd, rood afgekeurd. De kaart ververst elke halve minuut en toont geen foto's.
+- **Onze kaart** (`/onze-kaart`, voor een ingelogde groep): bovenaan de half-uur opdracht van de ronde die nu loopt (nummer, tijd, de tekst van de ronde en per half-uur opdracht of de groep al iets instuurde en hoe het beoordeeld is), of wanneer de volgende ronde begint. Daaronder de kaart met de open locaties van de groep en lijsten **Goedgekeurd**, **Wacht op de jury**, **Afgekeurd** en **Open, nog niet bezocht**. Een check-in op een locatie die nog niet open is, staat apart onder **Nog niet open**, zonder de plek op de kaart. De pagina werkt live bij en kijkt elke halve minuut of er een ronde begon of eindigde. De jury opent hem via **Bekijk zoals de groep** op de pagina van een groep.
 - **Avonturiers → Kaart** (jury): alle groepen op één kaart, met een groepsfilter. Een klik op een locatie toont de check-in en de beoordeling.
 
 ### Punten
 
-De Avonturiers-punten zijn de rondepunten (maximaal `ThemeMaxPoints`, standaard 14) plus het eindspel (maximaal `FinalMaxPoints`, standaard 14). Het eindspel, en een eventuele startbonus voor groepen met eigen vervoer, vul je met de hand in op **Beheer** onder **Extra punten**, in de categorie `FinalGameCategoryKey` (standaard `avonturiers`). Overal waar die categorie staat (dashboard, stand, export) staat het uitgerekende Avonturiers-totaal; in de grafiek stijgen de rondepunten aan het einde van elke ronde.
+De Avonturiers-punten zijn de punten van de half-uur opdrachten (maximaal `ThemeMaxPoints`, standaard 14) plus het eindspel (maximaal `FinalMaxPoints`, standaard 14). Beide maxima pas je ook aan op **Configuratie** onder **Avonturiers**; punten boven het maximum blijven bewaard en tellen weer mee als je het verhoogt. Ze staan in een eigen puntencategorie, `FinalGameCategoryKey` (standaard `avonturiers`, naam "Avonturiers"):
+
+- Zolang de Avonturiers aan staan, is die categorie er **altijd** en kan hij niet weg (op **Puntencategorieën** staat hij als **vast**). Ontbreekt hij in de instellingen, dan voegt de app hem vooraan toe. De naam kun je wel aanpassen.
+- **Eindspel invullen**: op **Beheer** onder **Extra punten**, in de kolom **Avonturiers: eindspel**, met eventueel de startbonus voor groepen met eigen vervoer erbij. Meer dan `FinalMaxPoints` wordt niet opgeslagen. Onder elk veld staat het totaal dat telt: half-uur opdrachten + eindspel.
+- Overal waar de categorie staat (dashboard, stand, export) staat dat uitgerekende totaal; in de grafiek stijgen de punten van de half-uur opdrachten aan het einde van elke ronde.
 
 ## Edities
 
@@ -278,7 +319,7 @@ Op **Eerdere edities** ziet een groep de gearchiveerde edities waaraan haar team
 
 ### Editie exporteren en importeren
 
-Op **Beheer** > **Edities** zet **Exporteren** een editie in één ZIP-bestand (`{editie}.du-editie.zip`): groepen met hun team, opdrachten, locaties, inzendingen met beoordelingen, extra punten, vrijgespeelde opdrachten, de eindstand en alle bestanden (foto's en video's). Van de actieve editie gaat de stand van dat moment mee. Ontbreekt een bestand op schijf, dan gaat de rest gewoon mee en staat het in het logboek.
+Op **Beheer** > **Edities** zet **Exporteren** een editie in één ZIP-bestand (`{editie}.du-editie.zip`): groepen met hun team en hun open locaties, opdrachten (ook wat de jury in de app aanpaste) met hun afbeeldingen, locaties, inzendingen met beoordelingen, extra punten, de eindstand en alle bestanden (foto's en video's). Een ZIP van een eerdere versie, met vrijgespeelde locaties per vinkje, laat die vinkjes bij het importeren weg. Van de actieve editie gaat de stand van dat moment mee. Ontbreekt een bestand op schijf, dan gaat de rest gewoon mee en staat het in het logboek.
 
 **Editie importeren** (op **Beheer**) zet zo'n ZIP terug als een **nieuwe, gearchiveerde** editie, in deze of een andere installatie; een editie in voorbereiding blijft in voorbereiding. De actieve editie verandert niet. De bestanden komen in een eigen map onder `_edities/`. Teams blijven hetzelfde team: bestaat het team al, dan ziet de groep de editie bij **Eerdere edities**. Een editie met dezelfde naam als een bestaande wordt geweigerd; hernoem die eerst. Een kapot of onbekend bestand wordt geweigerd zonder dat er iets verandert.
 
@@ -297,11 +338,13 @@ scouting_storage/
     approved/
     awesome/
     rejected/
-    avonturiers/          ← check-ins en thema's, alleen met de Avonturiers aan
+    avonturiers/          ← check-ins en half-uur opdrachten, alleen met de Avonturiers aan
       CDW L7 13-05-12.jpg
       approved/
       awesome/
       rejected/
+  _opdrachten/            ← afbeeldingen bij de opdrachten, per opdrachtnummer
+    12/
 ```
 
 Een bestandsnaam bestaat uit de afkorting van de groep, het opdrachtnummer en het tijdstip van het Slack-bericht (`CDW 16 14-32-05.jpg`). Zo staan meerdere pogingen voor dezelfde opdracht, bijvoorbeeld twee afgekeurde, naast elkaar in één map. Het tijdstip is in de tijdzone van `TimeZone` (standaard Nederlandse tijd), ook als de server in een andere tijdzone draait.
@@ -330,7 +373,7 @@ Je hebt de [.NET 10 SDK](https://dotnet.microsoft.com/download) en [Node.js](htt
 dotnet run --project src/ScoutingAutomation.Web --launch-profile http
 ```
 
-De app draait dan op <http://localhost:5231>. De database `scouting_dev.db` en de map `scouting_storage/` worden automatisch aangemaakt, met voorbeelddata.
+De app draait dan op <http://localhost:5231>. De database `scouting_dev.db` en de map `scouting_storage/` worden automatisch aangemaakt, met voorbeelddata. SQLite draait met een write-ahead log, dus naast de database staan `scouting_dev.db-wal` en `scouting_dev.db-shm`; kopieer de database alleen als de app gestopt is, of met `sqlite3 scouting_dev.db ".backup kopie.db"`.
 
 **Met PostgreSQL, via .NET Aspire** (Docker vereist):
 
@@ -404,7 +447,7 @@ Alles staat onder `Scouting` in `src/ScoutingAutomation.Web/appsettings.json`. W
 | `ReviewReminder` | `ChannelId`: het jurykanaal. `AfterMinutes`: na hoeveel minuten wachten de jury een herinnering krijgt (`null` = geen). De tijd is ook in de app aan te passen. Zie **Herinnering voor de jury**. |
 | `GameStartAnnouncement` | Het startbericht dat de bot bij de start van het spel in elk groepskanaal plaatst. `Message` is de tekst (Slack-opmaak; leeg = geen bericht). Plaatshouders: `{group}` (naam van de groep), `{retryRule}` (of opnieuw insturen na een goedkeuring mag, volgens `BlockAttemptsAfterApproval`), `{approved}`, `{awesome}`, `{rejected}` (de emoji uit `ReviewStatusReactions`) en `{missingNumber}`, `{unknownNumber}`, `{unsupportedFile}`, `{downloadFailed}`, `{alreadyCompleted}` (de emoji uit `SlackFeedback`). Met `AutoPost` (standaard `true`) plaatst de app het bericht zelf op `EventStart`. Zie **Startbericht**. |
 | `GameEndAnnouncement` | Het eindbericht dat de bot bij het einde van het spel in elk groepskanaal plaatst. `Message` is de tekst (leeg = geen bericht). Plaatshouders: `{group}` (naam van de groep) en `{end}` (de eindtijd). Met `AutoPost` (standaard `true`) plaatst de app het bericht zelf op `EventEnd`. Zie **Eindtijd en eindbericht**. |
-| `Adventurers` | Het Avonturiers-deel. `Enabled` zet het aan. `RequireUnlockedLocation`, `UnlockPool`, `Rounds`, de teksten en de tijden van `StartAnnouncement` en `FinalAnnouncement` (`PostAt`, `AutoPost`) zijn ook in de app aan te passen. Verder: `ThemeMaxPoints`, `FinalMaxPoints`, `FinalGameCategoryKey`, `RoundMinutes` (lengte van een gegenereerde ronde), `Feedback` (emoji en tekst van de bot), `MapTileUrl` en `MapAttribution`. Zie **Avonturiers**. |
+| `Adventurers` | Het Avonturiers-deel. `Enabled` zet het aan. `InitialOpenAssignments`: hoeveel opdrachten (de laagste nummers) altijd open zijn (standaard 30). `InitialOpenLocations`, `SuperLocations` (`Enabled` en `Numbers`: de supercoördinaten die dubbel tellen), `ThemeMaxPoints`, `FinalMaxPoints`, `Rounds`, de teksten (ook `RoundOpenMessage`, `RoundCloseMessage`, `RoundResultMessage` en `RoundHandoverMessage`, het overgangsbericht als een ronde direct op de vorige volgt, met `{previousRound}` en `{previousThemes}`) en de tijden van `StartAnnouncement` en `FinalAnnouncement` (`PostAt` in de tijdzone van het spel, bijvoorbeeld `"2026-10-05T12:00"`: ook de start en het einde van de Avonturiers, leeg = `EventStart`/`EventEnd`; `AutoPost`) zijn ook in de app aan te passen. Een tijd die in de app is aangepast zet je met **Terug naar appsettings** terug. Verder: `FinalGameCategoryKey`, `RoundMinutes` (lengte van een gegenereerde ronde), `Feedback` (emoji en tekst van de bot), `MapTileUrl` en `MapAttribution`. Zie **Avonturiers**. |
 | `PublicUrl` | Het adres waarop de app van buiten bereikbaar is, bijvoorbeeld `https://du.example.nl`. Nodig voor de kaartlinks in de berichten aan de Avonturiers en de links in mails over accounts. |
 | `SupportedExtensions`, `SupportedMimeTypePrefixes` | Welke bestanden worden geaccepteerd. |
 | `AssignmentPointsFile` | Het CSV-bestand met de opdrachten, hun punten en optioneel titel en beschrijving. Zie **Punten**. |
@@ -435,6 +478,7 @@ Met een eindtijd (`EventEnd`) stopt het spel op een vast moment.
 - De tijd van het Slack-bericht beslist, niet het moment van verwerken. Een bericht dat op tijd was, telt dus ook als de app het later inhaalt, of als de groep het opdrachtnummer na de eindtijd toevoegt.
 - De jury kan na de eindtijd gewoon doorgaan met beoordelen.
 - Bij de eindtijd plaatst de bot in elk groepskanaal één eindbericht (`GameEndAnnouncement`). Dat werkt net als het startbericht: niet zelf als de app pas meer dan een uur na de eindtijd start, met de hand te sturen onder **Eindbericht in Slack**, en elk kanaal krijgt het één keer.
+- Vóór de starttijd ziet een groep op **Onze opdrachten** nog geen opdrachten, alleen hoe laat ze verschijnen. De jury ziet ze wel.
 - Bovenaan elke pagina staat de stand van het spel: **Wacht op start** voor de starttijd, **Spel bezig** tijdens het spel en **Spel afgelopen** na de eindtijd. Zonder start- en eindtijd staat er niets. De diavoorstelling toont rechtsboven hoe lang het spel nog duurt.
 
 ### Start- en eindtijd in de app
@@ -475,7 +519,7 @@ Kies het tijdstip vanaf wanneer berichten meetellen (standaard vandaag 00:00) en
 
 1. leest alle berichten van alle groepskanalen sinds dat tijdstip, ook antwoorden in threads, en met de Avonturiers aan ook hun kanalen. Lukt dat voor een of meer kanalen niet, dan stopt de app en blijft alles zoals het was. Per kanaal zie je dan de groep, het kanaal, de foutcode van Slack en wat je eraan kunt doen, bijvoorbeeld de bot uitnodigen bij `not_in_channel`;
 2. verplaatst alle groepsmappen naar `scouting_storage/_backup/{tijdstip}/`, samen met een `submissions.json` met alle huidige inzendingen en beoordelingen;
-3. verwijdert alle inzendingen en beoordelingen, en verwerkt alle berichten opnieuw, in de volgorde waarin ze geplaatst zijn. Er wordt niets in Slack geplaatst, ook geen bericht over vrijgespeelde opdrachten;
+3. verwijdert alle inzendingen en beoordelingen, en verwerkt alle berichten opnieuw, in de volgorde waarin ze geplaatst zijn. Er wordt niets in Slack geplaatst, ook geen bericht over vrijgespeelde opdrachten. Een inzending die live een 🔒 kreeg, wordt ook nu overgeslagen;
 4. past de beoordelingen toe zoals ze nu in Slack staan. Slack zegt niet in welke volgorde emoji's zijn geplaatst: zijn juryleden het oneens, dan telt de beste beoordeling (Awesome, dan Goedgekeurd, dan Afgekeurd);
 5. toont een verslag: hoeveel inzendingen en beoordelingen er zijn, welke berichten niet zijn ingelezen en waarom, en waar juryleden het oneens waren.
 

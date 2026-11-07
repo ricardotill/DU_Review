@@ -1,0 +1,45 @@
+@* One group of locations on a group's own map page, e.g. the approved ones *@
+<div class="glass-panel p-3 @Class">
+    <div class="d-flex justify-content-between align-items-center mb-1">
+        <span class="fw-semibold text-white small"><i class="bi @Icon me-1"></i> @Title</span>
+        <span class="badge bg-secondary location-count">@Items.Count</span>
+    </div>
+    @if (Items.Count == 0)
+    {
+        <p class="text-secondary small mb-0">@Empty</p>
+    }
+    else
+    {
+        <ul class="list-unstyled small mb-0">
+            @foreach (var item in Items)
+            {
+                <li class="d-flex justify-content-between gap-2 py-1 location-item" data-number="@item.Number">
+                    <span class="text-white-50 text-truncate" title="@item.Hint">
+                        <span class="badge bg-dark font-monospace me-1">L@(item.Number)</span>@item.Name
+                    </span>
+                    @if (item.LastPostAt is { } at)
+                    {
+                        <span class="text-secondary text-nowrap">@at.ToGameTime().ToString("HH:mm")</span>
+                    }
+                </li>
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    /// <param name="LastPostAt">When the group last posted a check-in here; null when it never did.</param>
+    public sealed record Item(int Number, string Name, string? Hint, DateTimeOffset? LastPostAt);
+
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+
+    /// <summary>Bootstrap icon classes, e.g. "bi-check-circle-fill text-success".</summary>
+    [Parameter] public string Icon { get; set; } = "bi-geo-alt";
+
+    [Parameter] public string? Class { get; set; }
+
+    [Parameter, EditorRequired] public IReadOnlyList<Item> Items { get; set; } = Array.Empty<Item>();
+
+    /// <summary>Shown when there are no items.</summary>
+    [Parameter] public string Empty { get; set; } = "";
+}

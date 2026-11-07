@@ -40,6 +40,22 @@ public partial class DatabaseInitializer
     }
 
     /// <summary>
+    /// SQLite in its default journal mode lets a write fail at once with "database is locked" when another connection
+    /// writes at the same moment, e.g. the open-assignment notices while the jury saves something. In write-ahead-log
+    /// mode readers never block a writer and a writer waits for the other. The mode is kept in the database file.
+    /// </summary>
+    private async Task UseWriteAheadLogAsync(CancellationToken ct)
+    {
+        if (!_context.Database.IsSqlite()) return;
+
+        var mode = (await _context.Database.SqlQueryRaw<string>("PRAGMA journal_mode = WAL").ToListAsync(ct)).FirstOrDefault();
+        if (!string.Equals(mode, "wal", StringComparison.OrdinalIgnoreCase) && !string.Equals(mode, "memory", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogWarning("SQLite stays in journal mode {Mode}; writes at the same moment may fail with 'database is locked'", mode);
+        }
+    }
+
+    /// <summary>
     /// EnsureCreated does not change an existing database, so columns added later are added here.
     /// </summary>
     private async Task AddMissingColumnsAsync(CancellationToken ct)
@@ -78,7 +94,8 @@ public partial class DatabaseInitializer
 
     /// <summary>
     /// The Avonturiers part: a kind per submission (0 = Toeristen assignment, so older rows keep their meaning),
-    /// a second channel and a map link per group, and the locations with their unlocks.
+    /// a second channel, a map link and the open locations per group, the locations, and the assignments' pictures and
+    /// whether the jury edited them.
     /// </summary>
     private async Task AddAdventurersSchemaAsync(CancellationToken ct)
     {
@@ -88,6 +105,8 @@ public partial class DatabaseInitializer
             await AddSqliteColumnAsync("Submissions", "Kind", "INTEGER NOT NULL DEFAULT 0", ct);
             await AddSqliteColumnAsync("Groups", "AdventurersSlackChannelId", "TEXT NULL", ct);
             await AddSqliteColumnAsync("Groups", "MapToken", "TEXT NULL", ct);
+            await AddSqliteColumnAsync("Groups", "OpenLocations", "INTEGER NULL", ct);
+            await AddSqliteColumnAsync("Assignments", "EditedAt", "TEXT NULL", ct);
         }
         else
         {
@@ -97,6 +116,10 @@ public partial class DatabaseInitializer
                 "ALTER TABLE \"Groups\" ADD COLUMN IF NOT EXISTS \"AdventurersSlackChannelId\" character varying(50) NULL", ct);
             await _context.Database.ExecuteSqlRawAsync(
                 "ALTER TABLE \"Groups\" ADD COLUMN IF NOT EXISTS \"MapToken\" character varying(64) NULL", ct);
+            await _context.Database.ExecuteSqlRawAsync(
+                "ALTER TABLE \"Groups\" ADD COLUMN IF NOT EXISTS \"OpenLocations\" integer NULL", ct);
+            await _context.Database.ExecuteSqlRawAsync(
+                "ALTER TABLE \"Assignments\" ADD COLUMN IF NOT EXISTS \"EditedAt\" timestamp with time zone NULL", ct);
         }
 
         await _context.Database.ExecuteSqlRawAsync(
@@ -124,24 +147,30 @@ public partial class DatabaseInitializer
               """;
         await _context.Database.ExecuteSqlRawAsync(locations, ct);
 
-        var unlocks = sqlite
+        var images = sqlite
             ? """
-              CREATE TABLE IF NOT EXISTS "LocationUnlocks" (
-                  "GroupId" TEXT NOT NULL,
-                  "LocationNumber" INTEGER NOT NULL,
-                  "UnlockedAt" TEXT NOT NULL,
-                  CONSTRAINT "PK_LocationUnlocks" PRIMARY KEY ("GroupId", "LocationNumber"),
-                  CONSTRAINT "FK_LocationUnlocks_Groups_GroupId" FOREIGN KEY ("GroupId") REFERENCES "Groups" ("Id") ON DELETE CASCADE)
+              CREATE TABLE IF NOT EXISTS "AssignmentImages" (
+                  "Id" TEXT NOT NULL CONSTRAINT "PK_AssignmentImages" PRIMARY KEY,
+                  "EditionId" TEXT NOT NULL,
+                  "AssignmentCode" TEXT NOT NULL,
+                  "FileName" TEXT NOT NULL,
+                  "StoragePath" TEXT NOT NULL,
+                  "SortOrder" INTEGER NOT NULL,
+                  "UploadedAt" TEXT NOT NULL)
               """
-            : """
-              CREATE TABLE IF NOT EXISTS "LocationUnlocks" (
-                  "GroupId" uuid NOT NULL,
-                  "LocationNumber" integer NOT NULL,
-                  "UnlockedAt" timestamp with time zone NOT NULL,
-                  CONSTRAINT "PK_LocationUnlocks" PRIMARY KEY ("GroupId", "LocationNumber"),
-                  CONSTRAINT "FK_LocationUnlocks_Groups_GroupId" FOREIGN KEY ("GroupId") REFERENCES "Groups" ("Id") ON DELETE CASCADE)
+            : $"""
+              CREATE TABLE IF NOT EXISTS "AssignmentImages" (
+                  "Id" uuid NOT NULL CONSTRAINT "PK_AssignmentImages" PRIMARY KEY,
+                  "EditionId" uuid NOT NULL,
+                  "AssignmentCode" character varying({AssignmentCode.MaxLength}) NOT NULL,
+                  "FileName" character varying({ScoutingDbContext.MaxAssignmentImageNameLength}) NOT NULL,
+                  "StoragePath" character varying(500) NOT NULL,
+                  "SortOrder" integer NOT NULL,
+                  "UploadedAt" timestamp with time zone NOT NULL)
               """;
-        await _context.Database.ExecuteSqlRawAsync(unlocks, ct);
+        await _context.Database.ExecuteSqlRawAsync(images, ct);
+        await _context.Database.ExecuteSqlRawAsync(
+            $"CREATE INDEX IF NOT EXISTS \"{ScoutingDbContext.AssignmentImageCodeIndexName}\" ON \"AssignmentImages\" (\"EditionId\", \"AssignmentCode\")", ct);
     }
 
     /// <summary>The two fixed categories of the first game, as columns on Groups, and their keys now.</summary>
@@ -345,6 +374,7 @@ public partial class DatabaseInitializer
         try
         {
             await _context.Database.EnsureCreatedAsync(ct);
+            await UseWriteAheadLogAsync(ct);
             await AddMissingColumnsAsync(ct);
             await EnsureActiveEditionAsync(ct);
             if (_context.Database.IsRelational())
@@ -382,6 +412,7 @@ public partial class DatabaseInitializer
         EnsureDistinctFolders(configuredGroups);
         EnsureDistinctChannels(configuredGroups);
         EnsureValidBonusCategories(_options.Value.BonusCategories);
+        EnsureValidAdventurersCategory(_options.Value.Adventurers);
         if (configuredGroups is { Count: > 0 } && !await _context.Groups.AnyAsync(ct))
         {
             foreach (var cfg in configuredGroups)
@@ -418,10 +449,18 @@ public partial class DatabaseInitializer
         if (configuredAssignments != null)
         {
             var existingAssignments = await _context.Assignments.ToDictionaryAsync(a => a.Code, ct);
+            var kept = new List<string>();
             foreach (var cfg in configuredAssignments)
             {
                 if (existingAssignments.TryGetValue(cfg.Code, out var existing))
                 {
+                    // Changed by the jury in the app: that wins until someone sets it back to the points file
+                    if (existing.EditedAt != null)
+                    {
+                        kept.Add(existing.Code);
+                        continue;
+                    }
+
                     existing.StandardPoints = cfg.StandardPoints;
                     existing.AwesomePoints = cfg.AwesomePoints;
                     existing.Title = cfg.Title;
@@ -435,6 +474,10 @@ public partial class DatabaseInitializer
 
             await _context.SaveChangesAsync(ct);
             _logger.LogInformation("Synchronized {Count} assignments from {File}", configuredAssignments.Count, pointsFile);
+            if (kept.Count > 0)
+            {
+                _logger.LogInformation("Kept the values edited in the app for assignments {Numbers}", string.Join(", ", kept.Order(AssignmentCode.Comparer)));
+            }
 
             var codes = configuredAssignments.Select(a => a.Code).ToHashSet();
             var removed = existingAssignments.Keys.Where(c => !codes.Contains(c)).Order(AssignmentCode.Comparer).ToList();
@@ -537,6 +580,18 @@ public partial class DatabaseInitializer
         if (categories?.GroupBy(c => c.Key).FirstOrDefault(g => g.Count() > 1) is { } twice)
         {
             throw new StartupConfigurationException($"BonusCategories in de instellingen heeft de sleutel '{twice.Key}' twee keer");
+        }
+    }
+
+    /// <summary>With the Avonturiers on, their category is always shown: its key must be one a category can have.</summary>
+    private static void EnsureValidAdventurersCategory(AdventurersSettings? adventurers)
+    {
+        if (adventurers is not { Enabled: true }) return;
+
+        var category = new BonusCategoryConfig { Key = adventurers.FinalGameCategoryKey, Name = "Avonturiers" };
+        if (RuntimeSettingsService.CheckBonusCategory(category) is { } error)
+        {
+            throw new StartupConfigurationException($"Adventurers:FinalGameCategoryKey in de instellingen klopt niet: {error}");
         }
     }
 

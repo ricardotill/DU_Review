@@ -60,16 +60,16 @@ Nog niet beoordeeld heet **Open** en geeft 0 punten.
 
 Speelt het spel met Avonturiers, dan heeft elke groep een tweede Slack-kanaal voor hen. Daarin komen twee soorten inzendingen, die je met dezelfde emoji beoordeelt als opdrachten:
 
-- **Check-in** (`Locatie 7`, `L7`, `#7`): een foto van de groep op een locatie. Kijk of de groep echt op die locatie is. Een goedgekeurde check-in speelt een opdracht vrij voor de Toeristen van die groep. Zie je een 🚧 van de bot, dan is die locatie voor deze groep nog niet vrijgespeeld; beslis zelf of je hem goedkeurt.
-- **Thema** (`Thema 3`, `T3`): een foto bij het thema van de ronde. Of hij op tijd is, regelt de app: hij kijkt naar de tijd van het Slack-bericht. Je hoeft alleen te beoordelen of de foto bij het thema past.
+- **Check-in** (`Locatie 7`, `L7`, `#7`): een foto van de groep op een locatie. Kijk of de groep echt op die locatie is. Een goedgekeurde check-in op een locatie die open is voor de groep, speelt opdrachten vrij voor de Toeristen van die groep, aan het einde van de ronde waarin hij is geplaatst. Zie je een 🚧 van de bot, dan is die locatie voor deze groep nog niet open. Beoordeel hem gewoon: hij telt vanzelf zodra de organisatie de locatie voor de groep opent.
+- **Half-uur opdracht** (`Opdracht 3`, `O3`, `T3`): een foto bij de half-uur opdracht van de ronde. Of hij op tijd is, regelt de app: hij kijkt naar de tijd van het Slack-bericht. Je hoeft alleen te beoordelen of de foto bij de opdracht past.
 
-Awesome telt bij de Avonturiers als goedgekeurd. Een check-in of thema geeft zelf geen punten; punten komen uit de rondes en het eindspel.
+Awesome telt bij de Avonturiers als goedgekeurd. Een check-in of half-uur opdracht geeft zelf geen punten; punten komen uit de rondes en het eindspel.
 
 ### Wat de jury moet weten over rondes
 
-- Per ronde krijgt de groep met de meeste goedgekeurde thema's 2 punten, de tweede 1. Gelijke groepen delen de plaats.
-- De uitslag van een ronde gaat pas naar de groepen als **alle** inzendingen van die ronde beoordeeld zijn. Beoordeel thema's van een afgelopen ronde dus snel.
-- Op **Te beoordelen** staan de thema's van de ronde die nu loopt bovenaan, met een badge. Met het filter **Soort** kies je Toeristen, check-ins of thema's.
+- Per ronde krijgt de groep met de meeste goedgekeurde half-uur opdrachten 2 punten, de tweede 1. Gelijke groepen delen de plaats.
+- De uitslag van een ronde gaat pas naar de groepen als **alle** inzendingen van die ronde beoordeeld zijn. Beoordeel half-uur opdrachten van een afgelopen ronde dus snel.
+- Op **Te beoordelen** staan de half-uur opdrachten van de ronde die nu loopt bovenaan, met een badge. Met het filter **Soort** kies je Toeristen, check-ins of half-uur opdrachten.
 - Op **Avonturiers → Rondes** zie je per ronde of hij **Voorlopig** is (nog open inzendingen) of **Definitief**, en de stand per groep.
 - Op **Avonturiers → Kaart** zie je alle groepen op één kaart. Klik op een locatie voor de check-in en de beoordeling.
 
@@ -182,3 +182,9 @@ Er komen geen meldingen bij opnieuw opbouwen uit Slack, en niet in de diavoorste
 | Een video speelt niet af in het dashboard | Download het bestand via de detailpagina; niet elke browser speelt elk videoformaat af. |
 
 Bij een rode melding over Slack bovenaan de pagina, of als er iets anders mis lijkt: waarschuw de organisatie.
+
+## Opdrachten aanpassen
+
+Op de pagina van een opdracht (**Opdrachten** → een opdracht) klik je op **Bewerken**. Je past de titel, de beschrijving en de punten aan, en voegt afbeeldingen toe (bijvoorbeeld een voorbeeldfoto). De groepen zien de beschrijving en de afbeeldingen op **Onze opdrachten** zodra de opdracht voor hen open is. De scores rekenen meteen met de nieuwe punten. **Terug naar puntenbestand** zet titel, beschrijving en punten terug; de afbeeldingen blijven.
+
+Met **Open opdrachten** op de pagina van een groep zie je welke opdrachten die groep nu kan doen, precies zoals de groep ze ziet.

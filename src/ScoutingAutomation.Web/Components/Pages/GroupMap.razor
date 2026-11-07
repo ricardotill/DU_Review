@@ -15,6 +15,16 @@
         Deze kaart bestaat niet (meer). Vraag de organisatie om de juiste link.
     </div>
 }
+else if (data.StartsAt != null)
+{
+    <PageTitle>Kaart @data.Group - DU Review</PageTitle>
+    @* Not interactive: the page looks again by itself until the Avonturiers start *@
+    <HeadContent><meta http-equiv="refresh" content="30" /></HeadContent>
+    <div class="glass-panel empty-state m-4 not-started">
+        <i class="bi bi-map"></i>
+        De kaart van @data.Group verschijnt hier zodra de Avonturiers beginnen, om @data.StartsAt.
+    </div>
+}
 else
 {
     <PageTitle>Kaart @data.Group - DU Review</PageTitle>

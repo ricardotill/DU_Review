@@ -13,6 +13,12 @@ public interface IFileStorageService
     /// <summary>Saves an Avonturiers file (check-in or theme) in the group's "avonturiers" folder.</summary>
     Task<string> SaveAdventurersFileAsync(string groupName, string fileName, Stream contentStream, CancellationToken ct = default);
 
+    /// <summary>
+    /// Saves a picture of an assignment in "_opdrachten/{code}". That folder is not a group folder, so a rebuild from
+    /// Slack leaves it alone.
+    /// </summary>
+    Task<string> SaveAssignmentImageAsync(string assignmentCode, string fileName, Stream contentStream, CancellationToken ct = default);
+
     /// <summary>Moves the file to the status folder of its own section: the group folder, or its "avonturiers" folder.</summary>
     Task<string> MoveFileToStatusAsync(string groupName, string currentStoragePath, SubmissionStatus targetStatus, CancellationToken ct = default);
     /// <summary>Gives a stored file a new name in the same folder; adds " (2)" etc. when the name is taken.</summary>

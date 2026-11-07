@@ -9,6 +9,8 @@ using ScoutingAutomation.Infrastructure.Accounts;
 using ScoutingAutomation.Infrastructure.Cluster;
 using Microsoft.AspNetCore.DataProtection;
 using ScoutingAutomation.Infrastructure.Data;
+using ScoutingAutomation.Infrastructure.Adventurers;
+using ScoutingAutomation.Infrastructure.Assignments;
 using ScoutingAutomation.Infrastructure.Extensions;
 using ScoutingAutomation.Infrastructure.Settings;
 using ScoutingAutomation.Infrastructure.Slack.Events;
@@ -91,6 +93,7 @@ else
 builder.Services.AddScoutingInfrastructure(builder.Configuration);
 builder.Services.AddScoped<ScoutingAutomation.Web.Favorites.FavoritesService>();
 builder.Services.AddScoped<ScoutingAutomation.Web.Notifications.NotificationPreferences>();
+builder.Services.AddScoped<ScoutingAutomation.Web.Notifications.GroupNotificationPreferences>();
 
 // Behind a reverse proxy that handles HTTPS: the login cookie is still marked Secure, and the login limiter sees
 // the visitor's address instead of the proxy's. Proxies on this machine are trusted (the default); a proxy elsewhere,
@@ -331,17 +334,29 @@ api.MapGet("/files/{id:guid}", async (
     HttpRequest request,
     Guid id,
     ISubmissionRepository repository,
-    IFileStorageService fileStorage) =>
+    IFileStorageService fileStorage,
+    ScoutingAutomation.Infrastructure.Slack.SlackLinks links) =>
 {
     var submission = await repository.GetByIdAsync(id);
     var user = request.HttpContext.User;
+    var ownGroup = AppAuth.GroupId(user);
     // A group only gets its own files, the beamer no rejected ones (the slideshow skips them); a file it may not
     // have looks the same as one that does not exist
     if (submission == null
-        || (AppAuth.GroupId(user) is { } ownGroup && submission.GroupId != ownGroup)
+        || (ownGroup != null && submission.GroupId != ownGroup)
         || (AppAuth.IsBeamer(user) && submission.Status == ScoutingAutomation.Domain.Enums.SubmissionStatus.Rejected))
     {
         return Results.NotFound();
+    }
+
+    // Groups never download from the app, to save the bandwidth of the location's connection: they see their
+    // submission in Slack, which has it already. Without a known workspace there is no link to send them to.
+    if (ownGroup != null)
+    {
+        await links.EnsureLoadedAsync(request.HttpContext.RequestAborted);
+        return links.WebLink(submission.SlackChannelId, submission.SlackMessageId) is { } slack
+            ? Results.Redirect(slack)
+            : Results.NotFound();
     }
 
     var stream = await fileStorage.OpenReadStreamAsync(submission.StoragePath);
@@ -356,6 +371,36 @@ api.MapGet("/files/{id:guid}", async (
     http.Response.Headers.ContentSecurityPolicy = "sandbox; default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'";
     return Results.File(stream, SafeContentType.For(submission.FileName), submission.FileName, enableRangeProcessing: true);
 }).RequireAuthorization().WithMetadata(new GroupAccessAttribute(), new BeamerAccessAttribute());
+
+// Pictures of the assignments: the jury gets all of them, a group only those of the assignments open to it, from the start.
+// A locked one looks the same as one that does not exist.
+api.MapGet("/assignment-images/{id:guid}", async (
+    HttpRequest request,
+    Guid id,
+    IAssignmentImageRepository images,
+    AssignmentUnlockService unlocks,
+    IFileStorageService fileStorage,
+    RuntimeSettingsService runtime,
+    TimeProvider time) =>
+{
+    var image = await images.GetAsync(id);
+    if (image == null) return Results.NotFound();
+    if (AppAuth.GroupId(request.HttpContext.User) is { } ownGroup)
+    {
+        // Before the start a group sees no assignments on its page; a picture link kept from earlier stays shut too
+        if (runtime.EventStart is { } start && time.GetUtcNow() < start) return Results.NotFound();
+        var state = await unlocks.ForGroupAsync(ownGroup);
+        if (state == null || !state.IsOpen(image.AssignmentCode)) return Results.NotFound();
+    }
+
+    var contentType = AssignmentEditService.ContentTypeOf(image.StoragePath);
+    var stream = contentType == null ? null : await fileStorage.OpenReadStreamAsync(image.StoragePath);
+    if (stream == null) return Results.NotFound();
+
+    request.HttpContext.Response.Headers.ContentSecurityPolicy = "sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'";
+    request.HttpContext.Response.Headers.CacheControl = "private, max-age=300";
+    return Results.File(stream, contentType!);
+}).RequireAuthorization().WithMetadata(new GroupAccessAttribute());
 
 api.MapExportEndpoints();
 api.MapEditionEndpoints();

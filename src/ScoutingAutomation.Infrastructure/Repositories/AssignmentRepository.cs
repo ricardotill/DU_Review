@@ -40,6 +40,7 @@ public class AssignmentRepository : IAssignmentRepository
             existing.AwesomePoints = assignment.AwesomePoints;
             existing.Title = assignment.Title;
             existing.Description = assignment.Description;
+            existing.EditedAt = assignment.EditedAt;
         }
 
         await _context.SaveChangesAsync(ct);

@@ -159,6 +159,21 @@
             <NotAuthorized>
                 <AuthorizeView Roles="@AppAuth.GroupRole" Context="group">
                     <div class="nav-item">
+                        <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="mijn-opdrachten">
+                            <i class="bi bi-list-check" style="color: #4ade80;"></i>
+                            <span class="nav-label fw-medium">Onze opdrachten</span>
+                        </NavLink>
+                    </div>
+                    @if (Runtime.AdventurersEnabled)
+                    {
+                        <div class="nav-item">
+                            <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="onze-kaart">
+                                <i class="bi bi-map" style="color: #22d3ee;"></i>
+                                <span class="nav-label fw-medium">Onze kaart</span>
+                            </NavLink>
+                        </div>
+                    }
+                    <div class="nav-item">
                         <NavLink class="nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-white-50" href="submissions">
                             <i class="bi bi-folder2-open" style="color: #38bdf8;"></i>
                             <span class="nav-label fw-medium">Onze inzendingen</span>

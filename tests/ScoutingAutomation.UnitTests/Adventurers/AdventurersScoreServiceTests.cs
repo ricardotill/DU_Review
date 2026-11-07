@@ -4,6 +4,7 @@ using ScoutingAutomation.Contracts.Configuration;
 using ScoutingAutomation.Domain.Entities;
 using ScoutingAutomation.Domain.Enums;
 using ScoutingAutomation.Infrastructure.Adventurers;
+using ScoutingAutomation.Infrastructure.Repositories;
 using ScoutingAutomation.Infrastructure.Settings;
 using Xunit;
 
@@ -154,28 +155,35 @@ public class AdventurersScoreServiceTests
     public async Task ScoreService_ShouldCombineRoundsUnlocksAndFinalPoints()
     {
         await using var db = TestDb.Create();
-        var groupA = new Group { Id = A, Name = "A", SlackChannelId = "CA" };
+        // Locations 1 through 7 are open: the check-in at 8 is approved but does not count yet
+        var groupA = new Group { Id = A, Name = "A", SlackChannelId = "CA", OpenLocations = 7 };
         db.Groups.Add(groupA);
         db.Submissions.AddRange(CheckIn(A, "7"), CheckIn(A, "8"), Theme(A, "1", 5),
             new Submission { GroupId = A, Kind = SubmissionKind.Assignment, AssignmentCode = "7", Status = SubmissionStatus.Approved, CreatedAt = Noon });
         db.GroupBonusPoints.Add(new GroupBonusPoints { GroupId = A, CategoryKey = "avonturiers", Points = 5 });
-        db.LocationUnlocks.Add(new LocationUnlock { GroupId = A, LocationNumber = 7, UnlockedAt = Noon });
+        db.Locations.AddRange(Enumerable.Range(1, 10).Select(n => new Location { Number = n, Name = $"L{n}", Latitude = 51, Longitude = 5 }));
+        db.Assignments.AddRange(Enumerable.Range(1, 20).Select(n => new Assignment { Code = n.ToString(), StandardPoints = 1, AwesomePoints = 2 }));
         await db.SaveChangesAsync();
 
-        var settings = new ScoutingSettings { Adventurers = new AdventurersSettings { Enabled = true } };
+        var settings = new ScoutingSettings { Adventurers = new AdventurersSettings { Enabled = true, InitialOpenAssignments = 10 } };
         settings.Adventurers.Rounds.Add(new ThemeRoundConfig { Number = 1, Start = new DateTime(2026, 10, 3, 12, 0, 0), Themes = { "1" } });
         var runtime = TestRuntime.For(Options.Create(settings));
         var time = new FixedTimeProvider(Noon.AddHours(2));
+        var unlocks = new AssignmentUnlockService(new GroupRepository(db), new LocationRepository(db), new AssignmentRepository(db),
+            new SubmissionRepository(db), runtime);
 
-        var overview = await new AdventurersScoreService(db, runtime, time).GetOverviewAsync();
+        var overview = await new AdventurersScoreService(db, runtime, time, unlocks).GetOverviewAsync();
 
         var score = overview.Standing.For(A)!;
         score.ApprovedLocations.Should().Equal("7", "8");
-        score.UnlockedAssignments.Should().Be(2);
         score.ThemePoints.Should().Be(2);
         score.FinalPoints.Should().Be(5);
         score.Total.Should().Be(7);
-        overview.UnlocksOf(A).Should().BeEquivalentTo(new[] { 7 });
+        var unlock = overview.UnlocksOf(A)!;
+        unlock.CountedLocations.Should().Equal("7");
+        unlock.OpenCount.Should().Be(11, "10 open at the start, plus 10 more spread over 10 locations");
+        overview.IsLocationOpen(A, 7).Should().BeTrue();
+        overview.IsLocationOpen(A, 8).Should().BeFalse();
         overview.Submissions.Should().OnlyContain(s => s.Kind != SubmissionKind.Assignment);
     }
 

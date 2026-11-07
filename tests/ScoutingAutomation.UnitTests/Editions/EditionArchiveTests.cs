@@ -55,7 +55,14 @@ public class EditionArchiveTests : IDisposable
         _db.Submissions.Add(_submission);
         _db.GroupBonusPoints.Add(new GroupBonusPoints { GroupId = _wolves.Id, CategoryKey = "sport", Points = 3 });
         _db.BonusPointsEntries.Add(new BonusPointsEntry { GroupId = _wolves.Id, CategoryKey = "sport", Delta = 3, Total = 3, ChangedAt = DateTimeOffset.UtcNow });
-        _db.LocationUnlocks.Add(new LocationUnlock { GroupId = _wolves.Id, LocationNumber = 7, UnlockedAt = DateTimeOffset.UtcNow });
+        _wolves.OpenLocations = 12;
+        var picture = Path.Combine(_here, "_opdrachten", "5", "voorbeeld.png");
+        Directory.CreateDirectory(Path.GetDirectoryName(picture)!);
+        File.WriteAllBytes(picture, Photo);
+        _db.AssignmentImages.Add(new AssignmentImage
+        {
+            EditionId = _edition.Id, AssignmentCode = "5", FileName = "voorbeeld.png", StoragePath = picture, SortOrder = 0, UploadedAt = DateTimeOffset.UtcNow
+        });
         _edition.FinalStandingJson = JsonSerializer.Serialize(new[] { new EditionStanding(_wolves.TeamId, _wolves.Id, "De Wolven", 1, 5) });
         _db.SaveChanges();
     }
@@ -103,7 +110,11 @@ public class EditionArchiveTests : IDisposable
 
         (await there.GroupBonusPoints.IgnoreQueryFilters().SingleAsync()).Should().BeEquivalentTo(new { GroupId = group.Id, Points = 3 });
         (await there.BonusPointsEntries.IgnoreQueryFilters().SingleAsync()).GroupId.Should().Be(group.Id);
-        (await there.LocationUnlocks.IgnoreQueryFilters().SingleAsync()).GroupId.Should().Be(group.Id);
+        group.OpenLocations.Should().Be(12);
+        var image = await there.AssignmentImages.IgnoreQueryFilters().SingleAsync();
+        image.Should().BeEquivalentTo(new { EditionId = edition.Id, AssignmentCode = "5", FileName = "voorbeeld.png" });
+        image.StoragePath.Should().StartWith(Path.Combine(thereRoot, "_edities", "du-2025", "_opdrachten", "5"));
+        File.ReadAllBytes(image.StoragePath).Should().Equal(Photo);
         EditionService.ReadStanding(edition).Should().ContainSingle().Which.Should().BeEquivalentTo(new { GroupId = group.Id, Rank = 1, Score = 5 });
         (await there.Groups.CountAsync()).Should().Be(0, "the edition being played does not change");
     }
@@ -254,7 +265,8 @@ public class EditionArchiveTests : IDisposable
         }
 
         await using var read = await ZipFile.OpenReadAsync(zip);
-        read.Entries.Select(e => e.FullName).Should().Equal(EditionArchive.DataEntry);
+        read.Entries.Select(e => e.FullName).Should().NotContain(e => e.StartsWith("files/de-wolven"), "the missing file is listed, not in the ZIP");
+        read.Entries.Should().Contain(e => e.FullName == EditionArchive.DataEntry);
     }
 
     public void Dispose()

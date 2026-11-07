@@ -7,7 +7,8 @@
 @inject RuntimeSettingsService Runtime
 @implements IDisposable
 
-@* Points earned outside Slack, entered by hand: one field per category in use, per group. *@
+@* Points earned outside Slack, entered by hand: one field per category in use, per group. The Avonturiers category is
+   computed (half-hour assignments plus final game): there only the final game is entered, and the total is shown. *@
 <AuthorizeView Roles="@AppAuth.AdminRole">
     <div class="glass-panel p-4 bonus-points">
         <h2 class="panel-title"><i class="bi bi-trophy text-warning"></i> Extra punten</h2>
@@ -15,6 +16,13 @@
             Punten die buiten Slack worden verdiend@(categories.Count > 0 ? $", zoals {string.Join(" en ", categories.Select(c => c.Name))}" : "").
             Ze tellen mee in de score en de stand, en blijven staan bij opnieuw opbouwen uit Slack.
         </p>
+        @if (FixedKey != null)
+        {
+            <p class="text-secondary small adventurers-hint">
+                <strong>Avonturiers</strong>: vul hier de punten van het <strong>eindspel</strong> in (hoogstens @FinalMax, eventueel met de startbonus voor eigen vervoer).
+                Daaronder staat het totaal dat telt: de half-uur opdrachten (hoogstens @Runtime.ThemeMaxPoints) plus het eindspel. Dat rekent de app zelf uit.
+            </p>
+        }
 
         @if (categories.Count == 0)
         {
@@ -33,7 +41,7 @@
                             <th>Groep</th>
                             @foreach (var category in categories)
                             {
-                                <th style="width: 10rem;">@category.Name</th>
+                                <th style="width: 10rem;">@(category.Key == FixedKey ? $"{category.Name}: eindspel" : category.Name)</th>
                             }
                         </tr>
                     </thead>
@@ -45,10 +53,19 @@
                                 @foreach (var category in categories)
                                 {
                                     var key = category.Key;
-                                    <td><input type="number" min="0" max="@BonusPointsChange.MaxPoints" step="1" class="form-control form-control-dark form-control-sm bonus-input bonus-@key"
-                                               aria-label="@($"{category.Name} voor {row.Name}")"
+                                    var isFixed = key == FixedKey;
+                                    <td>
+                                        <input type="number" min="0" max="@(isFixed ? FinalMax : BonusPointsChange.MaxPoints)" step="1" class="form-control form-control-dark form-control-sm bonus-input bonus-@key"
+                                               aria-label="@(isFixed ? $"Eindspel Avonturiers voor {row.Name}" : $"{category.Name} voor {row.Name}")"
                                                value="@row.Values.GetValueOrDefault(key)"
-                                               @onchange="e => row.Values[key] = int.TryParse(e.Value?.ToString(), out var v) ? v : null" /></td>
+                                               @onchange="e => row.Values[key] = int.TryParse(e.Value?.ToString(), out var v) ? v : null" />
+                                        @if (isFixed && adventurers?.For(row.GroupId) is { } score)
+                                        {
+                                            <div class="small text-secondary mt-1 adventurers-total" title="Half-uur opdrachten + eindspel">
+                                                Totaal <span class="text-white fw-semibold">@score.Total</span> (@score.ThemePoints + @score.FinalPoints)
+                                            </div>
+                                        }
+                                    </td>
                                 }
                             </tr>
                         }
@@ -87,6 +104,12 @@
     }
 
     private IReadOnlyList<BonusCategoryConfig> categories = Array.Empty<BonusCategoryConfig>();
+    private AdventurersStanding? adventurers;
+
+    /// <summary>The Avonturiers category, whose field is the final game; null while that part is off.</summary>
+    private string? FixedKey => Runtime.FixedBonusKey;
+
+    private int FinalMax => Runtime.FinalMaxPoints;
     private List<Row> rows = new();
     private bool saving;
     private string? message;
@@ -95,6 +118,7 @@
     protected override async Task OnInitializedAsync()
     {
         Runtime.Changed += OnRuntimeChanged;
+        ChangeNotifier.Changed += OnPointsChanged;
         await LoadAsync(keepEdits: false);
     }
 
@@ -109,6 +133,7 @@
         var previous = keepEdits ? rows.ToDictionary(r => r.GroupId) : new Dictionary<Guid, Row>();
 
         categories = Runtime.BonusCategories;
+        adventurers = await LoadAdventurersAsync(scope.ServiceProvider);
         rows = groups
             .Select(g =>
             {
@@ -145,6 +170,30 @@
 
     private static bool IsValid(int? points) => points is >= 0 and <= BonusPointsChange.MaxPoints;
 
+    private async Task<AdventurersStanding?> LoadAdventurersAsync(IServiceProvider services) => FixedKey == null
+        ? null
+        : (await services.GetRequiredService<AdventurersScoreService>().GetOverviewAsync()).Standing;
+
+    /// <summary>A review or round changed the Avonturiers totals: show them again, without touching what is typed.</summary>
+    private void OnPointsChanged()
+    {
+        if (FixedKey == null) return;
+
+        _ = InvokeAsync(async () =>
+        {
+            try
+            {
+                await using var scope = ScopeFactory.CreateAsyncScope();
+                adventurers = await LoadAdventurersAsync(scope.ServiceProvider);
+                StateHasChanged();
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Logger.LogWarning(ex, "Reloading the Avonturiers totals failed");
+            }
+        });
+    }
+
     private async Task SaveAsync()
     {
         // An empty field or a typo saves nothing: half a pubquiz result on the scoreboard would mislead
@@ -152,6 +201,15 @@
         if (invalid != null)
         {
             (message, messageIsError) = ($"Vul voor {invalid.Name} hele getallen van 0 tot en met {BonusPointsChange.MaxPoints} in. Er is niets opgeslagen.", true);
+            return;
+        }
+
+        // More than the final game can give would never count, and look like a typo on the scoreboard
+        // Only fields changed here: a value saved before the maximum was lowered must not block every other save
+        var tooHigh = FixedKey == null ? null : rows.FirstOrDefault(r => r.ChangedKeys.Contains(FixedKey) && r.Values.GetValueOrDefault(FixedKey) > FinalMax);
+        if (tooHigh != null)
+        {
+            (message, messageIsError) = ($"Het eindspel van {tooHigh.Name} is hoogstens {FinalMax} punten. Er is niets opgeslagen.", true);
             return;
         }
 
@@ -201,5 +259,9 @@
         }
     }
 
-    public void Dispose() => Runtime.Changed -= OnRuntimeChanged;
+    public void Dispose()
+    {
+        Runtime.Changed -= OnRuntimeChanged;
+        ChangeNotifier.Changed -= OnPointsChanged;
+    }
 }

@@ -30,10 +30,11 @@ public static class ExportEndpoints
         var categories = runtime.BonusCategories;
         var groupsById = (await groups.GetAllAsync()).ToDictionary(g => g.Id);
         // The Avonturiers columns only while that part is on
-        var adventurers = runtime.AdventurersEnabled ? (await adventurersScores.GetOverviewAsync()).Standing : null;
+        var overview = runtime.AdventurersEnabled ? await adventurersScores.GetOverviewAsync() : null;
+        var adventurers = overview?.Standing;
         var adventurersColumns = adventurers == null
             ? Array.Empty<string>()
-            : new[] { "Locaties", "Vrijgespeeld", "Rondepunten", "Eindspel", "Avonturiers totaal" };
+            : new[] { "Locaties", "Locaties open t/m", "Locaties tellen", "Opdrachten open", "Rondepunten", "Eindspel", "Avonturiers totaal" };
 
         // Semicolons and a BOM: what Dutch Excel expects when the file is double-clicked
         var csv = new StringBuilder();
@@ -62,8 +63,17 @@ public static class ExportEndpoints
                 g.LastSubmissionAt is { } at ? at.ToGameTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) : ""
             })
             .Concat(adventurers?.For(g.GroupId) is { } a
-                ? new object?[] { Field(string.Join(", ", a.ApprovedLocations)), a.UnlockedAssignments, a.ThemePoints, a.FinalPoints, a.Total }
-                : adventurers != null ? new object?[] { "", 0, 0, 0, 0 } : Array.Empty<object?>()));
+                ? new object?[]
+                {
+                    Field(string.Join(", ", a.ApprovedLocations)),
+                    overview!.UnlocksOf(g.GroupId)?.OpenLocations,
+                    overview.UnlocksOf(g.GroupId)?.CountedLocations.Count ?? 0,
+                    overview.UnlocksOf(g.GroupId)?.OpenCount ?? 0,
+                    a.ThemePoints,
+                    a.FinalPoints,
+                    a.Total
+                }
+                : adventurers != null ? new object?[] { "", "", 0, 0, 0, 0, 0 } : Array.Empty<object?>()));
             csv.Append("\r\n");
         }
 

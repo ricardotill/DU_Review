@@ -21,15 +21,13 @@ public sealed record RoundResult(ThemeRound Round, IReadOnlyList<RoundTeamResult
         : string.Join(", ", Teams.Where(t => t.Points > 0).Select(t => $"{t.Place}. {name(t.GroupId)} ({t.Approved})"));
 }
 
-/// <param name="ApprovedLocations">Distinct approved location numbers, lowest first.</param>
-/// <param name="UnlockedAssignments">Toeristen assignments unlocked: one per approved location.</param>
+/// <param name="ApprovedLocations">Distinct approved location numbers, lowest first. Which of them open assignments is <see cref="UnlockState"/>.</param>
 /// <param name="ThemePoints">Round points of closed rounds, capped.</param>
 /// <param name="RunningRoundPoints">What the running round would give now; not part of the total yet.</param>
 /// <param name="FinalPoints">The hand-entered final game points, capped.</param>
 public sealed record AdventurersGroupScore(
     Guid GroupId,
     IReadOnlyList<string> ApprovedLocations,
-    int UnlockedAssignments,
     int ThemePoints,
     int RunningRoundPoints,
     int FinalPoints,
@@ -70,7 +68,7 @@ public static class AdventurersScoring
             var running = results.Where(r => r.IsRunning).Sum(r => r.For(groupId)?.Points ?? 0);
             var capped = Math.Min(themePoints, Math.Max(0, themeMax));
             var final = Math.Clamp(finalPoints.GetValueOrDefault(groupId), 0, Math.Max(0, finalMax));
-            scores[groupId] = new AdventurersGroupScore(groupId, locations, locations.Count, capped, running, final, capped + final);
+            scores[groupId] = new AdventurersGroupScore(groupId, locations, capped, running, final, capped + final);
         }
 
         return new AdventurersStanding(results, scores);
@@ -145,5 +143,5 @@ public static class AdventurersScoring
         }
     }
 
-    private static bool IsApproved(SubmissionStatus status) => status is SubmissionStatus.Approved or SubmissionStatus.Awesome;
+    internal static bool IsApproved(SubmissionStatus status) => status is SubmissionStatus.Approved or SubmissionStatus.Awesome;
 }

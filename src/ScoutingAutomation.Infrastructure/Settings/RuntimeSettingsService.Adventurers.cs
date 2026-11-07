@@ -5,21 +5,31 @@ using ScoutingAutomation.Domain.Models;
 namespace ScoutingAutomation.Infrastructure.Settings;
 
 /// <summary>
-/// The Avonturiers settings that can change while the app runs: the theme rounds, the unlock pool, the location check,
-/// the times of the start and final messages, which channels got which message, and the unlock count each
+/// The Avonturiers settings that can change while the app runs: the theme rounds, the locations open at the start,
+/// the times of the start and final messages, which channels got which message, and the open-assignment count each
 /// Toeristen channel was last told. Whether the part is on at all only comes from appsettings.
 /// </summary>
 public partial class RuntimeSettingsService
 {
+    /// <summary>The highest "locations 1 through N" that can be set; the same as the highest location number.</summary>
+    public const int MaxOpenLocations = 9999;
+
     /// <summary>More rounds than this is a typing loop, not a game.</summary>
     public const int MaxRounds = 60;
+
+    /// <summary>Most super locations; more is a typing loop or a broken file, not a game.</summary>
+    public const int MaxSuperLocations = 1000;
 
     /// <summary>Most theme numbers in one round.</summary>
     public const int MaxThemesPerRound = 10;
 
     private List<ThemeRoundConfig>? _rounds;
-    private List<string>? _unlockPool;
-    private bool? _requireUnlockedLocation;
+    private int? _initialOpenLocations;
+    private SuperLocationsConfig? _superLocations;
+    // The numbers that count double now; built on first read and dropped on every change
+    private IReadOnlySet<int>? _superLocationSet;
+    private int? _themeMaxPoints;
+    private int? _finalMaxPoints;
     private TimeOverride? _adventurersStartAt;
     private TimeOverride? _adventurersFinalAt;
     private Dictionary<string, Dictionary<string, DateTimeOffset>> _adventurersPosted = new();
@@ -62,6 +72,7 @@ public partial class RuntimeSettingsService
             SlackText.RoundOpen => settings.RoundOpenMessage,
             SlackText.RoundClose => settings.RoundCloseMessage,
             SlackText.RoundResult => settings.RoundResultMessage,
+            SlackText.RoundHandover => settings.RoundHandoverMessage,
             SlackText.UnlockNotice => settings.UnlockNoticeMessage,
             SlackText.UnlockCorrection => settings.UnlockCorrectionMessage,
             SlackText.AdventurersMissingNumber => feedback.MissingNumber?.Message,
@@ -75,77 +86,175 @@ public partial class RuntimeSettingsService
         };
     }
 
-    /// <summary>Whether the jury is warned about a check-in at a location not unlocked for the group: set in the app, otherwise from appsettings.</summary>
-    public bool RequireUnlockedLocation
+    /// <summary>The Toeristen assignments that are open from the start (numbers, lowest first).</summary>
+    public int InitialOpenAssignments => Math.Max(0, AdventurersOptions.InitialOpenAssignments);
+
+    /// <summary>
+    /// How many locations (1 through this number) are open for a group that has no number of its own:
+    /// set in the app, otherwise from appsettings.
+    /// </summary>
+    public int InitialOpenLocations
     {
-        get { lock (_lock) return _requireUnlockedLocation ?? AdventurersOptions.RequireUnlockedLocation; }
+        get { lock (_lock) return Math.Max(0, _initialOpenLocations ?? AdventurersOptions.InitialOpenLocations); }
     }
 
-    public void SetRequireUnlockedLocation(bool enabled)
+    /// <summary>Whether the number of locations open at the start was changed in the app.</summary>
+    public bool IsInitialOpenLocationsChanged
     {
+        get { lock (_lock) return _initialOpenLocations != null; }
+    }
+
+    /// <returns>Null when saved, otherwise why not.</returns>
+    public string? SetInitialOpenLocations(int count)
+    {
+        if (count is < 0 or > MaxOpenLocations) return $"Kies een aantal tussen 0 en {MaxOpenLocations}.";
+
         lock (_lock)
         {
-            if (_requireUnlockedLocation == enabled) return;
-            _requireUnlockedLocation = enabled;
+            if (_initialOpenLocations == count) return null;
+            _initialOpenLocations = count;
             Save();
         }
 
-        _logger.LogWarning("Location check for Avonturiers switched {State} in the app", enabled ? "on" : "off");
+        _logger.LogWarning("Locations open at the start set to 1-{Count} in the app", count);
+        Changed?.Invoke();
+        return null;
+    }
+
+    public void ResetInitialOpenLocations()
+    {
+        lock (_lock)
+        {
+            if (_initialOpenLocations == null) return;
+            _initialOpenLocations = null;
+            Save();
+        }
+
         Changed?.Invoke();
     }
 
-    /// <summary>
-    /// The Toeristen assignments in the order check-ins unlock them; empty means count mode (nothing is ever locked).
-    /// Set in the app, otherwise from appsettings.
-    /// </summary>
-    public IReadOnlyList<string> UnlockPool
+    /// <summary>The super locations as set: in the app, otherwise from appsettings. Also when off.</summary>
+    public SuperLocationsConfig SuperLocationsSetting
     {
         get
         {
             lock (_lock)
             {
-                return (_unlockPool ?? (AdventurersOptions.UnlockPool ?? new List<string>()))
-                    .Select(AssignmentCode.Normalize).OfType<string>().Distinct().ToList();
+                var source = _superLocations ?? AdventurersOptions.SuperLocations ?? new SuperLocationsConfig();
+                return new SuperLocationsConfig { Enabled = source.Enabled, Numbers = CleanNumbers(source.Numbers) };
             }
         }
     }
 
-    /// <summary>Whether the pool was changed in the app.</summary>
-    public bool IsUnlockPoolChanged
+    /// <summary>The location numbers that count double now; empty when the super locations are off.</summary>
+    public IReadOnlyCollection<int> SuperLocations
     {
-        get { lock (_lock) return _unlockPool != null; }
+        get
+        {
+            lock (_lock)
+            {
+                if (_superLocationSet == null)
+                {
+                    var source = _superLocations ?? AdventurersOptions.SuperLocations ?? new SuperLocationsConfig();
+                    _superLocationSet = source.Enabled ? CleanNumbers(source.Numbers).ToHashSet() : new HashSet<int>();
+                }
+
+                return _superLocationSet;
+            }
+        }
     }
 
-    /// <summary>Sets the pool from a list such as "3, 5, 12, A"; an empty list switches to count mode.</summary>
-    /// <returns>Null when saved, otherwise why not.</returns>
-    public string? SetUnlockPool(IEnumerable<string> codes)
+    /// <summary>Whether the super locations were changed in the app.</summary>
+    public bool IsSuperLocationsChanged
     {
-        var list = new List<string>();
-        foreach (var raw in codes.Where(c => !string.IsNullOrWhiteSpace(c)))
-        {
-            var code = AssignmentCode.Normalize(raw);
-            if (code == null) return $"'{raw.Trim()}' is geen opdrachtnummer.";
-            if (list.Contains(code)) return $"Opdracht {code} staat twee keer in de lijst.";
-            list.Add(code);
-        }
+        get { lock (_lock) return _superLocations != null; }
+    }
 
+    /// <returns>Null when saved, otherwise why not.</returns>
+    public string? SetSuperLocations(bool enabled, IEnumerable<int> numbers)
+    {
+        var list = numbers.Distinct().ToList();
+        if (list.Any(n => n is < 1 or > MaxOpenLocations)) return $"Kies locatienummers tussen 1 en {MaxOpenLocations}.";
+        if (list.Count > MaxSuperLocations) return $"Kies hoogstens {MaxSuperLocations} supercoördinaten.";
+
+        var setting = new SuperLocationsConfig { Enabled = enabled, Numbers = CleanNumbers(list) };
         lock (_lock)
         {
-            _unlockPool = list;
+            if (_superLocations is { } current && current.Enabled == setting.Enabled && current.Numbers.SequenceEqual(setting.Numbers)) return null;
+            _superLocations = setting;
+            _superLocationSet = null;
             Save();
         }
 
-        _logger.LogWarning("Unlock pool set to {Pool} in the app", list.Count == 0 ? "count mode" : string.Join(", ", list));
+        _logger.LogWarning("Super locations set in the app: {State}, {Numbers}", enabled ? "on" : "off", string.Join(", ", setting.Numbers));
         Changed?.Invoke();
         return null;
     }
 
-    public void ResetUnlockPool()
+    public void ResetSuperLocations()
     {
         lock (_lock)
         {
-            if (_unlockPool == null) return;
-            _unlockPool = null;
+            if (_superLocations == null) return;
+            _superLocations = null;
+            _superLocationSet = null;
+            Save();
+        }
+
+        Changed?.Invoke();
+    }
+
+    private static List<int> CleanNumbers(IEnumerable<int>? numbers) =>
+        (numbers ?? Enumerable.Empty<int>()).Where(n => n is >= 1 and <= MaxOpenLocations).Distinct().Order().Take(MaxSuperLocations).ToList();
+
+    /// <summary>The most points the half-hour assignments (theme rounds) give a group together: set in the app, otherwise from appsettings.</summary>
+    public int ThemeMaxPoints
+    {
+        get { lock (_lock) return Math.Max(0, _themeMaxPoints ?? AdventurersOptions.ThemeMaxPoints); }
+    }
+
+    /// <summary>The most points of the hand-entered final game that count: set in the app, otherwise from appsettings.</summary>
+    public int FinalMaxPoints
+    {
+        get { lock (_lock) return Math.Max(0, _finalMaxPoints ?? AdventurersOptions.FinalMaxPoints); }
+    }
+
+    /// <summary>Whether either maximum was changed in the app.</summary>
+    public bool IsMaxPointsChanged
+    {
+        get { lock (_lock) return _themeMaxPoints != null || _finalMaxPoints != null; }
+    }
+
+    /// <summary>Sets both maximums. Points above them are kept, but count only up to the maximum.</summary>
+    /// <returns>Null when saved, otherwise why not.</returns>
+    public string? SetMaxPoints(int themeMax, int finalMax)
+    {
+        if (themeMax is < 0 or > BonusPointsChange.MaxPoints || finalMax is < 0 or > BonusPointsChange.MaxPoints)
+        {
+            return $"Kies een maximum van 0 tot en met {BonusPointsChange.MaxPoints} punten.";
+        }
+
+        lock (_lock)
+        {
+            if (_themeMaxPoints == themeMax && _finalMaxPoints == finalMax) return null;
+            _themeMaxPoints = themeMax;
+            _finalMaxPoints = finalMax;
+            Save();
+        }
+
+        _logger.LogWarning("Avonturiers maximum set in the app: {Theme} for the half-hour assignments, {Final} for the final game", themeMax, finalMax);
+        Changed?.Invoke();
+        return null;
+    }
+
+    /// <summary>Goes back to the maximums from appsettings.</summary>
+    public void ResetMaxPoints()
+    {
+        lock (_lock)
+        {
+            if (_themeMaxPoints == null && _finalMaxPoints == null) return;
+            _themeMaxPoints = null;
+            _finalMaxPoints = null;
             Save();
         }
 
@@ -269,7 +378,7 @@ public partial class RuntimeSettingsService
             .FirstOrDefault(g => g.Count() > 1);
         if (theme != null)
         {
-            return $"Thema {theme.Key} staat in meer dan één ronde ({string.Join(", ", theme.Select(t => t.Round))}).";
+            return $"Half-uur opdracht {theme.Key} staat in meer dan één ronde ({string.Join(", ", theme.Select(t => t.Round))}).";
         }
 
         return null;
@@ -282,11 +391,11 @@ public partial class RuntimeSettingsService
         var end = round.End ?? round.Start.AddMinutes(defaultMinutes);
         if (end <= round.Start) return $"Ronde {round.Number} moet eindigen na de start.";
         var themes = round.Themes ?? new List<string>();
-        if (themes.Count == 0) return $"Ronde {round.Number} heeft geen thema.";
-        if (themes.Count > MaxThemesPerRound) return $"Ronde {round.Number} heeft meer dan {MaxThemesPerRound} thema's.";
+        if (themes.Count == 0) return $"Ronde {round.Number} heeft geen half-uur opdracht.";
+        if (themes.Count > MaxThemesPerRound) return $"Ronde {round.Number} heeft meer dan {MaxThemesPerRound} half-uur opdrachten.";
         if (themes.Any(t => AssignmentCode.Normalize(t) is not { } code || AssignmentCode.IsLetter(code)))
         {
-            return $"Ronde {round.Number}: een themanummer is een getal van 1 of hoger.";
+            return $"Ronde {round.Number}: het nummer van een half-uur opdracht is een getal van 1 of hoger.";
         }
 
         if (round.Message?.Length > MaxSlackTextLength) return $"De tekst van ronde {round.Number} is te lang.";
@@ -309,23 +418,36 @@ public partial class RuntimeSettingsService
         Message = string.IsNullOrWhiteSpace(r.Message) ? null : r.Message.Trim()
     };
 
-    /// <summary>When the start information goes to the Avonturiers, in the game's time zone: set in the app, otherwise from appsettings.</summary>
-    public DateTime? AdventurersStartAtGameTime
-    {
-        get { lock (_lock) return _adventurersStartAt != null ? _adventurersStartAt.Value : AdventurersOptions.StartAnnouncement?.PostAt; }
-    }
+    /// <summary>
+    /// The start of the Avonturiers part, in the game's time zone; the start information goes out then. Set in the app,
+    /// otherwise from appsettings, otherwise the start of the event.
+    /// </summary>
+    public DateTime? AdventurersStartAtGameTime => AdventurersOwnTime(final: false) ?? EventStartGameTime;
 
-    /// <summary>When the final location goes to the Avonturiers, in the game's time zone: set in the app, otherwise from appsettings.</summary>
-    public DateTime? AdventurersFinalAtGameTime
+    /// <summary>
+    /// The end of the Avonturiers part, in the game's time zone; the final location goes out then. Set in the app,
+    /// otherwise from appsettings, otherwise the end of the event.
+    /// </summary>
+    public DateTime? AdventurersFinalAtGameTime => AdventurersOwnTime(final: true) ?? EventEndGameTime;
+
+    /// <summary>The Avonturiers' own start (or with <paramref name="final"/> end) time, without the event's as fallback.</summary>
+    public DateTime? AdventurersOwnTime(bool final)
     {
-        get { lock (_lock) return _adventurersFinalAt != null ? _adventurersFinalAt.Value : AdventurersOptions.FinalAnnouncement?.PostAt; }
+        lock (_lock)
+        {
+            var changed = final ? _adventurersFinalAt : _adventurersStartAt;
+            if (changed?.Value != null) return changed.Value;
+        }
+
+        var configured = (final ? AdventurersOptions.FinalAnnouncement : AdventurersOptions.StartAnnouncement)?.PostAt;
+        return IsValidEventTime(configured) ? configured : null;
     }
 
     public DateTimeOffset? AdventurersStartAt => AdventurersStartAtGameTime is { } at && IsValidEventTime(at) ? GameTime.FromGameTime(at) : null;
 
     public DateTimeOffset? AdventurersFinalAt => AdventurersFinalAtGameTime is { } at && IsValidEventTime(at) ? GameTime.FromGameTime(at) : null;
 
-    /// <summary>Sets when the start (or with <paramref name="final"/> the final) message is posted; null means only by hand.</summary>
+    /// <summary>Sets the start (or with <paramref name="final"/> the end) of the Avonturiers part; null means the event's.</summary>
     /// <returns>Null when saved, otherwise why not.</returns>
     public string? SetAdventurersPostTime(bool final, DateTime? at)
     {
@@ -334,6 +456,11 @@ public partial class RuntimeSettingsService
 
         lock (_lock)
         {
+            // Without a time of its own the part follows the event, so the check uses what would apply
+            var start = final ? AdventurersStartAtGameTime : at ?? EventStartGameTime;
+            var end = final ? at ?? EventEndGameTime : AdventurersFinalAtGameTime;
+            if (start is { } s && end is { } e && e <= s) return "Het einde van de Avonturiers moet na de start liggen.";
+
             if (final) _adventurersFinalAt = new TimeOverride { Value = at };
             else _adventurersStartAt = new TimeOverride { Value = at };
             Save();
@@ -342,6 +469,27 @@ public partial class RuntimeSettingsService
         _logger.LogWarning("Avonturiers {Kind} message time set to {Time} in the app", final ? "final" : "start", at?.ToString("yyyy-MM-dd HH:mm") ?? "none");
         Changed?.Invoke();
         return null;
+    }
+
+    /// <summary>Whether the time of the start (or with <paramref name="final"/> the final) message was set in the app.</summary>
+    public bool IsAdventurersPostTimeChanged(bool final)
+    {
+        lock (_lock) return (final ? _adventurersFinalAt : _adventurersStartAt) != null;
+    }
+
+    /// <summary>Goes back to the time of the start (or with <paramref name="final"/> the final) message from appsettings.</summary>
+    public void ResetAdventurersPostTime(bool final)
+    {
+        lock (_lock)
+        {
+            if ((final ? _adventurersFinalAt : _adventurersStartAt) == null) return;
+            if (final) _adventurersFinalAt = null;
+            else _adventurersStartAt = null;
+            Save();
+        }
+
+        _logger.LogWarning("Avonturiers {Kind} message time reset to appsettings", final ? "final" : "start");
+        Changed?.Invoke();
     }
 
     /// <summary>When a broadcast (e.g. "start", "round-3-open") was posted in a channel; null when it was not.</summary>
@@ -370,7 +518,7 @@ public partial class RuntimeSettingsService
         Changed?.Invoke();
     }
 
-    /// <summary>The unlock count the group's Toeristen channel was last told; null when it was never told.</summary>
+    /// <summary>The number of open assignments the group's Toeristen were last told; null when they were never told.</summary>
     public int? UnlockNotified(Guid groupId)
     {
         lock (_lock) return _unlockNotified.TryGetValue(groupId, out var count) ? count : null;
@@ -385,6 +533,22 @@ public partial class RuntimeSettingsService
         }
     }
 
+    /// <summary>
+    /// Forgets what every group was told. Used when the first locations arrive: a count from before, when everything
+    /// was open, would otherwise look like a drop and post a correction to every group.
+    /// </summary>
+    public void ResetUnlockNotified()
+    {
+        lock (_lock)
+        {
+            if (_unlockNotified.Count == 0) return;
+            _unlockNotified = new Dictionary<Guid, int>();
+            Save();
+        }
+
+        _logger.LogInformation("Forgot the open-assignment counts told to the groups: the first locations were added");
+    }
+
     private void LoadAdventurers(SavedAdventurers? saved)
     {
         _rounds = saved?.Rounds?.Where(r => r != null).Select(CopyRound).ToList();
@@ -395,8 +559,16 @@ public partial class RuntimeSettingsService
             _rounds = null;
         }
 
-        _unlockPool = saved?.UnlockPool?.Select(AssignmentCode.Normalize).OfType<string>().Distinct().ToList();
-        _requireUnlockedLocation = saved?.RequireUnlockedLocation;
+        _initialOpenLocations = saved?.InitialOpenLocations is >= 0 and <= MaxOpenLocations ? saved.InitialOpenLocations : null;
+        _superLocations = saved?.SuperLocations is { } super ? new SuperLocationsConfig { Enabled = super.Enabled, Numbers = CleanNumbers(super.Numbers) } : null;
+        _superLocationSet = null;
+        if (saved?.SuperLocations?.Numbers is { } savedNumbers && savedNumbers.Distinct().Count() != _superLocations!.Numbers.Count)
+        {
+            _logger.LogWarning("Saved super locations had {Dropped} unusable numbers; they are ignored", savedNumbers.Distinct().Count() - _superLocations.Numbers.Count);
+        }
+
+        _themeMaxPoints = saved?.ThemeMaxPoints is >= 0 and <= BonusPointsChange.MaxPoints ? saved.ThemeMaxPoints : null;
+        _finalMaxPoints = saved?.FinalMaxPoints is >= 0 and <= BonusPointsChange.MaxPoints ? saved.FinalMaxPoints : null;
         _adventurersStartAt = IsValidEventTime(saved?.StartAt?.Value) ? saved?.StartAt : null;
         _adventurersFinalAt = IsValidEventTime(saved?.FinalAt?.Value) ? saved?.FinalAt : null;
         _adventurersPosted = new Dictionary<string, Dictionary<string, DateTimeOffset>>(StringComparer.OrdinalIgnoreCase);
@@ -405,29 +577,34 @@ public partial class RuntimeSettingsService
             if (channels != null) _adventurersPosted[message] = new Dictionary<string, DateTimeOffset>(channels, StringComparer.OrdinalIgnoreCase);
         }
 
-        _unlockNotified = new Dictionary<Guid, int>(saved?.UnlockNotified ?? new Dictionary<Guid, int>());
+        _unlockNotified = new Dictionary<Guid, int>(saved?.AssignmentsNotified ?? new Dictionary<Guid, int>());
     }
 
     private SavedAdventurers SaveAdventurers() => new()
     {
         Rounds = _rounds,
-        UnlockPool = _unlockPool,
-        RequireUnlockedLocation = _requireUnlockedLocation,
+        InitialOpenLocations = _initialOpenLocations,
+        SuperLocations = _superLocations,
+        ThemeMaxPoints = _themeMaxPoints,
+        FinalMaxPoints = _finalMaxPoints,
         StartAt = _adventurersStartAt,
         FinalAt = _adventurersFinalAt,
         Posted = _adventurersPosted,
-        UnlockNotified = _unlockNotified
+        AssignmentsNotified = _unlockNotified
     };
 
     private sealed class SavedAdventurers
     {
         public List<ThemeRoundConfig>? Rounds { get; set; }
-        public List<string>? UnlockPool { get; set; }
-        public bool? RequireUnlockedLocation { get; set; }
+        public int? InitialOpenLocations { get; set; }
+        public SuperLocationsConfig? SuperLocations { get; set; }
+        public int? ThemeMaxPoints { get; set; }
+        public int? FinalMaxPoints { get; set; }
         public TimeOverride? StartAt { get; set; }
         public TimeOverride? FinalAt { get; set; }
         public Dictionary<string, Dictionary<string, DateTimeOffset>>? Posted { get; set; }
-        public Dictionary<Guid, int>? UnlockNotified { get; set; }
+        // Open assignments per group; a new name, so a count of locations saved by an earlier version is not read as one
+        public Dictionary<Guid, int>? AssignmentsNotified { get; set; }
     }
 }
 
@@ -440,8 +617,8 @@ public sealed record ThemeRound(int Number, DateTimeOffset Start, DateTimeOffset
 
     public bool IsRunning(DateTimeOffset now) => Contains(now);
 
-    /// <summary>"thema 3" or "thema's 3 en 4".</summary>
+    /// <summary>"half-uur opdracht 3" or "half-uur opdrachten 3 en 4".</summary>
     public string ThemesLabel => Themes.Count == 1
-        ? $"thema {Themes[0]}"
-        : $"thema's {string.Join(", ", Themes.Take(Themes.Count - 1))} en {Themes[^1]}";
+        ? $"half-uur opdracht {Themes[0]}"
+        : $"half-uur opdrachten {string.Join(", ", Themes.Take(Themes.Count - 1))} en {Themes[^1]}";
 }

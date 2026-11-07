@@ -29,6 +29,10 @@ public class AdventurersParserTests
     [InlineData("Opdr 5", "5")]
     [InlineData("O3", "3")]
     [InlineData("o 03", "3")]
+    [InlineData("Half-uur opdracht 6", "6")]
+    [InlineData("half uur opdracht 6", "6")]
+    [InlineData("Halfuuropdracht 6", "6")]
+    [InlineData("HALF-UUR-OPDRACHT: 6", "6")]
     public void Theme_ShouldBeRead(string text, string number)
     {
         AdventurersParser.Parse(text).Should().Be(new AdventurersParseResult(SubmissionKind.Theme, number));
