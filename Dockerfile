@@ -29,7 +29,7 @@ COPY src/ src/
 RUN dotnet publish src/ScoutingAutomation.Web/ScoutingAutomation.Web.csproj -c Release -a $TARGETARCH -o /app --no-restore --nologo \
     -p:Version=$VERSION
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
+FROM mcr.microsoft.com/dotnet/aspnet:11.0 AS final
 ARG VERSION=0.0.0-local
 LABEL org.opencontainers.image.title="DU Review" \
       org.opencontainers.image.source="https://github.com/ricardotill/DU_Review" \
