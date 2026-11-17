@@ -7,7 +7,7 @@ FROM --platform=$BUILDPLATFORM node:22-slim AS node
 
 # The build stage always runs on the machine's own platform and cross-compiles for the target one,
 # so an arm64 image needs no slow emulation; only the final stage is per architecture.
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:11.0 AS build
 ARG TARGETARCH
 # Version shown by the app; CI passes the release tag (1.4.0) or 0.0.0-<commit> for a build of main
 ARG VERSION=0.0.0-local
